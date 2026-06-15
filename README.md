@@ -41,35 +41,38 @@ pwsh build/build-all.ps1 -Target server-linux
 
 ---
 
-## Развёртывание сервера через Docker (рекомендуется для Linux + PostgreSQL)
+## Развёртывание сервера через Docker (сервер + PostgreSQL в контейнерах)
 
-Сервер упакован в Docker, подключается к внешнему PostgreSQL. Деплой на хосте:
+`docker-compose` поднимает **два контейнера**: PostgreSQL и сервер YPMonitor. Внешняя БД не нужна.
 
 ```bash
-# 1. Клонировать репозиторий (первый раз)
+# 1. Установить docker и git (Ubuntu/Debian), если их нет:
+sudo apt-get update && sudo apt-get install -y docker.io docker-compose-v2 git
+
+# 2. Клонировать репозиторий
 git clone https://github.com/serg-lebovski/ypmonitor.git
 cd ypmonitor
 
-# 2. Создать .env со строкой подключения к PostgreSQL (в git не попадает)
+# 3. Создать .env (в git не попадает) и задать пароль БД
 cp .env.example .env
-nano .env        # впишите Host/Database/Username/Password
+nano .env            # POSTGRES_PASSWORD=...
 
-# 3. Запустить
-docker compose up -d --build
+# 4. Запустить
+sudo docker compose up -d --build
 
 # Обновление до новой версии:
-git pull && docker compose up -d --build
+git pull && sudo docker compose up -d --build
 ```
 
 `.env`:
 ```
 YPMON_HTTP_PORT=8080
-YPMON_DB_CONNSTRING=Host=10.10.20.25;Port=5432;Database=ypmon;Username=admin_yp;Password=********
+POSTGRES_PASSWORD=ваш_пароль
 ```
 
-Требования к PostgreSQL: пользователь должен иметь право создавать БД (`CREATEDB`) — таблицы и сама
-база `ypmon` создаются автоматически при первом старте. Веб-интерфейс: `http://<хост>:8080/`,
-при первом входе создаётся администратор. Логи: `docker compose logs -f`.
+Контейнер `postgres` сам создаёт пользователя `admin_yp` и базу `ypmon` (данные — в томе `ypmon-pgdata`).
+Сервер подключается к нему по внутренней сети (`Host=postgres`). Веб-интерфейс: `http://<хост>:8080/`,
+при первом входе создаётся администратор. Логи: `sudo docker compose logs -f`.
 
 > Файл с паролем (`.env`) и артефакты сборки в репозиторий не коммитятся (см. `.gitignore`).
 > Папка обновлений агента смонтирована как том `ypmon-updates` (`/app/agent-updates`).
