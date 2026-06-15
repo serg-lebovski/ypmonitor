@@ -1,0 +1,15 @@
+**/bin
+**/obj
+dist
+data
+.git
+.gitignore
+.vs
+*.user
+*.db
+*.db-*
+.env
+scripts
+installers
+README.md
+**/appsettings.Development.json

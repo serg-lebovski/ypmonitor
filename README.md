@@ -41,7 +41,42 @@ pwsh build/build-all.ps1 -Target server-linux
 
 ---
 
-## Установка сервера
+## Развёртывание сервера через Docker (рекомендуется для Linux + PostgreSQL)
+
+Сервер упакован в Docker, подключается к внешнему PostgreSQL. Деплой на хосте:
+
+```bash
+# 1. Клонировать репозиторий (первый раз)
+git clone https://github.com/serg-lebovski/ypmonitor.git
+cd ypmonitor
+
+# 2. Создать .env со строкой подключения к PostgreSQL (в git не попадает)
+cp .env.example .env
+nano .env        # впишите Host/Database/Username/Password
+
+# 3. Запустить
+docker compose up -d --build
+
+# Обновление до новой версии:
+git pull && docker compose up -d --build
+```
+
+`.env`:
+```
+YPMON_HTTP_PORT=8080
+YPMON_DB_CONNSTRING=Host=10.10.20.25;Port=5432;Database=ypmon;Username=admin_yp;Password=********
+```
+
+Требования к PostgreSQL: пользователь должен иметь право создавать БД (`CREATEDB`) — таблицы и сама
+база `ypmon` создаются автоматически при первом старте. Веб-интерфейс: `http://<хост>:8080/`,
+при первом входе создаётся администратор. Логи: `docker compose logs -f`.
+
+> Файл с паролем (`.env`) и артефакты сборки в репозиторий не коммитятся (см. `.gitignore`).
+> Папка обновлений агента смонтирована как том `ypmon-updates` (`/app/agent-updates`).
+
+---
+
+## Установка сервера (без Docker)
 
 ### Windows
 1. Скопируйте папку `dist/windows-server` на машину сервера.

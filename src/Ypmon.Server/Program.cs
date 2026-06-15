@@ -62,15 +62,35 @@ builder.Services.AddRazorPages(o =>
 
 var app = builder.Build();
 
-// --- Инициализация БД ---
+// --- Инициализация БД (с ретраями: внешний Postgres может быть доступен не сразу) ---
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    db.Database.EnsureCreated();
-    if (!await db.Settings.AnyAsync())
+    var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+
+    if (dbProvider == "postgres" && string.IsNullOrWhiteSpace(connString))
+        logger.LogWarning("Provider=postgres, но строка подключения пуста. Задайте Database:ConnectionString (env Database__ConnectionString).");
+
+    const int maxAttempts = 12;
+    for (var attempt = 1; ; attempt++)
     {
-        db.Settings.Add(new ServerSettings());
-        await db.SaveChangesAsync();
+        try
+        {
+            db.Database.EnsureCreated();
+            if (!await db.Settings.AnyAsync())
+            {
+                db.Settings.Add(new ServerSettings());
+                await db.SaveChangesAsync();
+            }
+            logger.LogInformation("База данных готова ({Provider}).", dbProvider);
+            break;
+        }
+        catch (Exception ex) when (attempt < maxAttempts)
+        {
+            logger.LogWarning("БД недоступна (попытка {Attempt}/{Max}): {Msg}. Повтор через 5 с.",
+                attempt, maxAttempts, ex.Message);
+            await Task.Delay(TimeSpan.FromSeconds(5));
+        }
     }
 }
 
