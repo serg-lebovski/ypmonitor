@@ -1,0 +1,16 @@
+[Unit]
+Description=YPMon Server — мониторинг резервного копирования
+After=network.target
+
+[Service]
+Type=notify
+WorkingDirectory=/opt/ypmon
+ExecStart=/opt/ypmon/Ypmon.Server
+Restart=always
+RestartSec=5
+User=ypmon
+Group=ypmon
+# Порт и БД настраиваются в /opt/ypmon/appsettings.json
+
+[Install]
+WantedBy=multi-user.target

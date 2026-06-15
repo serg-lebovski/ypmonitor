@@ -1,0 +1,110 @@
+@page
+@model Ypmon.Server.Pages.Clients.DetailsModel
+@using Ypmon.Server.Services
+@{
+    ViewData["Title"] = Model.Client?.Name ?? "Клиент";
+    var isAdmin = User.IsInRole("Admin");
+    var baseUrl = $"{Request.Scheme}://{Request.Host}";
+}
+
+<h1 class="page-title">🗂️ @Model.Client?.Name</h1>
+<div class="muted mb-3">@Model.Client?.Description &nbsp; <a href="/Clients">← к списку клиентов</a></div>
+
+<div class="dash-grid">
+    <div>
+        <div class="card-y"><h3>Серверы клиента</h3>
+        @if (Model.Client is null || !Model.Client.Servers.Any())
+        {
+            <div class="muted">У клиента ещё нет серверов. Добавьте сервер и подключите к нему агента.</div>
+        }
+        else
+        {
+            foreach (var s in Model.Client.Servers)
+            {
+                var offline = s.IsOffline(Model.OfflineThreshold);
+                <div class="card-y" style="background:var(--card-2)">
+                    <div style="display:flex;justify-content:space-between;align-items:flex-start">
+                        <div>
+                            <div class="s-name" style="font-size:16px">
+                                <span class="dot @UiHelpers.DotCss(offline ? JobOutcome.Unknown : s.LastOutcome)"></span>@s.Name
+                            </div>
+                            <div class="muted" style="font-size:13px">
+                                @(s.PhysicalAddress ?? "—") · IP: @(s.IpAddress ?? "—")
+                            </div>
+                            @if (!string.IsNullOrWhiteSpace(s.Description))
+                            {
+                                <div class="muted" style="font-size:13px">@s.Description</div>
+                            }
+                        </div>
+                        <div>
+                            @if (offline)
+                            {
+                                <span class="badge-status st-offline">Офлайн</span>
+                            }
+                            else
+                            {
+                                <span class="badge-status @UiHelpers.OutcomeCss(s.LastOutcome)">@UiHelpers.OutcomeText(s.LastOutcome)</span>
+                            }
+                        </div>
+                    </div>
+
+                    <div class="kv"><span class="k">Последний отчёт</span><span class="v">@UiHelpers.Ago(s.LastSeenAt)</span></div>
+                    <div class="kv"><span class="k">Копий</span><span class="v">@s.LastBackupCount</span></div>
+                    <div class="kv"><span class="k">Сервер БД</span><span class="v">@(s.LastServerAvailable ? "доступен" : "недоступен")</span></div>
+
+                    <details class="mt-2">
+                        <summary style="cursor:pointer">Данные для подключения агента</summary>
+                        <div class="mt-2">
+                            <div class="muted" style="font-size:12px">Адрес сервера</div>
+                            <div class="code mono" style="display:block;margin-bottom:8px">@baseUrl</div>
+                            <div class="muted" style="font-size:12px">API-ключ</div>
+                            <div class="code mono" style="display:block">@s.ApiKey</div>
+                            @if (isAdmin)
+                            {
+                                <form method="post" asp-page-handler="RegenKey" asp-route-serverId="@s.Id" class="mt-2"
+                                      onsubmit="return confirm('Перевыпустить ключ? Старый агент перестанет отправлять данные.')">
+                                    <button class="btn btn-sm btn-y-danger">Перевыпустить ключ</button>
+                                </form>
+                            }
+                        </div>
+                    </details>
+
+                    <div style="display:flex;gap:8px;margin-top:12px">
+                        <a class="btn btn-sm btn-primary" href="/?server=@s.Id">Открыть в дашборде</a>
+                        @if (isAdmin)
+                        {
+                            <form method="post" asp-page-handler="DeleteServer" asp-route-serverId="@s.Id"
+                                  onsubmit="return confirm('Удалить сервер?')">
+                                <button class="btn btn-sm btn-y-danger" type="submit">Удалить</button>
+                            </form>
+                        }
+                    </div>
+                </div>
+            }
+        }
+        </div>
+    </div>
+
+    @if (isAdmin)
+    {
+        <div class="panel">
+            <div class="card-y">
+                <h3>Подключить сервер</h3>
+                <div class="muted mb-3" style="font-size:13px">
+                    При добавлении сервера сгенерируется API-ключ. Укажите его и адрес этого сервера в настройках агента.
+                </div>
+                <form method="post" asp-page-handler="AddServer">
+                    <div class="mb-3"><label>Название сервера</label>
+                        <input class="form-control" asp-for="ServerName" required /></div>
+                    <div class="mb-3"><label>Физический адрес</label>
+                        <input class="form-control" asp-for="PhysicalAddress" placeholder="напр. ЦОД, стойка 5" /></div>
+                    <div class="mb-3"><label>Сетевой адрес / IP</label>
+                        <input class="form-control" asp-for="IpAddress" placeholder="напр. 10.0.0.12" /></div>
+                    <div class="mb-3"><label>Описание</label>
+                        <textarea class="form-control" asp-for="ServerDescription" rows="2"></textarea></div>
+                    <button class="btn btn-primary w-100" type="submit">Добавить сервер</button>
+                </form>
+            </div>
+        </div>
+    }
+</div>

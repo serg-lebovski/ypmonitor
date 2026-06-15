@@ -1,0 +1,152 @@
+@page
+@model IndexModel
+@using Ypmon.Server.Services
+@{
+    ViewData["Title"] = "Дашборд";
+}
+
+<h1 class="page-title">Дашборд</h1>
+
+<div class="metrics">
+    <div class="metric"><div class="v">@Model.TotalServers</div><div class="l">Серверов всего</div></div>
+    <div class="metric"><div class="v" style="color:var(--ok)">@Model.OkCount</div><div class="l">В норме</div></div>
+    <div class="metric"><div class="v" style="color:var(--err)">@Model.ProblemCount</div><div class="l">С проблемами</div></div>
+    <div class="metric"><div class="v" style="color:var(--unknown)">@Model.OfflineCount</div><div class="l">Офлайн</div></div>
+</div>
+
+@if (!Model.Clients.Any())
+{
+    <div class="card-y">
+        Пока нет ни одного клиента. Перейдите в раздел <a href="/Clients">Клиенты</a>, чтобы добавить клиента и подключить агента.
+    </div>
+}
+else
+{
+    <div class="dash-grid">
+        <div>
+            @foreach (var client in Model.Clients)
+            {
+                <div class="card-y client-block">
+                    <div class="client-name">🗂️ <a href="/Clients/Details?id=@client.Id">@client.Name</a>
+                        <span class="muted">— серверов: @client.Servers.Count</span>
+                    </div>
+                    @if (!client.Servers.Any())
+                    {
+                        <div class="muted">Нет серверов</div>
+                    }
+                    @foreach (var s in client.Servers)
+                    {
+                        var offline = s.IsOffline(Model.OfflineThreshold);
+                        var outcome = offline ? JobOutcome.Unknown : s.LastOutcome;
+                        var sel = Model.Server == s.Id ? "selected" : "";
+                        <a href="?server=@s.Id" style="text-decoration:none;color:inherit">
+                            <div class="server-row @sel">
+                                <div>
+                                    <div class="s-name"><span class="dot @UiHelpers.DotCss(outcome)"></span>@s.Name</div>
+                                    <div class="s-meta">@(s.IpAddress ?? "—") · копий: @s.LastBackupCount · @UiHelpers.Ago(s.LastSeenAt)</div>
+                                </div>
+                                <div>
+                                    @if (offline)
+                                    {
+                                        <span class="badge-status st-offline">Офлайн</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge-status @UiHelpers.OutcomeCss(s.LastOutcome)">@UiHelpers.OutcomeText(s.LastOutcome)</span>
+                                    }
+                                </div>
+                            </div>
+                        </a>
+                    }
+                </div>
+            }
+        </div>
+
+        <div class="panel">
+            @if (Model.Selected is null)
+            {
+                <div class="card-y muted">Выберите сервер слева, чтобы увидеть его свойства.</div>
+            }
+            else
+            {
+                var s = Model.Selected;
+                var offline = s.IsOffline(Model.OfflineThreshold);
+                <div class="card-y">
+                    <h3>@s.Name</h3>
+                    <div class="mb-2">
+                        @if (offline)
+                        {
+                            <span class="badge-status st-offline">Офлайн</span>
+                        }
+                        else
+                        {
+                            <span class="badge-status @UiHelpers.OutcomeCss(s.LastOutcome)">@UiHelpers.OutcomeText(s.LastOutcome)</span>
+                        }
+                    </div>
+                    <div class="kv"><span class="k">Клиент</span><span class="v">@s.Client?.Name</span></div>
+                    <div class="kv"><span class="k">Физ. адрес</span><span class="v">@(s.PhysicalAddress ?? "—")</span></div>
+                    <div class="kv"><span class="k">IP / адрес</span><span class="v">@(s.IpAddress ?? "—")</span></div>
+                    <div class="kv"><span class="k">Машина агента</span><span class="v">@(s.LastMachineName ?? "—")</span></div>
+                    <div class="kv"><span class="k">Версия агента</span><span class="v">@(s.LastAgentVersion ?? "—")</span></div>
+                    <div class="kv"><span class="k">Сервер БД</span><span class="v">@(s.LastServerAvailable ? "доступен" : "недоступен")</span></div>
+                    <div class="kv"><span class="k">Копий всего</span><span class="v">@s.LastBackupCount</span></div>
+                    <div class="kv"><span class="k">Посл. отчёт</span><span class="v">@UiHelpers.Ago(s.LastSeenAt)</span></div>
+                    @if (s.Description is not null)
+                    {
+                        <div class="mt-2 muted">@s.Description</div>
+                    }
+                </div>
+
+                @if (Model.SelectedReport is not null)
+                {
+                    <div class="card-y">
+                        <h3>Задания</h3>
+                        @if (!Model.SelectedReport.Jobs.Any())
+                        {
+                            <div class="muted">Нет настроенных заданий.</div>
+                        }
+                        @foreach (var j in Model.SelectedReport.Jobs)
+                        {
+                            <div class="kv">
+                                <span class="k">
+                                    <span class="dot @UiHelpers.DotCss(j.Outcome)"></span>@j.Name
+                                    <div class="muted" style="font-size:12px">@UiHelpers.JobTypeText(j.Type)</div>
+                                </span>
+                                <span class="v">
+                                    копий: @j.BackupCount<br />
+                                    <span class="muted">@UiHelpers.Bytes(j.TotalSizeBytes)</span>
+                                </span>
+                            </div>
+                            @if (!string.IsNullOrWhiteSpace(j.Message))
+                            {
+                                <div class="muted" style="font-size:12px;margin:-2px 0 6px">@j.Message</div>
+                            }
+                        }
+                    </div>
+
+                    @if (Model.SelectedReport.Disks.Any())
+                    {
+                        <div class="card-y">
+                            <h3>Диски</h3>
+                            @foreach (var d in Model.SelectedReport.Disks)
+                            {
+                                <div class="kv">
+                                    <span class="k">@d.Name</span>
+                                    <span class="v">@UiHelpers.Bytes(d.FreeBytes) своб. из @UiHelpers.Bytes(d.TotalBytes)
+                                        <span class="muted">(@d.UsedPercent%)</span></span>
+                                </div>
+                            }
+                        </div>
+                    }
+                }
+            }
+        </div>
+    </div>
+}
+
+@section Scripts {
+    <script>
+        // Автообновление дашборда раз в 30 секунд.
+        setTimeout(() => location.reload(), 30000);
+    </script>
+}

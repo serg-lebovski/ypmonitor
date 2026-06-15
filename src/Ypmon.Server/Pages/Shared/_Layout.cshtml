@@ -1,0 +1,55 @@
+@{
+    var user = User?.Identity?.IsAuthenticated == true ? User.Identity!.Name : null;
+    var role = User?.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value;
+    string Active(string page) => (ViewContext.RouteData.Values["page"]?.ToString() ?? "")
+        .StartsWith(page, StringComparison.OrdinalIgnoreCase) ? "active" : "";
+}
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@ViewData["Title"] — YPMon</title>
+    <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+</head>
+<body>
+@if (user is not null)
+{
+    <div class="app-shell">
+        <aside class="sidebar">
+            <div class="brand">
+                <span class="logo">🛡️</span>
+                <span class="brand-name">YPMon</span>
+            </div>
+            <nav class="nav flex-column">
+                <a class="nav-link @Active("/Index")" href="/">📊 Дашборд</a>
+                <a class="nav-link @Active("/Clients")" href="/Clients">🗂️ Клиенты</a>
+                <a class="nav-link @Active("/Settings")" href="/Settings">⚙️ Настройки</a>
+            </nav>
+            <div class="sidebar-footer">
+                <div class="user-chip">
+                    <span class="avatar">@(user.Length > 0 ? user[0].ToString().ToUpper() : "?")</span>
+                    <span>
+                        <div class="uname">@user</div>
+                        <div class="urole">@(role == "Admin" ? "Администратор" : "Наблюдатель")</div>
+                    </span>
+                </div>
+                <a class="logout" href="/Logout">Выйти</a>
+            </div>
+        </aside>
+        <main class="content">
+            <div class="container-fluid py-3">
+                @RenderBody()
+            </div>
+        </main>
+    </div>
+}
+else
+{
+    @RenderBody()
+}
+<script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
+@await RenderSectionAsync("Scripts", required: false)
+</body>
+</html>

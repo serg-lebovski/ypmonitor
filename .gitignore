@@ -1,0 +1,22 @@
+# Сборка .NET
+bin/
+obj/
+/dist/
+.vs/
+*.user
+
+# Данные/рантайм сервера
+data/
+*.db
+*.db-*
+
+# Рантайм агента (создаётся при работе; может содержать пароли)
+config.json
+state.json
+snapshot.json
+runnow.flag
+ypmon_update.cmd
+agent-updates/
+
+# Прочее
+*.log

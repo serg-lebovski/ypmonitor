@@ -1,0 +1,37 @@
+@page
+@model LoginModel
+@{
+    Layout = null;
+    ViewData["Title"] = "Вход";
+}
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Вход — YPMon</title>
+    <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="~/css/site.css" />
+</head>
+<body>
+<div class="auth-wrap">
+    <form class="auth-card" method="post">
+        <h1>🛡️ YPMon</h1>
+        <div class="sub">Мониторинг резервного копирования</div>
+        @if (Model.Error is not null)
+        {
+            <div class="alert-y alert-err">@Model.Error</div>
+        }
+        <div class="mb-3">
+            <label>Логин</label>
+            <input class="form-control" asp-for="Username" autofocus />
+        </div>
+        <div class="mb-3">
+            <label>Пароль</label>
+            <input class="form-control" type="password" asp-for="Password" />
+        </div>
+        <button class="btn btn-primary w-100" type="submit">Войти</button>
+    </form>
+</div>
+</body>
+</html>

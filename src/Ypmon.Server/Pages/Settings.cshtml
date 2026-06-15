@@ -1,0 +1,138 @@
+@page
+@model SettingsModel
+@{
+    ViewData["Title"] = "Настройки";
+    var isAdmin = User.IsInRole("Admin");
+    var s = Model.Settings;
+}
+
+<h1 class="page-title">Настройки</h1>
+
+@if (Model.Message is not null)
+{
+    <div class="alert-y @(Model.IsError ? "alert-err" : "alert-ok")">@Model.Message</div>
+}
+
+<div class="dash-grid">
+    <div>
+        <div class="card-y">
+            <h3>Параметры сервера</h3>
+            <div class="muted mb-2" style="font-size:13px">Эти параметры задаются в файле <span class="code mono">appsettings.json</span> и применяются после перезапуска службы.</div>
+            <div class="kv"><span class="k">Порт веб-интерфейса</span><span class="v mono">@Model.HttpPort</span></div>
+            <div class="kv"><span class="k">Адрес</span><span class="v mono">@($"{Request.Scheme}://{Request.Host}")</span></div>
+            <div class="kv"><span class="k">База данных</span><span class="v mono">@Model.DbProvider</span></div>
+        </div>
+
+        <div class="card-y">
+            <h3>Оповещения и обслуживание</h3>
+            <form method="post" asp-page-handler="SaveSettings">
+                <div class="row">
+                    <div class="col-md-6 mb-3"><label>Порог «офлайн», сек</label>
+                        <input class="form-control" name="OfflineThresholdSeconds" type="number" value="@s.OfflineThresholdSeconds" @(isAdmin ? "" : "disabled") /></div>
+                    <div class="col-md-6 mb-3"><label>Хранить историю, дней</label>
+                        <input class="form-control" name="ReportRetentionDays" type="number" value="@s.ReportRetentionDays" @(isAdmin ? "" : "disabled") /></div>
+                </div>
+                <div class="form-check mb-3">
+                    <input class="form-check-input" type="checkbox" name="AlertsEnabled" value="true" id="ae" @(s.AlertsEnabled ? "checked" : "") @(isAdmin ? "" : "disabled") />
+                    <label class="form-check-label" for="ae">Включить оповещения при проблемах</label>
+                </div>
+
+                <h4 style="font-size:16px">Telegram</h4>
+                <div class="form-check mb-2">
+                    <input class="form-check-input" type="checkbox" name="TelegramEnabled" value="true" id="te" @(s.TelegramEnabled ? "checked" : "") @(isAdmin ? "" : "disabled") />
+                    <label class="form-check-label" for="te">Использовать Telegram</label>
+                </div>
+                <div class="mb-2"><label>Bot Token</label>
+                    <input class="form-control" name="TelegramBotToken" value="@s.TelegramBotToken" @(isAdmin ? "" : "disabled") /></div>
+                <div class="mb-3"><label>Chat ID</label>
+                    <input class="form-control" name="TelegramChatId" value="@s.TelegramChatId" @(isAdmin ? "" : "disabled") /></div>
+
+                <h4 style="font-size:16px">E-mail (SMTP)</h4>
+                <div class="form-check mb-2">
+                    <input class="form-check-input" type="checkbox" name="EmailEnabled" value="true" id="ee" @(s.EmailEnabled ? "checked" : "") @(isAdmin ? "" : "disabled") />
+                    <label class="form-check-label" for="ee">Использовать e-mail</label>
+                </div>
+                <div class="row">
+                    <div class="col-md-8 mb-2"><label>SMTP хост</label>
+                        <input class="form-control" name="SmtpHost" value="@s.SmtpHost" @(isAdmin ? "" : "disabled") /></div>
+                    <div class="col-md-4 mb-2"><label>Порт</label>
+                        <input class="form-control" name="SmtpPort" type="number" value="@s.SmtpPort" @(isAdmin ? "" : "disabled") /></div>
+                </div>
+                <div class="form-check mb-2">
+                    <input class="form-check-input" type="checkbox" name="SmtpUseSsl" value="true" id="ssl" @(s.SmtpUseSsl ? "checked" : "") @(isAdmin ? "" : "disabled") />
+                    <label class="form-check-label" for="ssl">SSL/TLS</label>
+                </div>
+                <div class="row">
+                    <div class="col-md-6 mb-2"><label>Логин SMTP</label>
+                        <input class="form-control" name="SmtpUser" value="@s.SmtpUser" @(isAdmin ? "" : "disabled") /></div>
+                    <div class="col-md-6 mb-2"><label>Пароль SMTP</label>
+                        <input class="form-control" type="password" name="SmtpPassword" value="@s.SmtpPassword" @(isAdmin ? "" : "disabled") /></div>
+                </div>
+                <div class="row">
+                    <div class="col-md-6 mb-2"><label>От кого</label>
+                        <input class="form-control" name="EmailFrom" value="@s.EmailFrom" @(isAdmin ? "" : "disabled") /></div>
+                    <div class="col-md-6 mb-3"><label>Кому (через запятую)</label>
+                        <input class="form-control" name="EmailTo" value="@s.EmailTo" @(isAdmin ? "" : "disabled") /></div>
+                </div>
+
+                @if (isAdmin)
+                {
+                    <button class="btn btn-primary" type="submit">Сохранить</button>
+                    <button class="btn btn-primary" type="submit" asp-page-handler="TestAlert" formnovalidate>Отправить тест</button>
+                }
+            </form>
+        </div>
+    </div>
+
+    <div class="panel">
+        <div class="card-y">
+            <h3>Мой профиль</h3>
+            <form method="post" asp-page-handler="SaveProfile">
+                <div class="mb-2"><label>Отображаемое имя</label>
+                    <input class="form-control" name="displayName" value="@User.Identity?.Name" /></div>
+                <div class="mb-2"><label>Логин</label>
+                    <input class="form-control" name="username" value="@User.Identity?.Name" /></div>
+                <div class="mb-3"><label>Новый пароль (если меняете)</label>
+                    <input class="form-control" type="password" name="newPassword" placeholder="оставьте пустым" /></div>
+                <button class="btn btn-primary w-100" type="submit">Сохранить профиль</button>
+            </form>
+        </div>
+
+        @if (isAdmin)
+        {
+            <div class="card-y">
+                <h3>Пользователи</h3>
+                <table class="tbl">
+                    <thead><tr><th>Логин</th><th>Роль</th><th></th></tr></thead>
+                    <tbody>
+                    @foreach (var u in Model.Users)
+                    {
+                        <tr>
+                            <td>@u.Username<div class="muted" style="font-size:12px">@u.DisplayName</div></td>
+                            <td>@(u.Role == UserRole.Admin ? "Админ" : "Наблюдатель")</td>
+                            <td>
+                                <form method="post" asp-page-handler="DeleteUser" asp-route-userId="@u.Id"
+                                      onsubmit="return confirm('Удалить пользователя?')">
+                                    <button class="btn btn-sm btn-y-danger">×</button>
+                                </form>
+                            </td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+                <hr style="border-color:var(--border)" />
+                <h4 style="font-size:15px">Новый пользователь</h4>
+                <form method="post" asp-page-handler="AddUser">
+                    <div class="mb-2"><input class="form-control" name="username" placeholder="Логин" /></div>
+                    <div class="mb-2"><input class="form-control" name="displayName" placeholder="Имя" /></div>
+                    <div class="mb-2"><input class="form-control" type="password" name="password" placeholder="Пароль" /></div>
+                    <div class="mb-2"><select class="form-select" name="role">
+                        <option value="Viewer">Наблюдатель</option>
+                        <option value="Admin">Администратор</option>
+                    </select></div>
+                    <button class="btn btn-primary w-100" type="submit">Добавить</button>
+                </form>
+            </div>
+        }
+    </div>
+</div>

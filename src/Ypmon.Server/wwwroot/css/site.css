@@ -1,0 +1,151 @@
+:root {
+    --bg: #0f1623;
+    --sidebar: #131b2b;
+    --card: #1b2538;
+    --card-2: #212d44;
+    --border: #2b3852;
+    --text: #e6ebf3;
+    --muted: #8a98b0;
+    --accent: #4f8cff;
+    --ok: #28c76f;
+    --warn: #ff9f43;
+    --err: #ea5455;
+    --unknown: #7b8190;
+}
+
+* { box-sizing: border-box; }
+
+body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+    margin: 0;
+}
+
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* --- Каркас --- */
+.app-shell { display: flex; min-height: 100vh; }
+
+.sidebar {
+    width: 240px;
+    background: var(--sidebar);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    padding: 16px 12px;
+    position: sticky;
+    top: 0;
+    height: 100vh;
+}
+.brand { display: flex; align-items: center; gap: 10px; padding: 6px 8px 18px; }
+.brand .logo { font-size: 22px; }
+.brand-name { font-size: 20px; font-weight: 700; letter-spacing: .5px; }
+
+.sidebar .nav-link {
+    color: var(--muted);
+    border-radius: 8px;
+    padding: 10px 12px;
+    margin-bottom: 4px;
+    font-weight: 500;
+}
+.sidebar .nav-link:hover { background: var(--card); color: var(--text); text-decoration: none; }
+.sidebar .nav-link.active { background: var(--accent); color: #fff; }
+
+.sidebar-footer { margin-top: auto; }
+.user-chip { display: flex; align-items: center; gap: 10px; padding: 10px 8px; }
+.avatar {
+    width: 34px; height: 34px; border-radius: 50%;
+    background: var(--accent); color: #fff;
+    display: flex; align-items: center; justify-content: center; font-weight: 700;
+}
+.uname { font-weight: 600; font-size: 14px; }
+.urole { color: var(--muted); font-size: 12px; }
+.logout { display: block; text-align: center; padding: 8px; color: var(--muted); border: 1px solid var(--border); border-radius: 8px; margin-top: 8px; }
+.logout:hover { color: var(--err); border-color: var(--err); text-decoration: none; }
+
+.content { flex: 1; min-width: 0; }
+
+/* --- Карточки --- */
+.card-y {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 18px;
+    margin-bottom: 16px;
+}
+.card-y h2, .card-y h3 { margin-top: 0; }
+
+h1.page-title { font-size: 26px; font-weight: 700; margin-bottom: 18px; }
+
+/* --- Статусы --- */
+.badge-status { padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+.st-ok { background: rgba(40,199,111,.15); color: var(--ok); }
+.st-warn { background: rgba(255,159,67,.15); color: var(--warn); }
+.st-err { background: rgba(234,84,85,.15); color: var(--err); }
+.st-unknown { background: rgba(123,129,144,.15); color: var(--unknown); }
+.st-offline { background: rgba(123,129,144,.2); color: var(--unknown); }
+
+.dot { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:6px; }
+.dot.ok { background: var(--ok); }
+.dot.warn { background: var(--warn); }
+.dot.err { background: var(--err); }
+.dot.unknown { background: var(--unknown); }
+
+/* --- Метрики --- */
+.metrics { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 16px; }
+.metric { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px 20px; flex: 1; min-width: 160px; }
+.metric .v { font-size: 30px; font-weight: 700; }
+.metric .l { color: var(--muted); font-size: 13px; }
+
+/* --- Дашборд: список клиентов/серверов + панель --- */
+.dash-grid { display: grid; grid-template-columns: 1fr 360px; gap: 16px; align-items: start; }
+@@media (max-width: 1100px) { .dash-grid { grid-template-columns: 1fr; } }
+
+.client-block { margin-bottom: 10px; }
+.client-name { font-size: 16px; font-weight: 700; margin: 6px 0; }
+
+.server-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 14px; border: 1px solid var(--border); border-radius: 10px;
+    background: var(--card-2); margin-bottom: 8px; cursor: pointer;
+}
+.server-row:hover { border-color: var(--accent); }
+.server-row.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.server-row .s-name { font-weight: 600; }
+.server-row .s-meta { color: var(--muted); font-size: 12px; }
+
+.panel { position: sticky; top: 16px; }
+.kv { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid var(--border); gap: 10px; }
+.kv .k { color: var(--muted); }
+.kv .v { text-align: right; word-break: break-word; }
+
+/* --- Таблицы --- */
+table.tbl { width: 100%; border-collapse: collapse; }
+table.tbl th, table.tbl td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+table.tbl th { color: var(--muted); font-weight: 600; font-size: 13px; }
+
+/* --- Формы --- */
+.form-control, .form-select {
+    background: var(--card-2); border: 1px solid var(--border); color: var(--text);
+}
+.form-control:focus, .form-select:focus { background: var(--card-2); color: var(--text); border-color: var(--accent); box-shadow: none; }
+label { color: var(--muted); font-size: 13px; margin-bottom: 4px; }
+.btn-primary { background: var(--accent); border-color: var(--accent); }
+.btn-y-danger { background: transparent; border: 1px solid var(--err); color: var(--err); }
+
+.code { font-family: Consolas, monospace; background: var(--bg); padding: 2px 8px; border-radius: 6px; border: 1px solid var(--border); }
+
+/* --- Логин --- */
+.auth-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; background: var(--bg); }
+.auth-card { width: 380px; background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 32px; }
+.auth-card h1 { font-size: 24px; text-align: center; margin-bottom: 6px; }
+.auth-card .sub { text-align: center; color: var(--muted); margin-bottom: 22px; }
+
+.alert-y { padding: 10px 14px; border-radius: 8px; margin-bottom: 14px; }
+.alert-err { background: rgba(234,84,85,.15); color: var(--err); border: 1px solid var(--err); }
+.alert-ok { background: rgba(40,199,111,.15); color: var(--ok); border: 1px solid var(--ok); }
+
+.muted { color: var(--muted); }
+.mono { font-family: Consolas, monospace; }
