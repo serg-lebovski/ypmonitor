@@ -137,12 +137,17 @@ async Task<bool> ValidKey(HttpContext ctx, AppDbContext db)
     return !string.IsNullOrWhiteSpace(key) && await db.Servers.AnyAsync(s => s.ApiKey == key);
 }
 
+var agentVersionFile = Path.Combine(updatesDir, "version.txt");
+
 app.MapGet("/api/agent/version", async (HttpContext ctx, AppDbContext db) =>
 {
     if (!await ValidKey(ctx, db)) return Results.Unauthorized();
     if (!System.IO.File.Exists(agentExePath))
         return Results.Json(new { available = false, version = (string?)null });
-    var ver = System.Diagnostics.FileVersionInfo.GetVersionInfo(agentExePath).FileVersion;
+    // Версию берём из version.txt (надёжнее, чем FileVersion single-file exe); иначе из ресурса exe.
+    string? ver = System.IO.File.Exists(agentVersionFile)
+        ? (await System.IO.File.ReadAllTextAsync(agentVersionFile)).Trim()
+        : System.Diagnostics.FileVersionInfo.GetVersionInfo(agentExePath).FileVersion;
     return Results.Json(new { available = true, version = ver });
 });
 
