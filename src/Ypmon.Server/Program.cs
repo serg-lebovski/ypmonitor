@@ -121,15 +121,17 @@ app.Use(async (ctx, next) =>
     var localPort = ctx.Connection.LocalPort;
     var isApi = ctx.Request.Path.StartsWithSegments("/api");
 
-    if (ServerPorts.SeparatePorts)
+    // Агентское API (/api/*) работает на ОБОИХ портах — старые агенты на 8080 не ломаются,
+    // а порт 8081 выделен специально для агентов. Веб-интерфейс — только на веб-порту.
+    if (ServerPorts.SeparatePorts && !isApi && localPort == ServerPorts.ReportsPort)
     {
-        // Агентское API (/api/*) — только на порту отчётов; веб-страницы — только на веб-порту.
-        if (isApi && localPort == ServerPorts.WebPort) { ctx.Response.StatusCode = 404; return; }
-        if (!isApi && localPort == ServerPorts.ReportsPort) { ctx.Response.StatusCode = 404; return; }
+        ctx.Response.StatusCode = 404;
+        return;
     }
 
-    // Список разрешённых IP применяется к веб-порту (админ-интерфейс).
-    if (localPort == ServerPorts.WebPort && !IpAllowList.IsAllowed(ctx.Connection.RemoteIpAddress, allowedIps))
+    // Список разрешённых IP применяется только к веб-страницам на веб-порту (не к API агентов).
+    if (!isApi && localPort == ServerPorts.WebPort &&
+        !IpAllowList.IsAllowed(ctx.Connection.RemoteIpAddress, allowedIps))
     {
         ctx.Response.StatusCode = 403;
         await ctx.Response.WriteAsync("Доступ запрещён (ваш IP не в списке разрешённых).");
