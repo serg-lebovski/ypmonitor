@@ -26,7 +26,8 @@ public sealed class MainForm : Form
     private Label _hostState = null!;
 
     // Задания (объединённые)
-    private ListBox _jobList = null!;
+    private DataGridView _jobGrid = null!;
+    private bool _refreshingList;
     private readonly List<JobRef> _jobRefs = new();
     private Panel _pgPanel = null!, _filePanel = null!, _folderPanel = null!, _emptyPanel = null!;
     private PostgresBackupJob? _curPg;
@@ -139,46 +140,65 @@ public sealed class MainForm : Form
         return page;
     }
 
-    // ---------- Задания архивации (Postgres + папки) ----------
+    // ---------- Задания архивации: таблица заданий сверху + свойства снизу ----------
     private TabPage BuildJobsTab()
     {
         var page = new TabPage("Задания архивации");
 
-        var left = new Panel { Dock = DockStyle.Left, Width = 210 };
-        _jobList = new ListBox { Dock = DockStyle.Fill };
-        _jobList.SelectedIndexChanged += (_, _) => SelectJob(_jobList.SelectedIndex);
-        var btns = new Panel { Dock = DockStyle.Bottom, Height = 92 };
-        var addPg = new Button { Text = "+ Бэкап PostgreSQL", Left = 2, Top = 4, Width = 200 };
-        addPg.Click += (_, _) => AddPgJob();
-        var addFile = new Button { Text = "+ Архив папок/файлов", Left = 2, Top = 32, Width = 200 };
-        addFile.Click += (_, _) => AddFileJob();
-        var addFolder = new Button { Text = "+ Мониторинг папки бэкапов", Left = 2, Top = 60, Width = 200 };
-        addFolder.Click += (_, _) => AddFolderJob();
-        var delPanel = new Panel { Dock = DockStyle.Bottom, Height = 30 };
-        var delBtn = new Button { Text = "Удалить выбранное", Dock = DockStyle.Fill };
-        delBtn.Click += (_, _) => DeleteJob();
-        delPanel.Controls.Add(delBtn);
-        btns.Controls.Add(addPg);
-        btns.Controls.Add(addFile);
-        btns.Controls.Add(addFolder);
-        left.Controls.Add(_jobList);
-        left.Controls.Add(delPanel);
-        left.Controls.Add(btns);
-
+        // Свойства выбранного задания (заполняют нижнюю часть)
         var host = new Panel { Dock = DockStyle.Fill };
         _pgPanel = BuildPgPanel();
         _filePanel = BuildFilePanel();
         _folderPanel = BuildFolderPanel();
         _emptyPanel = new Panel { Dock = DockStyle.Fill };
-        _emptyPanel.Controls.Add(new Label { Text = "Выберите задание слева или добавьте новое.", AutoSize = true, Left = 16, Top = 16, ForeColor = Color.DimGray });
+        _emptyPanel.Controls.Add(new Label { Text = "Выберите задание в таблице или добавьте новое.", AutoSize = true, Left = 16, Top = 16, ForeColor = Color.DimGray });
         host.Controls.Add(_pgPanel);
         host.Controls.Add(_filePanel);
         host.Controls.Add(_folderPanel);
         host.Controls.Add(_emptyPanel);
         _pgPanel.Visible = _filePanel.Visible = _folderPanel.Visible = false;
 
+        // Таблица заданий (как список задач в Exiland Backup)
+        _jobGrid = new DataGridView
+        {
+            Dock = DockStyle.Top,
+            Height = 190,
+            ReadOnly = true,
+            AllowUserToAddRows = false,
+            AllowUserToResizeRows = false,
+            RowHeadersVisible = false,
+            MultiSelect = false,
+            SelectionMode = DataGridViewSelectionMode.FullRowSelect,
+            AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
+            BackgroundColor = SystemColors.Window,
+            BorderStyle = BorderStyle.FixedSingle
+        };
+        _jobGrid.Columns.Add("type", "Тип");
+        _jobGrid.Columns.Add("name", "Название");
+        _jobGrid.Columns.Add("enabled", "Вкл");
+        _jobGrid.Columns.Add("sched", "Расписание");
+        _jobGrid.Columns["type"]!.FillWeight = 22;
+        _jobGrid.Columns["name"]!.FillWeight = 38;
+        _jobGrid.Columns["enabled"]!.FillWeight = 10;
+        _jobGrid.Columns["sched"]!.FillWeight = 30;
+        _jobGrid.SelectionChanged += (_, _) => { if (!_refreshingList) SelectJob(_jobGrid.CurrentRow?.Index ?? -1); };
+
+        // Тулбар
+        var toolbar = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 38, Padding = new Padding(4) };
+        var addPg = new Button { Text = "+ PostgreSQL", AutoSize = true };
+        addPg.Click += (_, _) => AddPgJob();
+        var addFile = new Button { Text = "+ Архив папок/файлов", AutoSize = true };
+        addFile.Click += (_, _) => AddFileJob();
+        var addFolder = new Button { Text = "+ Мониторинг папки", AutoSize = true };
+        addFolder.Click += (_, _) => AddFolderJob();
+        var delBtn = new Button { Text = "Удалить", AutoSize = true, ForeColor = Color.Firebrick };
+        delBtn.Click += (_, _) => DeleteJob();
+        toolbar.Controls.AddRange(new Control[] { addPg, addFile, addFolder, delBtn });
+
+        // Порядок добавления: host (Fill) первым, затем grid и toolbar сверху
         page.Controls.Add(host);
-        page.Controls.Add(left);
+        page.Controls.Add(_jobGrid);
+        page.Controls.Add(toolbar);
         return page;
     }
 
@@ -396,7 +416,7 @@ public sealed class MainForm : Form
         _loading = false;
 
         RefreshJobList();
-        if (_jobRefs.Count > 0) _jobList.SelectedIndex = 0;
+        if (_jobRefs.Count > 0) SelectRow(0);
         else ShowPanel(null);
         RefreshSvcStatus();
     }
@@ -424,25 +444,35 @@ public sealed class MainForm : Form
     // ================= Список заданий =================
     private void RefreshJobList()
     {
-        var prev = _jobList.SelectedIndex;
+        var prev = _jobGrid.CurrentRow?.Index ?? -1;
+        _refreshingList = true;
         _jobRefs.Clear();
-        _jobList.Items.Clear();
-        for (int i = 0; i < _cfg.PostgresJobs.Count; i++)
+        _jobGrid.Rows.Clear();
+        foreach (var j in _cfg.PostgresJobs)
         {
-            _jobRefs.Add(new JobRef(JobKind.Pg, i));
-            _jobList.Items.Add("PostgreSQL · " + _cfg.PostgresJobs[i].Name);
+            _jobRefs.Add(new JobRef(JobKind.Pg, _jobRefs.Count(r => r.Kind == JobKind.Pg)));
+            _jobGrid.Rows.Add("PostgreSQL", j.Name, j.Enabled ? "✓" : "—", $"каждые {j.IntervalMinutes} мин");
         }
-        for (int i = 0; i < _cfg.FileArchiveJobs.Count; i++)
+        foreach (var j in _cfg.FileArchiveJobs)
         {
-            _jobRefs.Add(new JobRef(JobKind.File, i));
-            _jobList.Items.Add("Папки · " + _cfg.FileArchiveJobs[i].Name);
+            _jobRefs.Add(new JobRef(JobKind.File, _jobRefs.Count(r => r.Kind == JobKind.File)));
+            _jobGrid.Rows.Add("Архив папок", j.Name, j.Enabled ? "✓" : "—", $"каждые {j.IntervalMinutes} мин");
         }
-        for (int i = 0; i < _cfg.FolderMonitorJobs.Count; i++)
+        foreach (var j in _cfg.FolderMonitorJobs)
         {
-            _jobRefs.Add(new JobRef(JobKind.Folder, i));
-            _jobList.Items.Add("Мониторинг · " + _cfg.FolderMonitorJobs[i].Name);
+            _jobRefs.Add(new JobRef(JobKind.Folder, _jobRefs.Count(r => r.Kind == JobKind.Folder)));
+            _jobGrid.Rows.Add("Мониторинг", j.Name, j.Enabled ? "✓" : "—", "при отчёте");
         }
-        if (prev >= 0 && prev < _jobList.Items.Count) _jobList.SelectedIndex = prev;
+        _refreshingList = false;
+        if (prev >= 0 && prev < _jobGrid.Rows.Count) SelectRow(prev);
+    }
+
+    private void SelectRow(int i)
+    {
+        if (i < 0 || i >= _jobGrid.Rows.Count) return;
+        _jobGrid.ClearSelection();
+        _jobGrid.Rows[i].Selected = true;
+        _jobGrid.CurrentCell = _jobGrid.Rows[i].Cells[1];
     }
 
     private void SelectJob(int idx)
@@ -564,15 +594,25 @@ public sealed class MainForm : Form
     private void UpdateCurrentItemText()
     {
         if (_loading) return;
-        var idx = _jobList.SelectedIndex;
+        var idx = _jobGrid.CurrentRow?.Index ?? -1;
         if (idx < 0 || idx >= _jobRefs.Count) return;
         var r = _jobRefs[idx];
-        _jobList.Items[idx] = r.Kind switch
+        var row = _jobGrid.Rows[idx];
+        switch (r.Kind)
         {
-            JobKind.Pg => "PostgreSQL · " + _cfg.PostgresJobs[r.Index].Name,
-            JobKind.File => "Папки · " + _cfg.FileArchiveJobs[r.Index].Name,
-            _ => "Мониторинг · " + _cfg.FolderMonitorJobs[r.Index].Name
-        };
+            case JobKind.Pg:
+                row.Cells["name"].Value = _cfg.PostgresJobs[r.Index].Name;
+                row.Cells["enabled"].Value = _cfg.PostgresJobs[r.Index].Enabled ? "✓" : "—";
+                break;
+            case JobKind.File:
+                row.Cells["name"].Value = _cfg.FileArchiveJobs[r.Index].Name;
+                row.Cells["enabled"].Value = _cfg.FileArchiveJobs[r.Index].Enabled ? "✓" : "—";
+                break;
+            default:
+                row.Cells["name"].Value = _cfg.FolderMonitorJobs[r.Index].Name;
+                row.Cells["enabled"].Value = _cfg.FolderMonitorJobs[r.Index].Enabled ? "✓" : "—";
+                break;
+        }
     }
 
     private void AddPgJob()
@@ -580,7 +620,7 @@ public sealed class MainForm : Form
         CommitCurrent();
         _cfg.PostgresJobs.Add(new PostgresBackupJob { Name = "Postgres " + (_cfg.PostgresJobs.Count + 1) });
         RefreshJobList();
-        _jobList.SelectedIndex = _cfg.PostgresJobs.Count - 1; // pg-задания идут первыми
+        SelectRow(_cfg.PostgresJobs.Count - 1); // pg-задания идут первыми
     }
 
     private void AddFileJob()
@@ -588,8 +628,7 @@ public sealed class MainForm : Form
         CommitCurrent();
         _cfg.FileArchiveJobs.Add(new FileArchiveJob { Name = "Папки " + (_cfg.FileArchiveJobs.Count + 1) });
         RefreshJobList();
-        // файловые задания идут после pg
-        _jobList.SelectedIndex = _cfg.PostgresJobs.Count + _cfg.FileArchiveJobs.Count - 1;
+        SelectRow(_cfg.PostgresJobs.Count + _cfg.FileArchiveJobs.Count - 1);
     }
 
     private void AddFolderJob()
@@ -597,12 +636,12 @@ public sealed class MainForm : Form
         CommitCurrent();
         _cfg.FolderMonitorJobs.Add(new FolderMonitorJob { Name = "Бэкапы " + (_cfg.FolderMonitorJobs.Count + 1) });
         RefreshJobList();
-        _jobList.SelectedIndex = _jobRefs.Count - 1;
+        SelectRow(_jobRefs.Count - 1);
     }
 
     private void DeleteJob()
     {
-        var idx = _jobList.SelectedIndex;
+        var idx = _jobGrid.CurrentRow?.Index ?? -1;
         if (idx < 0 || idx >= _jobRefs.Count) return;
         var r = _jobRefs[idx];
         _loading = true; // подавляем коммит во время удаления
@@ -615,7 +654,7 @@ public sealed class MainForm : Form
         _curPg = null; _curFile = null; _curFolder = null;
         _loading = false;
         RefreshJobList();
-        if (_jobRefs.Count > 0) _jobList.SelectedIndex = Math.Min(idx, _jobRefs.Count - 1);
+        if (_jobRefs.Count > 0) SelectRow(Math.Min(idx, _jobRefs.Count - 1));
         else ShowPanel(null);
     }
 
