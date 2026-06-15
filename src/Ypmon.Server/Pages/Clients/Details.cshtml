@@ -52,28 +52,31 @@
                     <div class="kv"><span class="k">Копий</span><span class="v">@s.LastBackupCount</span></div>
                     <div class="kv"><span class="k">Сервер БД</span><span class="v">@(s.LastServerAvailable ? "доступен" : "недоступен")</span></div>
 
-                    <details class="mt-2">
-                        <summary style="cursor:pointer">Данные для подключения агента</summary>
-                        <div class="mt-2">
-                            <div class="muted" style="font-size:12px">Адрес сервера</div>
-                            <div class="code mono" style="display:block;margin-bottom:8px">@baseUrl</div>
-                            <div class="muted" style="font-size:12px">API-ключ</div>
-                            <div class="code mono" style="display:block">@s.ApiKey</div>
-                            @if (isAdmin)
-                            {
-                                <form method="post" asp-page-handler="RegenKey" asp-route-serverId="@s.Id" class="mt-2"
-                                      onsubmit="return confirm('Перевыпустить ключ? Старый агент перестанет отправлять данные.')">
-                                    <button class="btn btn-sm btn-y-danger">Перевыпустить ключ</button>
-                                </form>
-                            }
+                    <div class="conn-box mt-2">
+                        <div class="muted" style="font-size:12px;margin-bottom:4px">Адрес сервера (для агента)</div>
+                        <div class="copy-row">
+                            <input class="form-control mono" readonly value="@baseUrl" id="url_@s.Id" />
+                            <button type="button" class="btn btn-sm btn-primary" onclick="ypCopy('url_@s.Id', this)">Копировать</button>
                         </div>
-                    </details>
+                        <div class="muted" style="font-size:12px;margin:8px 0 4px">API-ключ</div>
+                        <div class="copy-row">
+                            <input class="form-control mono" readonly value="@s.ApiKey" id="key_@s.Id" />
+                            <button type="button" class="btn btn-sm btn-primary" onclick="ypCopy('key_@s.Id', this)">Копировать</button>
+                        </div>
+                        @if (isAdmin)
+                        {
+                            <form method="post" asp-page-handler="RegenKey" asp-route-id="@Model.Id" asp-route-serverId="@s.Id" class="mt-2"
+                                  onsubmit="return confirm('Перевыпустить ключ? Старый агент перестанет отправлять данные.')">
+                                <button class="btn btn-sm btn-y-danger">Перевыпустить ключ</button>
+                            </form>
+                        }
+                    </div>
 
                     <div style="display:flex;gap:8px;margin-top:12px">
                         <a class="btn btn-sm btn-primary" href="/?server=@s.Id">Открыть в дашборде</a>
                         @if (isAdmin)
                         {
-                            <form method="post" asp-page-handler="DeleteServer" asp-route-serverId="@s.Id"
+                            <form method="post" asp-page-handler="DeleteServer" asp-route-id="@Model.Id" asp-route-serverId="@s.Id"
                                   onsubmit="return confirm('Удалить сервер?')">
                                 <button class="btn btn-sm btn-y-danger" type="submit">Удалить</button>
                             </form>
@@ -93,7 +96,7 @@
                 <div class="muted mb-3" style="font-size:13px">
                     При добавлении сервера сгенерируется API-ключ. Укажите его и адрес этого сервера в настройках агента.
                 </div>
-                <form method="post" asp-page-handler="AddServer">
+                <form method="post" asp-page-handler="AddServer" asp-route-id="@Model.Id">
                     <div class="mb-3"><label>Название сервера</label>
                         <input class="form-control" asp-for="ServerName" required /></div>
                     <div class="mb-3"><label>Физический адрес</label>
@@ -108,3 +111,15 @@
         </div>
     }
 </div>
+
+@section Scripts {
+    <script>
+        function ypCopy(id, btn) {
+            var el = document.getElementById(id);
+            el.select(); el.setSelectionRange(0, 99999);
+            var done = function () { var t = btn.textContent; btn.textContent = 'Скопировано'; setTimeout(function () { btn.textContent = t; }, 1500); };
+            if (navigator.clipboard) { navigator.clipboard.writeText(el.value).then(done, function () { document.execCommand('copy'); done(); }); }
+            else { document.execCommand('copy'); done(); }
+        }
+    </script>
+}

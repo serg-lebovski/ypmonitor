@@ -149,3 +149,9 @@ label { color: var(--muted); font-size: 13px; margin-bottom: 4px; }
 
 .muted { color: var(--muted); }
 .mono { font-family: Consolas, monospace; }
+
+/* Блок данных подключения агента */
+.conn-box { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 12px; }
+.copy-row { display: flex; gap: 8px; align-items: center; }
+.copy-row input { flex: 1; min-width: 0; font-size: 13px; }
+.copy-row .btn { white-space: nowrap; }
