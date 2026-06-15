@@ -89,7 +89,11 @@ begin
     if WizardIsTaskSelected('installservice') then
     begin
       exe := ExpandConstant('{app}\Ypmon.Agent.exe');
-      if not ServiceExists() then
+      if ServiceExists() then
+        // служба уже есть (возможно, старая папка) — переключаем путь на новый exe
+        Exec('sc.exe', 'config "' + SVC + '" binPath= "' + exe + '" start= auto',
+             '', SW_HIDE, ewWaitUntilTerminated, rc)
+      else
         Exec('sc.exe', 'create "' + SVC + '" binPath= "' + exe + '" start= auto DisplayName= "YPMon Agent"',
              '', SW_HIDE, ewWaitUntilTerminated, rc);
       Exec('sc.exe', 'failure "' + SVC + '" reset= 60 actions= restart/5000/restart/5000/restart/5000',
