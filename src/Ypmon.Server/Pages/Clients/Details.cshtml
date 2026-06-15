@@ -4,7 +4,7 @@
 @{
     ViewData["Title"] = Model.Client?.Name ?? "Клиент";
     var isAdmin = User.IsInRole("Admin");
-    var baseUrl = $"{Request.Scheme}://{Request.Host}";
+    var baseUrl = $"{Request.Scheme}://{Request.Host.Host}:{Ypmon.Server.Services.ServerPorts.ReportsPort}";
 }
 
 <h1 class="page-title">🗂️ @Model.Client?.Name</h1>

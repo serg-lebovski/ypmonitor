@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http;
 using System.Net.Mail;
 using System.Text;
 using Ypmon.Server.Data;
@@ -23,7 +24,7 @@ public class AlertService
 
         if (s.TelegramEnabled && !string.IsNullOrWhiteSpace(s.TelegramBotToken) && !string.IsNullOrWhiteSpace(s.TelegramChatId))
         {
-            try { await SendTelegramAsync(s.TelegramBotToken!, s.TelegramChatId!, $"*{subject}*\n{body}"); }
+            try { await SendTelegramAsync(s.TelegramBotToken!, s.TelegramChatId!, $"*{subject}*\n{body}", s.TelegramProxyUrl); }
             catch (Exception ex) { _log.LogWarning(ex, "Не удалось отправить Telegram-оповещение"); }
         }
 
@@ -34,18 +35,40 @@ public class AlertService
         }
     }
 
-    private async Task SendTelegramAsync(string token, string chatId, string text)
+    private async Task SendTelegramAsync(string token, string chatId, string text, string? proxyUrl)
     {
-        var http = _httpFactory.CreateClient();
-        var url = $"https://api.telegram.org/bot{token}/sendMessage";
-        var payload = new Dictionary<string, string>
+        HttpClient http;
+        HttpClientHandler? handler = null;
+        if (!string.IsNullOrWhiteSpace(proxyUrl))
         {
-            ["chat_id"] = chatId,
-            ["text"] = text,
-            ["parse_mode"] = "Markdown"
-        };
-        var resp = await http.PostAsync(url, new FormUrlEncodedContent(payload));
-        resp.EnsureSuccessStatusCode();
+            handler = new HttpClientHandler
+            {
+                Proxy = new System.Net.WebProxy(proxyUrl),
+                UseProxy = true
+            };
+            http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(30) };
+        }
+        else
+        {
+            http = _httpFactory.CreateClient();
+        }
+
+        try
+        {
+            var url = $"https://api.telegram.org/bot{token}/sendMessage";
+            var payload = new Dictionary<string, string>
+            {
+                ["chat_id"] = chatId,
+                ["text"] = text,
+                ["parse_mode"] = "Markdown"
+            };
+            var resp = await http.PostAsync(url, new FormUrlEncodedContent(payload));
+            resp.EnsureSuccessStatusCode();
+        }
+        finally
+        {
+            if (handler is not null) { http.Dispose(); handler.Dispose(); }
+        }
     }
 
     private async Task SendEmailAsync(ServerSettings s, string subject, string body)

@@ -110,6 +110,9 @@ public class ServerSettings
     public string? TelegramBotToken { get; set; }
     public string? TelegramChatId { get; set; }
 
+    /// <summary>Прокси для доступа к Telegram API (http://host:port или socks5://host:port). Пусто = без прокси.</summary>
+    public string? TelegramProxyUrl { get; set; }
+
     public bool EmailEnabled { get; set; }
     public string? SmtpHost { get; set; }
     public int SmtpPort { get; set; } = 587;

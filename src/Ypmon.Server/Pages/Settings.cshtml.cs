@@ -49,6 +49,7 @@ public class SettingsModel : PageModel
         s.TelegramEnabled = input.TelegramEnabled;
         s.TelegramBotToken = input.TelegramBotToken;
         s.TelegramChatId = input.TelegramChatId;
+        s.TelegramProxyUrl = input.TelegramProxyUrl;
         s.EmailEnabled = input.EmailEnabled;
         s.SmtpHost = input.SmtpHost;
         s.SmtpPort = input.SmtpPort;

@@ -6,7 +6,7 @@
     var isAdmin = User.IsInRole("Admin");
     var s = Model.Server!;
     var offline = s.IsOffline(Model.OfflineThreshold);
-    var baseUrl = $"{Request.Scheme}://{Request.Host}";
+    var baseUrl = $"{Request.Scheme}://{Request.Host.Host}:{Ypmon.Server.Services.ServerPorts.ReportsPort}";
     var (lastBackup, sizeBytes) = UiHelpers.BackupSummary(s.LastReportJson);
 }
 

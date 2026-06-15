@@ -22,9 +22,19 @@ var connString = builder.Configuration["Database:ConnectionString"];
 if (string.IsNullOrWhiteSpace(connString) && dbProvider == "sqlite")
     connString = $"Data Source={Path.Combine(dataDir, "ypmon.db")}";
 
-// Порт веб-интерфейса (по умолчанию 8080).
+// Порты: веб-интерфейс (8080) и отдельный порт приёма отчётов от агентов (8081).
 var httpPort = builder.Configuration.GetValue<int?>("Server:HttpPort") ?? 8080;
-builder.WebHost.UseUrls($"http://0.0.0.0:{httpPort}");
+var reportsPort = builder.Configuration.GetValue<int?>("Server:ReportsPort") ?? 8081;
+// Список разрешённых IP для веб-порта (пусто = разрешено всем).
+var allowedIps = IpAllowList.Parse(builder.Configuration["Server:AllowedIps"]);
+ServerPorts.WebPort = httpPort;
+ServerPorts.ReportsPort = reportsPort;
+
+builder.WebHost.ConfigureKestrel(o =>
+{
+    o.ListenAnyIP(httpPort);
+    if (reportsPort != httpPort) o.ListenAnyIP(reportsPort);
+});
 
 // --- Сервисы ---
 builder.Services.AddDbContext<AppDbContext>(opt =>
@@ -77,6 +87,17 @@ using (var scope = app.Services.CreateScope())
         try
         {
             db.Database.EnsureCreated();
+
+            // Идемпотентное добавление новых столбцов (без EF-миграций).
+            try
+            {
+                if (dbProvider == "postgres")
+                    db.Database.ExecuteSqlRaw("ALTER TABLE \"Settings\" ADD COLUMN IF NOT EXISTS \"TelegramProxyUrl\" text;");
+                else
+                    try { db.Database.ExecuteSqlRaw("ALTER TABLE \"Settings\" ADD COLUMN \"TelegramProxyUrl\" TEXT;"); } catch { }
+            }
+            catch (Exception ex) { logger.LogWarning("Обновление схемы: {Msg}", ex.Message); }
+
             if (!await db.Settings.AnyAsync())
             {
                 db.Settings.Add(new ServerSettings());
@@ -93,6 +114,30 @@ using (var scope = app.Services.CreateScope())
         }
     }
 }
+
+// --- Разделение портов + IP-allowlist (самый ранний middleware) ---
+app.Use(async (ctx, next) =>
+{
+    var localPort = ctx.Connection.LocalPort;
+    var isApi = ctx.Request.Path.StartsWithSegments("/api");
+
+    if (ServerPorts.SeparatePorts)
+    {
+        // Агентское API (/api/*) — только на порту отчётов; веб-страницы — только на веб-порту.
+        if (isApi && localPort == ServerPorts.WebPort) { ctx.Response.StatusCode = 404; return; }
+        if (!isApi && localPort == ServerPorts.ReportsPort) { ctx.Response.StatusCode = 404; return; }
+    }
+
+    // Список разрешённых IP применяется к веб-порту (админ-интерфейс).
+    if (localPort == ServerPorts.WebPort && !IpAllowList.IsAllowed(ctx.Connection.RemoteIpAddress, allowedIps))
+    {
+        ctx.Response.StatusCode = 403;
+        await ctx.Response.WriteAsync("Доступ запрещён (ваш IP не в списке разрешённых).");
+        return;
+    }
+
+    await next();
+});
 
 if (!app.Environment.IsDevelopment())
     app.UseExceptionHandler("/Error");

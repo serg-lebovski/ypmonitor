@@ -34,15 +34,18 @@ services:
       postgres:
         condition: service_healthy
     ports:
-      - "${YPMON_HTTP_PORT:-8080}:8080"
+      - "${YPMON_HTTP_PORT:-8080}:8080"   # веб-интерфейс
+      - "${YPMON_REPORTS_PORT:-8081}:8081" # приём отчётов от агентов
     environment:
       Server__HttpPort: "8080"
+      Server__ReportsPort: "8081"
+      Server__AllowedIps: "${YPMON_ALLOWED_IPS:-}"
       Database__Provider: "postgres"
       Database__ConnectionString: "Host=postgres;Port=5432;Database=ypmon;Username=admin_yp;Password=${POSTGRES_PASSWORD}"
     volumes:
       - ypmon-updates:/app/agent-updates   # сюда кладите Ypmon.Agent.exe для автообновления агентов
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/api/ping"]
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8081/api/ping"]
       interval: 30s
       timeout: 5s
       retries: 5

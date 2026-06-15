@@ -44,8 +44,10 @@
                 </div>
                 <div class="mb-2"><label>Bot Token</label>
                     <input class="form-control" name="TelegramBotToken" value="@s.TelegramBotToken" @(isAdmin ? "" : "disabled") /></div>
-                <div class="mb-3"><label>Chat ID</label>
+                <div class="mb-2"><label>Chat ID</label>
                     <input class="form-control" name="TelegramChatId" value="@s.TelegramChatId" @(isAdmin ? "" : "disabled") /></div>
+                <div class="mb-3"><label>Прокси (http://host:port или socks5://host:port; пусто = без прокси)</label>
+                    <input class="form-control" name="TelegramProxyUrl" value="@s.TelegramProxyUrl" @(isAdmin ? "" : "disabled") /></div>
 
                 <h4 style="font-size:16px">E-mail (SMTP)</h4>
                 <div class="form-check mb-2">
