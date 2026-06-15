@@ -27,6 +27,22 @@ public class ReportIngestService
         if (server is null)
             return new ReportAckDto { Accepted = false, Message = "Неизвестный API-ключ" };
 
+        // Heartbeat: обновляем только время связи и доступность БД, не затрагивая данные заданий.
+        if (report.IsHeartbeat)
+        {
+            server.LastSeenAt = DateTimeOffset.UtcNow;
+            server.LastReportedAt = report.ReportedAt;
+            server.LastServerAvailable = report.ServerAvailable;
+            await _db.SaveChangesAsync();
+            return new ReportAckDto
+            {
+                Accepted = true,
+                Message = "OK (heartbeat)",
+                ClientName = server.Client?.Name,
+                ServerName = server.Name
+            };
+        }
+
         var prevOutcome = server.LastOutcome;
         var prevSeen = server.LastSeenAt;
 

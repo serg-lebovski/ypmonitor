@@ -263,10 +263,81 @@ public class BackupRunner : BackgroundService
             });
         }
 
+        foreach (var job in cfg.FolderMonitorJobs)
+            list.Add(BuildFolderMonitorStatus(job));
+
         if (cfg.Mssql.Enabled)
             list.Add(MssqlLogReader.BuildStatus(cfg.Mssql));
 
         return list;
+    }
+
+    /// <summary>Статус задания мониторинга готовой папки бэкапов (AOMEI и пр.).</summary>
+    private static JobStatusDto BuildFolderMonitorStatus(FolderMonitorJob job)
+    {
+        var st = new JobStatusDto { Name = job.Name, Type = JobType.FolderMonitor, Target = job.BackupFolder };
+        if (!job.Enabled) { st.Outcome = JobOutcome.Unknown; st.Message = "Отключено"; return st; }
+
+        IDisposable? net = null;
+        try
+        {
+            net = NetShare.Connect(new[] { job.BackupFolder, job.LogsFolder }, job.NetworkUsername, job.NetworkPassword);
+
+            if (string.IsNullOrWhiteSpace(job.BackupFolder) || !Directory.Exists(job.BackupFolder))
+            {
+                st.Outcome = JobOutcome.Error;
+                st.Message = "Папка бэкапов не найдена: " + job.BackupFolder;
+                return st;
+            }
+
+            var files = new DirectoryInfo(job.BackupFolder)
+                .GetFiles(string.IsNullOrWhiteSpace(job.FilePattern) ? "*.*" : job.FilePattern);
+            st.BackupCount = files.Length;
+            st.TotalSizeBytes = files.Sum(f => f.Length);
+            var latest = files.OrderByDescending(f => f.LastWriteTimeUtc).FirstOrDefault();
+            st.LastBackupAt = latest is null ? null : new DateTimeOffset(latest.LastWriteTimeUtc, TimeSpan.Zero);
+            st.LastRunAt = st.LastBackupAt;
+
+            if (files.Length == 0)
+            {
+                st.Outcome = JobOutcome.Warning;
+                st.Message = "В папке нет файлов бэкапов";
+            }
+            else if (job.WarnIfOlderThanHours > 0 && latest is not null &&
+                     (DateTime.UtcNow - latest.LastWriteTimeUtc).TotalHours > job.WarnIfOlderThanHours)
+            {
+                st.Outcome = JobOutcome.Error;
+                st.Message = $"Свежий бэкап старше {job.WarnIfOlderThanHours} ч (от {latest.LastWriteTime:yyyy-MM-dd HH:mm})";
+            }
+            else
+            {
+                st.Outcome = JobOutcome.Ok;
+                st.Message = $"Копий: {files.Length}, свежая: {latest!.LastWriteTime:yyyy-MM-dd HH:mm}";
+            }
+
+            // Логи (если заданы) — могут повысить серьёзность статуса
+            if (!string.IsNullOrWhiteSpace(job.LogsFolder) && Directory.Exists(job.LogsFolder))
+            {
+                var logs = new DirectoryInfo(job.LogsFolder)
+                    .GetFiles(string.IsNullOrWhiteSpace(job.LogsPattern) ? "*.txt" : job.LogsPattern)
+                    .OrderByDescending(f => f.LastWriteTimeUtc).ToList();
+                if (logs.Count > 0)
+                {
+                    var content = MssqlLogReader.ReadTail(logs[0].FullName);
+                    var logOutcome = MssqlLogReader.DetectOutcome(content);
+                    if (logOutcome > st.Outcome) st.Outcome = logOutcome;
+                    st.Message += $" · лог {logs[0].Name}: {logOutcome}";
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            st.Outcome = JobOutcome.Error;
+            st.Message = "Ошибка проверки папки: " + ex.Message;
+        }
+        finally { net?.Dispose(); }
+
+        return st;
     }
 
     private static (int count, long size) CountBackups(string? dir, string pattern)

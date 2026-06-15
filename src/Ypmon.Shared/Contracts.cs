@@ -5,7 +5,9 @@ public enum JobType
 {
     PostgresBackup = 0,
     FileArchive = 1,
-    MssqlLog = 2
+    MssqlLog = 2,
+    /// <summary>Мониторинг готовой папки бэкапов (сделанных любой программой, напр. AOMEI).</summary>
+    FolderMonitor = 3
 }
 
 /// <summary>Итог выполнения задания.</summary>
@@ -64,6 +66,12 @@ public class AgentReportDto
 
     /// <summary>Момент формирования отчёта (по часам агента).</summary>
     public DateTimeOffset ReportedAt { get; set; } = DateTimeOffset.UtcNow;
+
+    /// <summary>
+    /// true — это лёгкий отчёт о доступности (heartbeat): сервер обновит только время связи
+    /// и доступность, не затрагивая данные заданий. false — полный отчёт о состоянии.
+    /// </summary>
+    public bool IsHeartbeat { get; set; }
 
     /// <summary>Доступен ли наблюдаемый сервер БД (true = ок).</summary>
     public bool ServerAvailable { get; set; }

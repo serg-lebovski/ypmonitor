@@ -9,8 +9,11 @@ public class AgentConfig
     /// <summary>API-ключ сервера клиента (выдаётся в веб-интерфейсе при добавлении сервера).</summary>
     public string ApiKey { get; set; } = "";
 
-    /// <summary>Как часто отправлять отчёты на сервер, секунд.</summary>
+    /// <summary>Интервал полного отчёта о состоянии ПК (задания, диски, бэкапы), секунд.</summary>
     public int ReportIntervalSeconds { get; set; } = 60;
+
+    /// <summary>Интервал лёгкого отчёта о доступности сервера/БД (heartbeat), секунд.</summary>
+    public int AvailabilityIntervalSeconds { get; set; } = 30;
 
     /// <summary>Путь к pg_dump. Пусто = автопоиск (PATH и стандартные папки PostgreSQL).</summary>
     public string PgDumpPath { get; set; } = "";
@@ -30,8 +33,39 @@ public class AgentConfig
     /// <summary>Задания архивации файлов.</summary>
     public List<FileArchiveJob> FileArchiveJobs { get; set; } = new();
 
+    /// <summary>Задания мониторинга готовых папок бэкапов (AOMEI и любые другие программы).</summary>
+    public List<FolderMonitorJob> FolderMonitorJobs { get; set; } = new();
+
     /// <summary>Настройки просмотра логов архивации MSSQL.</summary>
     public MssqlLogConfig Mssql { get; set; } = new();
+}
+
+/// <summary>
+/// Мониторинг папки с бэкапами, которые делает внешняя программа (например, AOMEI Backupper).
+/// Агент сам ничего не создаёт — только читает: количество, объём, дату последней копии,
+/// и (опционально) статус из папки логов.
+/// </summary>
+public class FolderMonitorJob
+{
+    public string Name { get; set; } = "Бэкапы";
+    public bool Enabled { get; set; } = true;
+
+    /// <summary>Папка, куда внешняя программа складывает бэкапы (можно сетевую).</summary>
+    public string BackupFolder { get; set; } = "";
+
+    /// <summary>Маска файлов бэкапов (напр. *.adi для AOMEI, *.bak, *.zip, *.*).</summary>
+    public string FilePattern { get; set; } = "*.*";
+
+    /// <summary>Тревога, если самый свежий бэкап старше N часов (0 = не проверять).</summary>
+    public int WarnIfOlderThanHours { get; set; } = 26;
+
+    /// <summary>Папка логов (опционально) — агент определит статус (ок/ошибка).</summary>
+    public string LogsFolder { get; set; } = "";
+    public string LogsPattern { get; set; } = "*.txt";
+
+    /// <summary>Учётная запись Windows для сетевых папок (логин DOMAIN\User; пусто — текущая).</summary>
+    public string NetworkUsername { get; set; } = "";
+    public string NetworkPassword { get; set; } = "";
 }
 
 public class PostgresBackupJob

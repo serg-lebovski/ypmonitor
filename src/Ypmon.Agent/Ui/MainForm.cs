@@ -16,30 +16,41 @@ public sealed class MainForm : Form
     private bool _loading;
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(10) };
 
-    private sealed record JobRef(bool IsPg, int Index);
+    private enum JobKind { Pg, File, Folder }
+    private sealed record JobRef(JobKind Kind, int Index);
 
     // Подключение
     private TextBox _serverUrl = null!, _apiKey = null!, _pgDumpPath = null!;
-    private NumericUpDown _reportInterval = null!;
+    private NumericUpDown _statusH = null!, _statusM = null!, _statusS = null!;
+    private NumericUpDown _availH = null!, _availM = null!, _availS = null!;
     private Label _hostState = null!;
 
     // Задания (объединённые)
     private ListBox _jobList = null!;
     private readonly List<JobRef> _jobRefs = new();
-    private Panel _pgPanel = null!, _filePanel = null!, _emptyPanel = null!;
+    private Panel _pgPanel = null!, _filePanel = null!, _folderPanel = null!, _emptyPanel = null!;
     private PostgresBackupJob? _curPg;
     private FileArchiveJob? _curFile;
+    private FolderMonitorJob? _curFolder;
 
     // Поля Postgres
     private TextBox _pgName = null!, _pgHost = null!, _pgUser = null!, _pgPass = null!, _pgDir = null!, _pgArgs = null!;
     private ComboBox _pgDb = null!;
     private NumericUpDown _pgPort = null!, _pgRetention = null!, _pgInterval = null!;
     private CheckBox _pgEnabled = null!;
+    private GroupBox _pgConnGroup = null!;
+    private Panel _pgConnSummary = null!;
+    private Label _pgConnSummaryLabel = null!;
 
     // Поля Файлы
     private TextBox _fileName = null!, _fileSources = null!, _fileDir = null!, _fileNetUser = null!, _fileNetPass = null!;
     private NumericUpDown _fileRetention = null!, _fileInterval = null!;
     private CheckBox _fileEnabled = null!;
+
+    // Поля Мониторинг папки
+    private TextBox _folName = null!, _folBackupDir = null!, _folPattern = null!, _folLogsDir = null!, _folLogsPattern = null!, _folNetUser = null!, _folNetPass = null!;
+    private NumericUpDown _folMaxAge = null!;
+    private CheckBox _folEnabled = null!;
 
     // MSSQL
     private CheckBox _mssqlEnabled = null!;
@@ -97,7 +108,8 @@ public sealed class MainForm : Form
         var t = NewTable();
         _serverUrl = AddText(t, "Адрес сервера YPMon (http://10.0.0.1:8080)");
         _apiKey = AddText(t, "API-ключ сервера");
-        _reportInterval = AddNum(t, "Интервал отчётов, сек", 15, 86400);
+        (_statusH, _statusM, _statusS) = AddDuration(t, "Отчёт о состоянии ПК (ч / м / с)");
+        (_availH, _availM, _availS) = AddDuration(t, "Отчёт о доступности сервера (ч / м / с)");
         _pgDumpPath = AddText(t, "Путь к pg_dump (пусто = автопоиск)");
         var btnPgDump = new Button { Text = "🔎 Найти / проверить pg_dump", AutoSize = true, Margin = new Padding(3, 4, 3, 4) };
         btnPgDump.Click += (_, _) =>
@@ -135,17 +147,20 @@ public sealed class MainForm : Form
         var left = new Panel { Dock = DockStyle.Left, Width = 210 };
         _jobList = new ListBox { Dock = DockStyle.Fill };
         _jobList.SelectedIndexChanged += (_, _) => SelectJob(_jobList.SelectedIndex);
-        var btns = new Panel { Dock = DockStyle.Bottom, Height = 64 };
+        var btns = new Panel { Dock = DockStyle.Bottom, Height = 92 };
         var addPg = new Button { Text = "+ Бэкап PostgreSQL", Left = 2, Top = 4, Width = 200 };
         addPg.Click += (_, _) => AddPgJob();
         var addFile = new Button { Text = "+ Архив папок/файлов", Left = 2, Top = 32, Width = 200 };
         addFile.Click += (_, _) => AddFileJob();
+        var addFolder = new Button { Text = "+ Мониторинг папки бэкапов", Left = 2, Top = 60, Width = 200 };
+        addFolder.Click += (_, _) => AddFolderJob();
         var delPanel = new Panel { Dock = DockStyle.Bottom, Height = 30 };
         var delBtn = new Button { Text = "Удалить выбранное", Dock = DockStyle.Fill };
         delBtn.Click += (_, _) => DeleteJob();
         delPanel.Controls.Add(delBtn);
         btns.Controls.Add(addPg);
         btns.Controls.Add(addFile);
+        btns.Controls.Add(addFolder);
         left.Controls.Add(_jobList);
         left.Controls.Add(delPanel);
         left.Controls.Add(btns);
@@ -153,16 +168,83 @@ public sealed class MainForm : Form
         var host = new Panel { Dock = DockStyle.Fill };
         _pgPanel = BuildPgPanel();
         _filePanel = BuildFilePanel();
+        _folderPanel = BuildFolderPanel();
         _emptyPanel = new Panel { Dock = DockStyle.Fill };
         _emptyPanel.Controls.Add(new Label { Text = "Выберите задание слева или добавьте новое.", AutoSize = true, Left = 16, Top = 16, ForeColor = Color.DimGray });
         host.Controls.Add(_pgPanel);
         host.Controls.Add(_filePanel);
+        host.Controls.Add(_folderPanel);
         host.Controls.Add(_emptyPanel);
-        _pgPanel.Visible = _filePanel.Visible = false;
+        _pgPanel.Visible = _filePanel.Visible = _folderPanel.Visible = false;
 
         page.Controls.Add(host);
         page.Controls.Add(left);
         return page;
+    }
+
+    private Panel BuildFolderPanel()
+    {
+        var p = new Panel { Dock = DockStyle.Fill };
+        var t = NewTable();
+        var head = new Label { Text = "Задание: Мониторинг готовой папки бэкапов (AOMEI и др.)", Font = new Font(Font, FontStyle.Bold), AutoSize = true, Margin = new Padding(3, 3, 3, 6) };
+        AddFull(t, head);
+        _folName = AddText(t, "Название");
+        _folEnabled = AddCheck(t, "Включено");
+        _folBackupDir = AddBrowse(t, "Папка с бэкапами (можно сетевую \\\\сервер\\папка)");
+        _folPattern = AddText(t, "Маска файлов (напр. *.adi, *.bak, *.zip, *.*)");
+        _folMaxAge = AddNum(t, "Тревога, если свежий бэкап старше N часов (0 = выкл)", 0, 100000);
+        _folLogsDir = AddBrowse(t, "Папка логов (опционально)");
+        _folLogsPattern = AddText(t, "Маска логов (*.txt)");
+        _folNetUser = AddText(t, "Учётная запись Windows для сетевых папок (DOMAIN\\User)");
+        _folNetPass = AddText(t, "Пароль учётной записи", true);
+        var btnAccess = new Button { Text = "🔐 Проверить доступ", AutoSize = true, Margin = new Padding(3, 4, 3, 4) };
+        btnAccess.Click += (_, _) => FolderCheckAccess();
+        AddFull(t, btnAccess);
+        var note = new Label { AutoSize = true, ForeColor = Color.DimGray, MaximumSize = new Size(480, 0), Margin = new Padding(3, 6, 3, 3) };
+        note.Text = "Агент сам ничего не создаёт — только читает количество, объём и дату последней копии " +
+                    "из этой папки и шлёт в отчёт. Подходит для бэкапов, сделанных AOMEI и любыми программами.";
+        AddFull(t, note);
+        WireFolderEvents();
+        p.Controls.Add(t);
+        return p;
+    }
+
+    private void MssqlCheck()
+    {
+        var cfg = new MssqlLogConfig
+        {
+            Enabled = _mssqlEnabled.Checked,
+            LogFolder = _mssqlFolder.Text.Trim(),
+            FilePattern = string.IsNullOrWhiteSpace(_mssqlPattern.Text) ? "*.txt" : _mssqlPattern.Text.Trim()
+        };
+        if (string.IsNullOrWhiteSpace(cfg.LogFolder)) { Info("Укажите папку с логами."); return; }
+        if (!Directory.Exists(cfg.LogFolder)) { Info("❌ Папка не найдена: " + cfg.LogFolder); return; }
+
+        var logs = MssqlLogReader.ListLogs(new MssqlLogConfig { Enabled = true, LogFolder = cfg.LogFolder, FilePattern = cfg.FilePattern });
+        if (logs.Count == 0) { Info("Папка доступна, но логи по маске не найдены."); return; }
+
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine($"Найдено логов: {logs.Count}. Последние:");
+        foreach (var l in logs.Take(5))
+        {
+            var content = MssqlLogReader.ReadTail(l.FullPath, 8 * 1024);
+            sb.AppendLine($"• {l.Name} ({l.Modified:yyyy-MM-dd HH:mm}) → {MssqlLogReader.DetectOutcome(content)}");
+        }
+        Info(sb.ToString());
+    }
+
+    private void FolderCheckAccess()
+    {
+        CommitCurrent();
+        if (_curFolder is null) { Info("Выберите задание мониторинга папки."); return; }
+        var sb = new System.Text.StringBuilder();
+        foreach (var path in new[] { _curFolder.BackupFolder, _curFolder.LogsFolder }.Where(x => !string.IsNullOrWhiteSpace(x)))
+        {
+            var (ok, m) = NetShare.CheckAccess(path, _curFolder.NetworkUsername, _curFolder.NetworkPassword);
+            sb.AppendLine($"{(ok ? "✅" : "❌")} {path} — {m}");
+        }
+        if (sb.Length == 0) sb.AppendLine("Не указаны папки.");
+        Info("Проверка доступа:\n\n" + sb);
     }
 
     private Panel BuildPgPanel()
@@ -173,13 +255,30 @@ public sealed class MainForm : Form
         AddFull(t, head);
         _pgName = AddText(t, "Название");
         _pgEnabled = AddCheck(t, "Включено");
-        _pgHost = AddText(t, "Хост");
-        _pgPort = AddNum(t, "Порт", 1, 65535);
-        _pgUser = AddText(t, "Пользователь");
-        _pgPass = AddText(t, "Пароль", true);
+
+        // Реквизиты подключения — в сворачиваемой группе (#2: скрываются после успешной проверки)
+        _pgConnGroup = new GroupBox { Text = "Реквизиты подключения", AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Dock = DockStyle.Fill, Margin = new Padding(3) };
+        var ct = NewTable();
+        ct.Dock = DockStyle.Top; ct.AutoSize = true;
+        _pgHost = AddText(ct, "Хост");
+        _pgPort = AddNum(ct, "Порт", 1, 65535);
+        _pgUser = AddText(ct, "Пользователь");
+        _pgPass = AddText(ct, "Пароль", true);
         var btnPgTest = new Button { Text = "🔌 Проверить соединение и получить список БД", AutoSize = true, Margin = new Padding(3, 4, 3, 4) };
         btnPgTest.Click += (_, _) => PgTestConnection();
-        AddFull(t, btnPgTest);
+        AddFull(ct, btnPgTest);
+        _pgConnGroup.Controls.Add(ct);
+        AddFull(t, _pgConnGroup);
+
+        // Свёрнутый вид: краткая строка + кнопка «Изменить»
+        _pgConnSummary = new Panel { AutoSize = true, Visible = false, Margin = new Padding(3) };
+        _pgConnSummaryLabel = new Label { AutoSize = true, ForeColor = Color.Green, Location = new Point(0, 6) };
+        var btnEdit = new Button { Text = "Изменить", AutoSize = true, Location = new Point(0, 24) };
+        btnEdit.Click += (_, _) => SetPgConnCollapsed(false);
+        _pgConnSummary.Controls.Add(_pgConnSummaryLabel);
+        _pgConnSummary.Controls.Add(btnEdit);
+        AddFull(t, _pgConnSummary);
+
         _pgDb = AddCombo(t, "База данных (выберите из списка или впишите)");
         _pgDir = AddBrowse(t, "Папка для бэкапов");
         _pgRetention = AddNum(t, "Хранить копий (0 = без удаления)", 0, 10000);
@@ -220,6 +319,9 @@ public sealed class MainForm : Form
         _mssqlEnabled = AddCheck(t, "Включить просмотр логов MSSQL");
         _mssqlFolder = AddBrowse(t, "Папка с логами");
         _mssqlPattern = AddText(t, "Маска файлов (*.txt)");
+        var btnCheck = new Button { Text = "🔎 Проверить чтение логов", AutoSize = true, Margin = new Padding(3, 4, 3, 4) };
+        btnCheck.Click += (_, _) => MssqlCheck();
+        AddFull(t, btnCheck);
         var note = new Label { AutoSize = true, ForeColor = Color.DimGray, MaximumSize = new Size(480, 0), Margin = new Padding(3, 10, 3, 3) };
         note.Text = "Агент читает логи из указанной папки, определяет статус (ок/ошибка) " +
                     "и включает его в отчёт серверу. Список логов виден на вкладке «Отчёт».";
@@ -283,7 +385,8 @@ public sealed class MainForm : Form
         _loading = true;
         _serverUrl.Text = _cfg.ServerUrl;
         _apiKey.Text = _cfg.ApiKey;
-        _reportInterval.Value = Clamp(_cfg.ReportIntervalSeconds, 15, 86400);
+        SetDur(_statusH, _statusM, _statusS, _cfg.ReportIntervalSeconds);
+        SetDur(_availH, _availM, _availS, _cfg.AvailabilityIntervalSeconds);
         _pgDumpPath.Text = _cfg.PgDumpPath;
         _mssqlEnabled.Checked = _cfg.Mssql.Enabled;
         _mssqlFolder.Text = _cfg.Mssql.LogFolder;
@@ -303,7 +406,8 @@ public sealed class MainForm : Form
         CommitCurrent();
         _cfg.ServerUrl = _serverUrl.Text.Trim();
         _cfg.ApiKey = _apiKey.Text.Trim();
-        _cfg.ReportIntervalSeconds = (int)_reportInterval.Value;
+        _cfg.ReportIntervalSeconds = Math.Max(15, DurSeconds(_statusH, _statusM, _statusS));
+        _cfg.AvailabilityIntervalSeconds = Math.Max(10, DurSeconds(_availH, _availM, _availS));
         _cfg.PgDumpPath = _pgDumpPath.Text.Trim();
         _cfg.Mssql.Enabled = _mssqlEnabled.Checked;
         _cfg.Mssql.LogFolder = _mssqlFolder.Text.Trim();
@@ -325,13 +429,18 @@ public sealed class MainForm : Form
         _jobList.Items.Clear();
         for (int i = 0; i < _cfg.PostgresJobs.Count; i++)
         {
-            _jobRefs.Add(new JobRef(true, i));
+            _jobRefs.Add(new JobRef(JobKind.Pg, i));
             _jobList.Items.Add("PostgreSQL · " + _cfg.PostgresJobs[i].Name);
         }
         for (int i = 0; i < _cfg.FileArchiveJobs.Count; i++)
         {
-            _jobRefs.Add(new JobRef(false, i));
+            _jobRefs.Add(new JobRef(JobKind.File, i));
             _jobList.Items.Add("Папки · " + _cfg.FileArchiveJobs[i].Name);
+        }
+        for (int i = 0; i < _cfg.FolderMonitorJobs.Count; i++)
+        {
+            _jobRefs.Add(new JobRef(JobKind.Folder, i));
+            _jobList.Items.Add("Мониторинг · " + _cfg.FolderMonitorJobs[i].Name);
         }
         if (prev >= 0 && prev < _jobList.Items.Count) _jobList.SelectedIndex = prev;
     }
@@ -339,21 +448,17 @@ public sealed class MainForm : Form
     private void SelectJob(int idx)
     {
         CommitCurrent();
-        if (idx < 0 || idx >= _jobRefs.Count) { _curPg = null; _curFile = null; ShowPanel(null); return; }
+        _curPg = null; _curFile = null; _curFolder = null;
+        if (idx < 0 || idx >= _jobRefs.Count) { ShowPanel(null); return; }
         var r = _jobRefs[idx];
-        if (r.IsPg)
+        switch (r.Kind)
         {
-            _curFile = null;
-            _curPg = _cfg.PostgresJobs[r.Index];
-            PopulatePg(_curPg);
-            ShowPanel(_pgPanel);
-        }
-        else
-        {
-            _curPg = null;
-            _curFile = _cfg.FileArchiveJobs[r.Index];
-            PopulateFile(_curFile);
-            ShowPanel(_filePanel);
+            case JobKind.Pg:
+                _curPg = _cfg.PostgresJobs[r.Index]; PopulatePg(_curPg); ShowPanel(_pgPanel); break;
+            case JobKind.File:
+                _curFile = _cfg.FileArchiveJobs[r.Index]; PopulateFile(_curFile); ShowPanel(_filePanel); break;
+            case JobKind.Folder:
+                _curFolder = _cfg.FolderMonitorJobs[r.Index]; PopulateFolder(_curFolder); ShowPanel(_folderPanel); break;
         }
     }
 
@@ -361,6 +466,7 @@ public sealed class MainForm : Form
     {
         _pgPanel.Visible = p == _pgPanel;
         _filePanel.Visible = p == _filePanel;
+        _folderPanel.Visible = p == _folderPanel;
         _emptyPanel.Visible = p is null;
         p?.BringToFront();
         if (p is null) _emptyPanel.BringToFront();
@@ -386,6 +492,14 @@ public sealed class MainForm : Form
             _curFile.IntervalMinutes = (int)_fileInterval.Value;
             _curFile.NetworkUsername = _fileNetUser.Text; _curFile.NetworkPassword = _fileNetPass.Text;
         }
+        else if (_curFolder is not null)
+        {
+            _curFolder.Name = _folName.Text; _curFolder.Enabled = _folEnabled.Checked;
+            _curFolder.BackupFolder = _folBackupDir.Text; _curFolder.FilePattern = _folPattern.Text;
+            _curFolder.WarnIfOlderThanHours = (int)_folMaxAge.Value;
+            _curFolder.LogsFolder = _folLogsDir.Text; _curFolder.LogsPattern = _folLogsPattern.Text;
+            _curFolder.NetworkUsername = _folNetUser.Text; _curFolder.NetworkPassword = _folNetPass.Text;
+        }
     }
 
     private void PopulatePg(PostgresBackupJob j)
@@ -397,6 +511,7 @@ public sealed class MainForm : Form
         _pgDir.Text = j.BackupDir; _pgRetention.Value = Clamp(j.RetentionCount, 0, 10000);
         _pgInterval.Value = Clamp(j.IntervalMinutes, 0, 1000000); _pgArgs.Text = j.ExtraArgs;
         _loading = false;
+        SetPgConnCollapsed(false); // при выборе задания показываем реквизиты
     }
 
     private void PopulateFile(FileArchiveJob j)
@@ -427,15 +542,37 @@ public sealed class MainForm : Form
         _fileEnabled.CheckedChanged += h;
     }
 
+    private void PopulateFolder(FolderMonitorJob j)
+    {
+        _loading = true;
+        _folName.Text = j.Name; _folEnabled.Checked = j.Enabled;
+        _folBackupDir.Text = j.BackupFolder; _folPattern.Text = j.FilePattern;
+        _folMaxAge.Value = Clamp(j.WarnIfOlderThanHours, 0, 100000);
+        _folLogsDir.Text = j.LogsFolder; _folLogsPattern.Text = j.LogsPattern;
+        _folNetUser.Text = j.NetworkUsername; _folNetPass.Text = j.NetworkPassword;
+        _loading = false;
+    }
+
+    private void WireFolderEvents()
+    {
+        EventHandler h = (_, _) => { CommitCurrent(); UpdateCurrentItemText(); };
+        foreach (var c in new Control[] { _folName, _folBackupDir, _folPattern, _folLogsDir, _folLogsPattern, _folNetUser, _folNetPass }) c.TextChanged += h;
+        _folMaxAge.ValueChanged += h;
+        _folEnabled.CheckedChanged += h;
+    }
+
     private void UpdateCurrentItemText()
     {
         if (_loading) return;
         var idx = _jobList.SelectedIndex;
         if (idx < 0 || idx >= _jobRefs.Count) return;
         var r = _jobRefs[idx];
-        _jobList.Items[idx] = r.IsPg
-            ? "PostgreSQL · " + _cfg.PostgresJobs[r.Index].Name
-            : "Папки · " + _cfg.FileArchiveJobs[r.Index].Name;
+        _jobList.Items[idx] = r.Kind switch
+        {
+            JobKind.Pg => "PostgreSQL · " + _cfg.PostgresJobs[r.Index].Name,
+            JobKind.File => "Папки · " + _cfg.FileArchiveJobs[r.Index].Name,
+            _ => "Мониторинг · " + _cfg.FolderMonitorJobs[r.Index].Name
+        };
     }
 
     private void AddPgJob()
@@ -451,6 +588,15 @@ public sealed class MainForm : Form
         CommitCurrent();
         _cfg.FileArchiveJobs.Add(new FileArchiveJob { Name = "Папки " + (_cfg.FileArchiveJobs.Count + 1) });
         RefreshJobList();
+        // файловые задания идут после pg
+        _jobList.SelectedIndex = _cfg.PostgresJobs.Count + _cfg.FileArchiveJobs.Count - 1;
+    }
+
+    private void AddFolderJob()
+    {
+        CommitCurrent();
+        _cfg.FolderMonitorJobs.Add(new FolderMonitorJob { Name = "Бэкапы " + (_cfg.FolderMonitorJobs.Count + 1) });
+        RefreshJobList();
         _jobList.SelectedIndex = _jobRefs.Count - 1;
     }
 
@@ -460,9 +606,13 @@ public sealed class MainForm : Form
         if (idx < 0 || idx >= _jobRefs.Count) return;
         var r = _jobRefs[idx];
         _loading = true; // подавляем коммит во время удаления
-        if (r.IsPg) _cfg.PostgresJobs.RemoveAt(r.Index);
-        else _cfg.FileArchiveJobs.RemoveAt(r.Index);
-        _curPg = null; _curFile = null;
+        switch (r.Kind)
+        {
+            case JobKind.Pg: _cfg.PostgresJobs.RemoveAt(r.Index); break;
+            case JobKind.File: _cfg.FileArchiveJobs.RemoveAt(r.Index); break;
+            case JobKind.Folder: _cfg.FolderMonitorJobs.RemoveAt(r.Index); break;
+        }
+        _curPg = null; _curFile = null; _curFolder = null;
         _loading = false;
         RefreshJobList();
         if (_jobRefs.Count > 0) _jobList.SelectedIndex = Math.Min(idx, _jobRefs.Count - 1);
@@ -627,8 +777,17 @@ public sealed class MainForm : Form
             _pgDb.Items.Clear();
             foreach (var d in dbs) _pgDb.Items.Add(d);
             _pgDb.Text = cur;
+            SetPgConnCollapsed(true); // #2: после успешного подключения скрываем реквизиты
         }
         Info(msg);
+    }
+
+    private void SetPgConnCollapsed(bool collapsed)
+    {
+        _pgConnGroup.Visible = !collapsed;
+        _pgConnSummary.Visible = collapsed;
+        if (collapsed)
+            _pgConnSummaryLabel.Text = $"✓ {_pgUser.Text}@{_pgHost.Text}:{(int)_pgPort.Value} — подключено";
     }
 
     private async void FileCheckAccess()
@@ -825,6 +984,33 @@ public sealed class MainForm : Form
         var n = new NumericUpDown { Minimum = min, Maximum = max, Width = 140, Margin = new Padding(3, 4, 3, 4), Anchor = AnchorStyles.Left };
         t.Controls.Add(n);
         return n;
+    }
+
+    private static (NumericUpDown h, NumericUpDown m, NumericUpDown s) AddDuration(TableLayoutPanel t, string label)
+    {
+        t.Controls.Add(Lbl(label));
+        var fp = new FlowLayoutPanel { AutoSize = true, Margin = new Padding(0, 2, 0, 2), WrapContents = false };
+        NumericUpDown Mk(int max, string suffix)
+        {
+            var n = new NumericUpDown { Minimum = 0, Maximum = max, Width = 56, Margin = new Padding(2, 4, 0, 4) };
+            fp.Controls.Add(n);
+            fp.Controls.Add(new Label { Text = suffix, AutoSize = true, Margin = new Padding(2, 8, 8, 0) });
+            return n;
+        }
+        var h = Mk(999, "ч"); var m = Mk(59, "м"); var s = Mk(59, "с");
+        t.Controls.Add(fp);
+        return (h, m, s);
+    }
+
+    private static int DurSeconds(NumericUpDown h, NumericUpDown m, NumericUpDown s)
+        => (int)h.Value * 3600 + (int)m.Value * 60 + (int)s.Value;
+
+    private static void SetDur(NumericUpDown h, NumericUpDown m, NumericUpDown s, int totalSeconds)
+    {
+        if (totalSeconds < 0) totalSeconds = 0;
+        h.Value = Math.Min(999, totalSeconds / 3600);
+        m.Value = totalSeconds % 3600 / 60;
+        s.Value = totalSeconds % 60;
     }
 
     private static CheckBox AddCheck(TableLayoutPanel t, string label)

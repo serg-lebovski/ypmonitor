@@ -28,22 +28,31 @@ public class Reporter : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        while (!stoppingToken.IsCancellationRequested)
+        // Два независимых таймера: полный отчёт о состоянии ПК и лёгкий heartbeat доступности.
+        var full = RunLoop(stoppingToken, heartbeat: false, cfg => Math.Max(15, cfg.ReportIntervalSeconds));
+        var availability = RunLoop(stoppingToken, heartbeat: true, cfg => Math.Max(10, cfg.AvailabilityIntervalSeconds));
+        await Task.WhenAll(full, availability);
+    }
+
+    private async Task RunLoop(CancellationToken ct, bool heartbeat, Func<AgentConfig, int> intervalSeconds)
+    {
+        // Heartbeat стартует с небольшим сдвигом, чтобы не совпадать с полным отчётом.
+        if (heartbeat) { try { await Task.Delay(TimeSpan.FromSeconds(5), ct); } catch { } }
+
+        while (!ct.IsCancellationRequested)
         {
             var cfg = _store.Load();
-            try { await ReportOnceAsync(cfg); }
+            try { await ReportOnceAsync(cfg, heartbeat); }
             catch (Exception ex)
             {
-                _log.LogError(ex, "Ошибка отправки отчёта");
-                PersistSnapshot(cfg, accepted: false, message: ex.Message, error: ex.Message, report: null);
+                _log.LogError(ex, "Ошибка отправки отчёта ({Kind})", heartbeat ? "доступность" : "состояние");
+                if (!heartbeat) PersistSnapshot(cfg, false, ex.Message, ex.Message, null);
             }
-
-            var interval = Math.Max(15, cfg.ReportIntervalSeconds);
-            try { await Task.Delay(TimeSpan.FromSeconds(interval), stoppingToken); } catch { }
+            try { await Task.Delay(TimeSpan.FromSeconds(intervalSeconds(cfg)), ct); } catch { }
         }
     }
 
-    public AgentReportDto BuildReport(AgentConfig cfg)
+    public AgentReportDto BuildReport(AgentConfig cfg, bool heartbeat = false)
     {
         var (available, msg) = CheckAvailability(cfg);
         return new AgentReportDto
@@ -51,22 +60,24 @@ public class Reporter : BackgroundService
             MachineName = Environment.MachineName,
             AgentVersion = Version,
             ReportedAt = DateTimeOffset.UtcNow,
+            IsHeartbeat = heartbeat,
             ServerAvailable = available,
             AvailabilityMessage = msg,
             UptimeSeconds = SystemInfo.UptimeSeconds(),
-            Jobs = _runner.BuildJobStatuses(cfg),
-            Disks = SystemInfo.GetDisks()
+            // В heartbeat не собираем задания/диски — это лёгкая проверка доступности.
+            Jobs = heartbeat ? new() : _runner.BuildJobStatuses(cfg),
+            Disks = heartbeat ? new() : SystemInfo.GetDisks()
         };
     }
 
-    private async Task ReportOnceAsync(AgentConfig cfg)
+    private async Task ReportOnceAsync(AgentConfig cfg, bool heartbeat)
     {
-        var report = BuildReport(cfg);
+        var report = BuildReport(cfg, heartbeat);
 
         if (string.IsNullOrWhiteSpace(cfg.ServerUrl) || string.IsNullOrWhiteSpace(cfg.ApiKey))
         {
-            PersistSnapshot(cfg, accepted: false,
-                message: "Не задан адрес сервера или API-ключ", error: null, report: report);
+            if (!heartbeat)
+                PersistSnapshot(cfg, false, "Не задан адрес сервера или API-ключ", null, report);
             return;
         }
 
@@ -78,13 +89,15 @@ public class Reporter : BackgroundService
         ReportAckDto? ack = null;
         try { ack = await resp.Content.ReadFromJsonAsync<ReportAckDto>(); } catch { }
 
-        PersistSnapshot(cfg,
-            accepted: ack?.Accepted ?? false,
-            message: ack?.Message ?? $"HTTP {(int)resp.StatusCode}",
-            error: null,
-            report: report,
-            clientName: ack?.ClientName,
-            serverName: ack?.ServerName);
+        // Снапшот для локального UI обновляем по полному отчёту.
+        if (!heartbeat)
+            PersistSnapshot(cfg,
+                accepted: ack?.Accepted ?? false,
+                message: ack?.Message ?? $"HTTP {(int)resp.StatusCode}",
+                error: null,
+                report: report,
+                clientName: ack?.ClientName,
+                serverName: ack?.ServerName);
     }
 
     private void PersistSnapshot(AgentConfig cfg, bool accepted, string? message, string? error,
