@@ -102,24 +102,32 @@
         {
             <div class="card-y">
                 <h3>Пользователи</h3>
-                <table class="tbl">
-                    <thead><tr><th>Логин</th><th>Роль</th><th></th></tr></thead>
-                    <tbody>
-                    @foreach (var u in Model.Users)
-                    {
-                        <tr>
-                            <td>@u.Username<div class="muted" style="font-size:12px">@u.DisplayName</div></td>
-                            <td>@(u.Role == UserRole.Admin ? "Админ" : "Наблюдатель")</td>
-                            <td>
-                                <form method="post" asp-page-handler="DeleteUser" asp-route-userId="@u.Id"
-                                      onsubmit="return confirm('Удалить пользователя?')">
-                                    <button class="btn btn-sm btn-y-danger">×</button>
-                                </form>
-                            </td>
-                        </tr>
-                    }
-                    </tbody>
-                </table>
+                @foreach (var u in Model.Users)
+                {
+                    <div class="card-y" style="background:var(--card-2);padding:12px">
+                        <div style="display:flex;justify-content:space-between;align-items:center">
+                            <strong>@u.Username</strong>
+                            <form method="post" asp-page-handler="DeleteUser" asp-route-userId="@u.Id"
+                                  onsubmit="return confirm('Удалить пользователя?')">
+                                <button class="btn btn-sm btn-y-danger">Удалить</button>
+                            </form>
+                        </div>
+                        <form method="post" asp-page-handler="EditUser" asp-route-userId="@u.Id" class="mt-2">
+                            <div class="row">
+                                <div class="col-md-6 mb-2"><label>Имя</label>
+                                    <input class="form-control" name="displayName" value="@u.DisplayName" /></div>
+                                <div class="col-md-6 mb-2"><label>Роль</label>
+                                    <select class="form-select" name="role">
+                                        <option value="Viewer" selected="@(u.Role == UserRole.Viewer)">Наблюдатель</option>
+                                        <option value="Admin" selected="@(u.Role == UserRole.Admin)">Администратор</option>
+                                    </select></div>
+                            </div>
+                            <div class="mb-2"><label>Новый пароль (если меняете)</label>
+                                <input class="form-control" type="password" name="newPassword" placeholder="оставьте пустым" /></div>
+                            <button class="btn btn-sm btn-primary" type="submit">Сохранить</button>
+                        </form>
+                    </div>
+                }
                 <hr style="border-color:var(--border)" />
                 <h4 style="font-size:15px">Новый пользователь</h4>
                 <form method="post" asp-page-handler="AddUser">

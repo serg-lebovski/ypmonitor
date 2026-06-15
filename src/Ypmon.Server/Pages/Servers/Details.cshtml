@@ -1,0 +1,164 @@
+@page
+@model Ypmon.Server.Pages.Servers.DetailsModel
+@using Ypmon.Server.Services
+@{
+    ViewData["Title"] = Model.Server?.Name ?? "Сервер";
+    var isAdmin = User.IsInRole("Admin");
+    var s = Model.Server!;
+    var offline = s.IsOffline(Model.OfflineThreshold);
+    var baseUrl = $"{Request.Scheme}://{Request.Host}";
+    var (lastBackup, sizeBytes) = UiHelpers.BackupSummary(s.LastReportJson);
+}
+
+<div style="display:flex;justify-content:space-between;align-items:center">
+    <h1 class="page-title">🖥️ @s.Name</h1>
+    <div>
+        <a class="btn btn-sm btn-primary" href="/Clients/Details?id=@s.ClientId">← к клиенту @s.Client?.Name</a>
+        <a class="btn btn-sm btn-primary" href="/">← дашборд</a>
+    </div>
+</div>
+
+@if (Model.Message is not null)
+{
+    <div class="alert-y alert-ok">@Model.Message</div>
+}
+
+<div class="dash-grid">
+    <div>
+        <div class="card-y">
+            <div class="mb-2">
+                @if (offline)
+                {
+                    <span class="badge-status st-offline">Офлайн</span>
+                }
+                else
+                {
+                    <span class="badge-status @UiHelpers.OutcomeCss(s.LastOutcome)">@UiHelpers.OutcomeText(s.LastOutcome)</span>
+                }
+            </div>
+            <div class="kv"><span class="k">Клиент</span><span class="v">@s.Client?.Name</span></div>
+            <div class="kv"><span class="k">Физ. адрес</span><span class="v">@(s.PhysicalAddress ?? "—")</span></div>
+            <div class="kv"><span class="k">IP / адрес</span><span class="v">@(s.IpAddress ?? "—")</span></div>
+            <div class="kv"><span class="k">Машина агента</span><span class="v">@(s.LastMachineName ?? "—")</span></div>
+            <div class="kv"><span class="k">Версия агента</span><span class="v">@(s.LastAgentVersion ?? "—")</span></div>
+            <div class="kv"><span class="k">Сервер БД</span><span class="v">@(s.LastServerAvailable ? "доступен" : "недоступен")</span></div>
+            <div class="kv"><span class="k">Последний отчёт</span><span class="v">@UiHelpers.DateTimeAbs(s.LastSeenAt) <span class="muted">(@UiHelpers.Ago(s.LastSeenAt))</span></span></div>
+            <div class="kv"><span class="k">Последний бэкап</span><span class="v">@UiHelpers.DateTimeAbs(lastBackup)</span></div>
+            <div class="kv"><span class="k">Объём копий</span><span class="v">@UiHelpers.Bytes(sizeBytes) <span class="muted">(копий: @s.LastBackupCount)</span></span></div>
+        </div>
+
+        @if (Model.Report is not null && Model.Report.Jobs.Any())
+        {
+            <div class="card-y">
+                <h3>Задания</h3>
+                <table class="tbl">
+                    <thead><tr><th>Задание</th><th>Тип</th><th>Статус</th><th>Копий</th><th>Объём</th><th>Посл. копия</th></tr></thead>
+                    <tbody>
+                    @foreach (var j in Model.Report.Jobs)
+                    {
+                        <tr>
+                            <td><span class="dot @UiHelpers.DotCss(j.Outcome)"></span>@j.Name<div class="muted" style="font-size:12px">@j.Message</div></td>
+                            <td>@UiHelpers.JobTypeText(j.Type)</td>
+                            <td><span class="badge-status @UiHelpers.OutcomeCss(j.Outcome)">@UiHelpers.OutcomeText(j.Outcome)</span></td>
+                            <td>@j.BackupCount</td>
+                            <td>@UiHelpers.Bytes(j.TotalSizeBytes)</td>
+                            <td>@UiHelpers.DateTimeAbs(j.LastBackupAt)</td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+        }
+
+        @if (Model.Report is not null && Model.Report.Disks.Any())
+        {
+            <div class="card-y">
+                <h3>Диски</h3>
+                @foreach (var d in Model.Report.Disks)
+                {
+                    <div class="kv"><span class="k">@d.Name</span><span class="v">@UiHelpers.Bytes(d.FreeBytes) своб. из @UiHelpers.Bytes(d.TotalBytes) <span class="muted">(@d.UsedPercent%)</span></span></div>
+                }
+            </div>
+        }
+
+        <div class="card-y">
+            <h3>История отчётов</h3>
+            @if (!Model.History.Any())
+            {
+                <div class="muted">Пока нет отчётов.</div>
+            }
+            else
+            {
+                <table class="tbl">
+                    <thead><tr><th>Время</th><th>Статус</th><th>БД</th><th>Копий</th></tr></thead>
+                    <tbody>
+                    @foreach (var r in Model.History)
+                    {
+                        <tr>
+                            <td>@UiHelpers.DateTimeAbs(r.ReceivedAt)</td>
+                            <td><span class="badge-status @UiHelpers.OutcomeCss(r.Outcome)">@UiHelpers.OutcomeText(r.Outcome)</span></td>
+                            <td>@(r.ServerAvailable ? "ок" : "нет")</td>
+                            <td>@r.BackupCount</td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            }
+        </div>
+    </div>
+
+    <div class="panel">
+        <div class="card-y">
+            <h3>Данные подключения агента</h3>
+            <div class="conn-box">
+                <div class="muted" style="font-size:12px;margin-bottom:4px">Адрес сервера</div>
+                <div class="copy-row">
+                    <input class="form-control mono" readonly value="@baseUrl" id="url" />
+                    <button type="button" class="btn btn-sm btn-primary" onclick="ypCopy('url', this)">Копировать</button>
+                </div>
+                <div class="muted" style="font-size:12px;margin:8px 0 4px">API-ключ</div>
+                <div class="copy-row">
+                    <input class="form-control mono" readonly value="@s.ApiKey" id="key" />
+                    <button type="button" class="btn btn-sm btn-primary" onclick="ypCopy('key', this)">Копировать</button>
+                </div>
+                @if (isAdmin)
+                {
+                    <form method="post" asp-page-handler="RegenKey" asp-route-id="@s.Id" class="mt-2"
+                          onsubmit="return confirm('Перевыпустить ключ?')">
+                        <button class="btn btn-sm btn-y-danger">Перевыпустить ключ</button>
+                    </form>
+                }
+            </div>
+        </div>
+
+        @if (isAdmin)
+        {
+            <div class="card-y">
+                <h3>Редактировать сервер</h3>
+                <form method="post" asp-page-handler="Save" asp-route-id="@s.Id">
+                    <div class="mb-2"><label>Название</label><input class="form-control" asp-for="Name" /></div>
+                    <div class="mb-2"><label>Физический адрес</label><input class="form-control" asp-for="PhysicalAddress" /></div>
+                    <div class="mb-2"><label>Сетевой адрес / IP</label><input class="form-control" asp-for="IpAddress" /></div>
+                    <div class="mb-3"><label>Описание</label><textarea class="form-control" asp-for="Description" rows="2"></textarea></div>
+                    <button class="btn btn-primary w-100" type="submit">Сохранить</button>
+                </form>
+                <form method="post" asp-page-handler="Delete" asp-route-id="@s.Id" class="mt-2"
+                      onsubmit="return confirm('Удалить сервер?')">
+                    <button class="btn btn-y-danger w-100" type="submit">Удалить сервер</button>
+                </form>
+            </div>
+        }
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        function ypCopy(id, btn) {
+            var el = document.getElementById(id);
+            el.select(); el.setSelectionRange(0, 99999);
+            var done = function () { var t = btn.textContent; btn.textContent = 'Скопировано'; setTimeout(function () { btn.textContent = t; }, 1500); };
+            if (navigator.clipboard) { navigator.clipboard.writeText(el.value).then(done, function () { document.execCommand('copy'); done(); }); }
+            else { document.execCommand('copy'); done(); }
+        }
+    </script>
+}

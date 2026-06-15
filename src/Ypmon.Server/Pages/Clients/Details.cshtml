@@ -73,7 +73,7 @@
                     </div>
 
                     <div style="display:flex;gap:8px;margin-top:12px">
-                        <a class="btn btn-sm btn-primary" href="/?server=@s.Id">Открыть в дашборде</a>
+                        <a class="btn btn-sm btn-primary" href="/Servers/Details?id=@s.Id">Открыть сервер</a>
                         @if (isAdmin)
                         {
                             <form method="post" asp-page-handler="DeleteServer" asp-route-id="@Model.Id" asp-route-serverId="@s.Id"

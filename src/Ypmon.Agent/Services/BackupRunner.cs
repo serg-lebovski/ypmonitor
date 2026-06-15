@@ -114,9 +114,13 @@ public class BackupRunner : BackgroundService
             var file = Path.Combine(job.BackupDir,
                 $"{Sanitize(job.Database)}_{DateTime.Now:yyyyMMdd_HHmmss}.{ext}");
 
+            var pgDump = PgDumpResolver.Resolve(cfg.PgDumpPath)
+                ?? throw new InvalidOperationException(
+                    "pg_dump не найден. Установите PostgreSQL или укажите полный путь к pg_dump.exe в настройках агента.");
+
             var psi = new ProcessStartInfo
             {
-                FileName = string.IsNullOrWhiteSpace(cfg.PgDumpPath) ? "pg_dump" : cfg.PgDumpPath,
+                FileName = pgDump,
                 RedirectStandardError = true,
                 RedirectStandardOutput = false,
                 UseShellExecute = false,

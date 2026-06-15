@@ -12,8 +12,8 @@ public class AgentConfig
     /// <summary>Как часто отправлять отчёты на сервер, секунд.</summary>
     public int ReportIntervalSeconds { get; set; } = 60;
 
-    /// <summary>Путь к pg_dump (если не в PATH).</summary>
-    public string PgDumpPath { get; set; } = "pg_dump";
+    /// <summary>Путь к pg_dump. Пусто = автопоиск (PATH и стандартные папки PostgreSQL).</summary>
+    public string PgDumpPath { get; set; } = "";
 
     /// <summary>Имя службы Windows (для установки и самообновления).</summary>
     public string ServiceName { get; set; } = "YpmonAgent";

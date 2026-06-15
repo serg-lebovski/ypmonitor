@@ -125,6 +125,34 @@ public class SettingsModel : PageModel
         return Page();
     }
 
+    public async Task<IActionResult> OnPostEditUserAsync(int userId, string displayName, string role, string? newPassword)
+    {
+        if (!IsAdmin) return Forbid();
+        var u = await _db.Users.FindAsync(userId);
+        if (u is null) return RedirectToPage();
+
+        if (!string.IsNullOrWhiteSpace(displayName)) u.DisplayName = displayName.Trim();
+        // Нельзя снять с себя роль администратора, если других админов нет
+        var newRole = role == "Admin" ? UserRole.Admin : UserRole.Viewer;
+        if (u.Id == CurrentUserId && newRole != UserRole.Admin &&
+            !await _db.Users.AnyAsync(x => x.Id != u.Id && x.Role == UserRole.Admin))
+        {
+            await Load(); IsError = true; Message = "Нельзя снять роль администратора с единственного админа"; return Page();
+        }
+        u.Role = newRole;
+
+        if (!string.IsNullOrWhiteSpace(newPassword))
+        {
+            if (newPassword.Length < 6) { await Load(); IsError = true; Message = "Пароль не короче 6 символов"; return Page(); }
+            var (h, salt) = PasswordHasher.Hash(newPassword);
+            u.PasswordHash = h; u.PasswordSalt = salt;
+        }
+        await _db.SaveChangesAsync();
+        await Load();
+        Message = "Пользователь обновлён";
+        return Page();
+    }
+
     public async Task<IActionResult> OnPostDeleteUserAsync(int userId)
     {
         if (!IsAdmin) return Forbid();

@@ -98,7 +98,15 @@ public sealed class MainForm : Form
         _serverUrl = AddText(t, "Адрес сервера YPMon (http://10.0.0.1:8080)");
         _apiKey = AddText(t, "API-ключ сервера");
         _reportInterval = AddNum(t, "Интервал отчётов, сек", 15, 86400);
-        _pgDumpPath = AddText(t, "Путь к pg_dump (если не в PATH)");
+        _pgDumpPath = AddText(t, "Путь к pg_dump (пусто = автопоиск)");
+        var btnPgDump = new Button { Text = "🔎 Найти / проверить pg_dump", AutoSize = true, Margin = new Padding(3, 4, 3, 4) };
+        btnPgDump.Click += (_, _) =>
+        {
+            var (ok, msg, path) = PgDumpResolver.Check(_pgDumpPath.Text.Trim());
+            if (ok && path is not null) _pgDumpPath.Text = path;
+            Info(msg);
+        };
+        AddFull(t, btnPgDump);
 
         _hostState = new Label { AutoSize = true, ForeColor = _workerRunningHere ? Color.Green : Color.DimGray, Margin = new Padding(3, 8, 3, 3) };
         _hostState.Text = _workerRunningHere
