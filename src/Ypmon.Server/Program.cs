@@ -172,10 +172,12 @@ app.MapPost("/api/report", async (HttpContext ctx, ReportIngestService ingest) =
 app.MapGet("/api/ping", () => Results.Ok(new { ok = true, time = DateTimeOffset.UtcNow }));
 
 // --- Обновления агента ---
-// Администратор кладёт новую версию Ypmon.Agent.exe в папку agent-updates рядом с сервером.
+// Администратор кладёт установщик YpmonAgent-Setup.exe в папку agent-updates рядом с сервером,
+// а также version.txt с номером версии.
 var updatesDir = Path.Combine(contentRoot, "agent-updates");
 Directory.CreateDirectory(updatesDir);
-var agentExePath = Path.Combine(updatesDir, "Ypmon.Agent.exe");
+var agentInstaller = Path.Combine(updatesDir, "YpmonAgent-Setup.exe");
+var agentVersionFile = Path.Combine(updatesDir, "version.txt");
 
 // Проверка API-ключа агента по базе.
 async Task<bool> ValidKey(HttpContext ctx, AppDbContext db)
@@ -184,25 +186,22 @@ async Task<bool> ValidKey(HttpContext ctx, AppDbContext db)
     return !string.IsNullOrWhiteSpace(key) && await db.Servers.AnyAsync(s => s.ApiKey == key);
 }
 
-var agentVersionFile = Path.Combine(updatesDir, "version.txt");
-
 app.MapGet("/api/agent/version", async (HttpContext ctx, AppDbContext db) =>
 {
     if (!await ValidKey(ctx, db)) return Results.Unauthorized();
-    if (!System.IO.File.Exists(agentExePath))
+    if (!System.IO.File.Exists(agentInstaller))
         return Results.Json(new { available = false, version = (string?)null });
-    // Версию берём из version.txt (надёжнее, чем FileVersion single-file exe); иначе из ресурса exe.
     string? ver = System.IO.File.Exists(agentVersionFile)
         ? (await System.IO.File.ReadAllTextAsync(agentVersionFile)).Trim()
-        : System.Diagnostics.FileVersionInfo.GetVersionInfo(agentExePath).FileVersion;
+        : null;
     return Results.Json(new { available = true, version = ver });
 });
 
 app.MapGet("/api/agent/download", async (HttpContext ctx, AppDbContext db) =>
 {
     if (!await ValidKey(ctx, db)) return Results.Unauthorized();
-    if (!System.IO.File.Exists(agentExePath)) return Results.NotFound();
-    return Results.File(agentExePath, "application/octet-stream", "Ypmon.Agent.exe");
+    if (!System.IO.File.Exists(agentInstaller)) return Results.NotFound();
+    return Results.File(agentInstaller, "application/octet-stream", "YpmonAgent-Setup.exe");
 });
 
 app.Run();

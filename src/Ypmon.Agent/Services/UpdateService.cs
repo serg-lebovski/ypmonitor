@@ -50,9 +50,10 @@ public class UpdateService : BackgroundService
             return;
         }
 
-        var update = await UpdateInstaller.DownloadAsync(cfg);
-        _log.LogInformation("Обновление загружено, выполняется установка и перезапуск службы.");
-        UpdateInstaller.ApplyAndExit(cfg.ServiceName, isService: true, update);
+        var installer = await UpdateInstaller.DownloadAsync(cfg);
+        _log.LogInformation("Установщик загружен, запуск тихой установки и перезапуск службы.");
+        UpdateInstaller.RunInstaller(installer, silent: true);
+        // Останавливаемся, чтобы установщик мог заменить файлы; службу он запустит заново сам.
         _life.StopApplication();
     }
 }

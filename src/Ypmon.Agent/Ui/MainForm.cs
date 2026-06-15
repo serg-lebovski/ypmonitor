@@ -786,14 +786,17 @@ public sealed class MainForm : Form
                 return;
             }
             if (MessageBox.Show(this,
-                    $"Доступна новая версия {info.Version} (текущая {AgentVersion}). Установить сейчас?",
+                    $"Доступна новая версия {info.Version} (текущая {AgentVersion}). Скачать и установить сейчас?",
                     "Обновление", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
                 return;
 
-            var upd = await UpdateInstaller.DownloadAsync(_cfg);
-            var (exists, _, _) = ServiceManager.Query(_svcName.Text.Trim());
-            UpdateInstaller.ApplyAndExit(_svcName.Text.Trim(), isService: exists, upd);
-            Info("Обновление запущено. Агент перезапустится автоматически.");
+            Cursor = Cursors.WaitCursor;
+            string installer;
+            try { installer = await UpdateInstaller.DownloadAsync(_cfg); }
+            finally { Cursor = Cursors.Default; }
+
+            UpdateInstaller.RunInstaller(installer, silent: false);
+            Info("Установщик обновления запущен. Подтвердите установку (UAC) — агент обновится и перезапустится.\nЭто окно сейчас закроется.");
             Application.Exit();
         }
         catch (Exception ex) { Info("Не удалось проверить/установить обновление: " + ex.Message); }

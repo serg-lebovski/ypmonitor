@@ -10,7 +10,7 @@
     <OutputType>WinExe</OutputType>
     <UseWindowsForms>true</UseWindowsForms>
     <!-- Версия агента. Повышайте при выпуске обновления, кладите новый exe в agent-updates на сервере. -->
-    <Version>1.1.0</Version>
+    <Version>1.1.1</Version>
   </PropertyGroup>
 
   <ItemGroup>
