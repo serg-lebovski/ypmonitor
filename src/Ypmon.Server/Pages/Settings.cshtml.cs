@@ -12,9 +12,10 @@ public class SettingsModel : PageModel
     private readonly AppDbContext _db;
     private readonly IConfiguration _cfg;
     private readonly AlertService _alerts;
-    public SettingsModel(AppDbContext db, IConfiguration cfg, AlertService alerts)
+    private readonly IWebHostEnvironment _env;
+    public SettingsModel(AppDbContext db, IConfiguration cfg, AlertService alerts, IWebHostEnvironment env)
     {
-        _db = db; _cfg = cfg; _alerts = alerts;
+        _db = db; _cfg = cfg; _alerts = alerts; _env = env;
     }
 
     public ServerSettings Settings { get; set; } = new();
@@ -25,6 +26,12 @@ public class SettingsModel : PageModel
     // Информация о сервере (из конфигурации, меняется в appsettings.json)
     public int HttpPort { get; set; }
     public string DbProvider { get; set; } = "sqlite";
+
+    // Установщик агента (лежит в папке agent-updates рядом с сервером)
+    public bool AgentInstallerExists { get; set; }
+    public string? AgentInstallerVersion { get; set; }
+    public long AgentInstallerSize { get; set; }
+    public DateTime? AgentInstallerDate { get; set; }
 
     private int CurrentUserId => int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "0");
     private bool IsAdmin => User.IsInRole("Admin");
@@ -37,6 +44,19 @@ public class SettingsModel : PageModel
         Users = await _db.Users.OrderBy(u => u.Username).ToListAsync();
         HttpPort = _cfg.GetValue<int?>("Server:HttpPort") ?? 8080;
         DbProvider = _cfg["Database:Provider"] ?? "sqlite";
+
+        var updatesDir = Path.Combine(_env.ContentRootPath, "agent-updates");
+        var installer = Path.Combine(updatesDir, "YpmonAgent-Setup.exe");
+        var verFile = Path.Combine(updatesDir, "version.txt");
+        if (System.IO.File.Exists(installer))
+        {
+            AgentInstallerExists = true;
+            var fi = new FileInfo(installer);
+            AgentInstallerSize = fi.Length;
+            AgentInstallerDate = fi.LastWriteTime;
+            if (System.IO.File.Exists(verFile))
+                AgentInstallerVersion = (await System.IO.File.ReadAllTextAsync(verFile)).Trim();
+        }
     }
 
     public async Task<IActionResult> OnPostSaveSettingsAsync(ServerSettings input)

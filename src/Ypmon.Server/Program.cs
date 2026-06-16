@@ -204,4 +204,11 @@ app.MapGet("/api/agent/download", async (HttpContext ctx, AppDbContext db) =>
     return Results.File(agentInstaller, "application/octet-stream", "YpmonAgent-Setup.exe");
 });
 
+// Скачивание установщика из веб-интерфейса (для авторизованного администратора, без API-ключа).
+app.MapGet("/agent-installer", (HttpContext ctx) =>
+{
+    if (!System.IO.File.Exists(agentInstaller)) return Results.NotFound();
+    return Results.File(agentInstaller, "application/octet-stream", "YpmonAgent-Setup.exe");
+}).RequireAuthorization();
+
 app.Run();

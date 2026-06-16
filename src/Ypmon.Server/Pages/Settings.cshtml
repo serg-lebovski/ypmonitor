@@ -24,6 +24,22 @@
         </div>
 
         <div class="card-y">
+            <h3>Установщик агента</h3>
+            @if (Model.AgentInstallerExists)
+            {
+                <div class="muted mb-2" style="font-size:13px">Скачайте и запустите установщик на компьютере, где нужен агент. Он ставит агента в <span class="code mono">C:\Program Files\ypmonitor</span> и регистрирует службу Windows.</div>
+                <div class="kv"><span class="k">Версия</span><span class="v mono">@(Model.AgentInstallerVersion ?? "—")</span></div>
+                <div class="kv"><span class="k">Размер</span><span class="v mono">@($"{Model.AgentInstallerSize / 1024.0 / 1024.0:0.0} МБ")</span></div>
+                <div class="kv"><span class="k">Обновлён</span><span class="v mono">@(Model.AgentInstallerDate?.ToString("yyyy-MM-dd HH:mm") ?? "—")</span></div>
+                <a class="btn btn-primary mt-2" href="/agent-installer" download>Скачать установщик агента</a>
+            }
+            else
+            {
+                <div class="alert-y alert-err">Установщик не загружен на сервер. Поместите <span class="code mono">YpmonAgent-Setup.exe</span> и <span class="code mono">version.txt</span> в папку <span class="code mono">agent-updates</span> рядом с сервером.</div>
+            }
+        </div>
+
+        <div class="card-y">
             <h3>Оповещения и обслуживание</h3>
             <form method="post" asp-page-handler="SaveSettings">
                 <div class="row">
