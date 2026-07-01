@@ -69,6 +69,40 @@ public class ReportIngestService
         server.LastAgentVersion = report.AgentVersion;
         server.LastReportJson = JsonSerializer.Serialize(report);
 
+        // Ошибки журнала событий Windows — сохраняем новые (без дублей).
+        if (report.EventLogErrors is { Count: > 0 })
+        {
+            var incoming = report.EventLogErrors
+                .Where(e => e.TimeCreated != default)
+                .OrderBy(e => e.TimeCreated)
+                .ToList();
+            var minT = incoming.First().TimeCreated;
+            var maxT = incoming.Last().TimeCreated;
+
+            var existing = await _db.Events
+                .Where(e => e.ServerId == server.Id && e.TimeCreated >= minT && e.TimeCreated <= maxT)
+                .Select(e => new { e.TimeCreated, e.EventId, e.Source })
+                .ToListAsync();
+            var seen = new HashSet<string>(existing.Select(x => $"{x.TimeCreated:O}|{x.EventId}|{x.Source}"));
+
+            foreach (var e in incoming)
+            {
+                var key = $"{e.TimeCreated:O}|{e.EventId}|{e.Source}";
+                if (!seen.Add(key)) continue;
+                _db.Events.Add(new AgentEvent
+                {
+                    ServerId = server.Id,
+                    ReceivedAt = DateTimeOffset.UtcNow,
+                    TimeCreated = e.TimeCreated,
+                    LogName = e.LogName ?? "",
+                    Source = e.Source ?? "",
+                    Level = e.Level ?? "",
+                    EventId = e.EventId,
+                    Message = e.Message ?? ""
+                });
+            }
+        }
+
         await _db.SaveChangesAsync();
 
         // Оповещение при переходе в проблемное состояние

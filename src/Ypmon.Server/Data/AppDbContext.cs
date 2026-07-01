@@ -10,6 +10,7 @@ public class AppDbContext : DbContext
     public DbSet<Client> Clients => Set<Client>();
     public DbSet<MonitoredServer> Servers => Set<MonitoredServer>();
     public DbSet<Report> Reports => Set<Report>();
+    public DbSet<AgentEvent> Events => Set<AgentEvent>();
     public DbSet<ServerSettings> Settings => Set<ServerSettings>();
 
     protected override void OnModelCreating(ModelBuilder b)
@@ -29,5 +30,12 @@ public class AppDbContext : DbContext
             .HasForeignKey(r => r.ServerId)
             .OnDelete(DeleteBehavior.Cascade);
         b.Entity<Report>().HasIndex(r => new { r.ServerId, r.ReceivedAt });
+
+        b.Entity<AgentEvent>()
+            .HasOne(e => e.Server)
+            .WithMany()
+            .HasForeignKey(e => e.ServerId)
+            .OnDelete(DeleteBehavior.Cascade);
+        b.Entity<AgentEvent>().HasIndex(e => new { e.ServerId, e.TimeCreated });
     }
 }

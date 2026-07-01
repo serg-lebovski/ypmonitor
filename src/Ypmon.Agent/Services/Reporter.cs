@@ -15,15 +15,16 @@ public class Reporter : BackgroundService
 {
     private readonly ConfigStore _store;
     private readonly BackupRunner _runner;
+    private readonly EventLogReaderService _events;
     private readonly ILogger<Reporter> _log;
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(20) };
 
     public static readonly string Version =
         Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "1.0.0";
 
-    public Reporter(ConfigStore store, BackupRunner runner, ILogger<Reporter> log)
+    public Reporter(ConfigStore store, BackupRunner runner, EventLogReaderService events, ILogger<Reporter> log)
     {
-        _store = store; _runner = runner; _log = log;
+        _store = store; _runner = runner; _events = events; _log = log;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -79,6 +80,14 @@ public class Reporter : BackgroundService
             if (!heartbeat)
                 PersistSnapshot(cfg, false, "Не задан адрес сервера или API-ключ", null, report);
             return;
+        }
+
+        // Новые ошибки журнала событий Windows собираем только для полного отчёта и только перед отправкой
+        // (чтобы отметка прочитанного не сдвигалась без реальной передачи данных).
+        if (!heartbeat && OperatingSystem.IsWindows())
+        {
+            try { report.EventLogErrors = _events.Collect(cfg); }
+            catch (Exception ex) { _log.LogWarning(ex, "Не удалось прочитать журнал событий"); }
         }
 
         var url = cfg.ServerUrl.TrimEnd('/') + "/api/report";

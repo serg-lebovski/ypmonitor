@@ -13,6 +13,7 @@ public class ConfigStore
     private readonly string _statePath;
     private readonly string _snapshotPath;
     private readonly string _runNowFlagPath;
+    private readonly string _eventStatePath;
     private readonly object _lock = new();
     private static readonly JsonSerializerOptions JsonOpts =
         new() { WriteIndented = true, PropertyNameCaseInsensitive = true };
@@ -24,6 +25,7 @@ public class ConfigStore
         _statePath = Path.Combine(dir, "state.json");
         _snapshotPath = Path.Combine(dir, "snapshot.json");
         _runNowFlagPath = Path.Combine(dir, "runnow.flag");
+        _eventStatePath = Path.Combine(dir, "eventlog-state.json");
     }
 
     public string ConfigPath => _configPath;
@@ -83,6 +85,25 @@ public class ConfigStore
         lock (_lock)
         {
             try { File.WriteAllText(_snapshotPath, JsonSerializer.Serialize(s, JsonOpts)); } catch { }
+        }
+    }
+
+    // --- Отметка прочитанного журнала событий (RecordId по каждому журналу) ---
+    public Dictionary<string, long> LoadEventLogState()
+    {
+        lock (_lock)
+        {
+            if (!File.Exists(_eventStatePath)) return new();
+            try { return JsonSerializer.Deserialize<Dictionary<string, long>>(File.ReadAllText(_eventStatePath), JsonOpts) ?? new(); }
+            catch { return new(); }
+        }
+    }
+
+    public void SaveEventLogState(Dictionary<string, long> state)
+    {
+        lock (_lock)
+        {
+            try { File.WriteAllText(_eventStatePath, JsonSerializer.Serialize(state, JsonOpts)); } catch { }
         }
     }
 

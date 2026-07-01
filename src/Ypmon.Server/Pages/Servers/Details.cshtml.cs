@@ -17,6 +17,7 @@ public class DetailsModel : PageModel
     public MonitoredServer? Server { get; set; }
     public AgentReportDto? Report { get; set; }
     public List<Report> History { get; set; } = new();
+    public List<AgentEvent> Events { get; set; } = new();
     public int OfflineThreshold { get; set; } = 300;
 
     // Поля редактирования
@@ -48,6 +49,8 @@ public class DetailsModel : PageModel
         }
         History = await _db.Reports.Where(r => r.ServerId == Id)
             .OrderByDescending(r => r.ReceivedAt).Take(15).ToListAsync();
+        Events = await _db.Events.Where(e => e.ServerId == Id)
+            .OrderByDescending(e => e.TimeCreated).Take(50).ToListAsync();
     }
 
     public async Task<IActionResult> OnPostSaveAsync()

@@ -65,6 +65,37 @@ Filename: "sc.exe"; Parameters: "delete YpmonAgent"; Flags: runhidden; RunOnceId
 [Code]
 const SVC = 'YpmonAgent';
 
+var
+  ServerPage: TInputQueryWizardPage;   // адрес сервера + API-ключ
+  SvcPage: TInputQueryWizardPage;      // учётная запись службы
+
+// Мастер: страницы ввода параметров подключения и учётной записи службы.
+procedure InitializeWizard();
+begin
+  ServerPage := CreateInputQueryPage(wpSelectTasks,
+    'Подключение к серверу YPMonitor',
+    'Куда агент будет отправлять отчёты',
+    'Укажите адрес сервера и API-ключ (их можно взять в веб-интерфейсе сервера на странице сервера клиента). Поля можно оставить пустыми и заполнить позже в окне агента.');
+  ServerPage.Add('Адрес сервера (например http://10.10.20.25:8081):', False);
+  ServerPage.Add('API-ключ сервера:', False);
+
+  SvcPage := CreateInputQueryPage(ServerPage.ID,
+    'Учётная запись службы Windows',
+    'Под какой учётной записью запускать службу агента',
+    'Оставьте поля пустыми для запуска от системной учётной записи (LocalSystem). ' +
+    'Либо укажите доменную/локальную учётную запись в формате DOMAIN\User (у неё должно быть право «Вход в качестве службы»).');
+  SvcPage.Add('Учётная запись (DOMAIN\User, пусто = LocalSystem):', False);
+  SvcPage.Add('Пароль:', True);
+end;
+
+// Страницу учётной записи показываем только если выбрана установка службы.
+function ShouldSkipPage(PageID: Integer): Boolean;
+begin
+  Result := False;
+  if PageID = SvcPage.ID then
+    Result := not WizardIsTaskSelected('installservice');
+end;
+
 function ServiceExists(): Boolean;
 var rc: Integer;
 begin
@@ -81,20 +112,46 @@ begin
   Result := '';
 end;
 
+// Записываем адрес сервера/ключ в config.json через сам агент (--provision).
+procedure ProvisionConfig();
+var rc: Integer; exe, args, srv, key: String;
+begin
+  srv := Trim(ServerPage.Values[0]);
+  key := Trim(ServerPage.Values[1]);
+  if (srv = '') and (key = '') then exit;
+  exe := ExpandConstant('{app}\Ypmon.Agent.exe');
+  args := '--provision';
+  if srv <> '' then args := args + ' --server "' + srv + '"';
+  if key <> '' then args := args + ' --apikey "' + key + '"';
+  args := args + ' --service "' + SVC + '"';
+  Exec(exe, args, '', SW_HIDE, ewWaitUntilTerminated, rc);
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
-var rc: Integer; exe: String;
+var rc: Integer; exe, acct, svcUser, svcPass: String;
 begin
   if CurStep = ssPostInstall then
   begin
+    // 1) Записываем настройки подключения в config.json
+    ProvisionConfig();
+
+    // 2) Устанавливаем/обновляем службу
     if WizardIsTaskSelected('installservice') then
     begin
       exe := ExpandConstant('{app}\Ypmon.Agent.exe');
+      svcUser := Trim(SvcPage.Values[0]);
+      svcPass := SvcPage.Values[1];
+      if svcUser <> '' then
+        acct := ' obj= "' + svcUser + '" password= "' + svcPass + '"'
+      else
+        acct := ' obj= "LocalSystem"';
+
       if ServiceExists() then
-        // служба уже есть (возможно, старая папка) — переключаем путь на новый exe
-        Exec('sc.exe', 'config "' + SVC + '" binPath= "' + exe + '" start= auto',
+        // служба уже есть (возможно, старая папка) — переключаем путь и учётную запись
+        Exec('sc.exe', 'config "' + SVC + '" binPath= "' + exe + '" start= auto' + acct,
              '', SW_HIDE, ewWaitUntilTerminated, rc)
       else
-        Exec('sc.exe', 'create "' + SVC + '" binPath= "' + exe + '" start= auto DisplayName= "YPMon Agent"',
+        Exec('sc.exe', 'create "' + SVC + '" binPath= "' + exe + '" start= auto DisplayName= "YPMon Agent"' + acct,
              '', SW_HIDE, ewWaitUntilTerminated, rc);
       Exec('sc.exe', 'failure "' + SVC + '" reset= 60 actions= restart/5000/restart/5000/restart/5000',
            '', SW_HIDE, ewWaitUntilTerminated, rc);

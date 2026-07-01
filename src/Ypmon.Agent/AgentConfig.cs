@@ -38,6 +38,33 @@ public class AgentConfig
 
     /// <summary>Настройки просмотра логов архивации MSSQL.</summary>
     public MssqlLogConfig Mssql { get; set; } = new();
+
+    /// <summary>Чтение журнала событий Windows и передача ошибок серверу.</summary>
+    public EventLogConfig EventLog { get; set; } = new();
+}
+
+/// <summary>
+/// Чтение журнала событий Windows: агент собирает новые ошибки/предупреждения и включает их в отчёт.
+/// Только чтение, никаких изменений в системе.
+/// </summary>
+public class EventLogConfig
+{
+    public bool Enabled { get; set; } = true;
+
+    /// <summary>Какие журналы читать (System, Application, Security и т.д.).</summary>
+    public List<string> Logs { get; set; } = new() { "System", "Application" };
+
+    /// <summary>Передавать не только ошибки, но и предупреждения.</summary>
+    public bool IncludeWarnings { get; set; } = false;
+
+    /// <summary>Максимум записей за один отчёт (на каждый журнал).</summary>
+    public int MaxEntriesPerReport { get; set; } = 50;
+
+    /// <summary>При первом запуске (нет отметки) — насколько назад смотреть, часов.</summary>
+    public int LookbackHoursOnFirstRun { get; set; } = 24;
+
+    /// <summary>Источники, которые не передавать (шумные провайдеры).</summary>
+    public List<string> ExcludeSources { get; set; } = new();
 }
 
 /// <summary>

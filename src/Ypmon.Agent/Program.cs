@@ -19,6 +19,13 @@ internal static class Program
     [STAThread]
     private static void Main(string[] args)
     {
+        // Режим провижининга из установщика: записать адрес сервера/ключ/имя службы в config.json и выйти.
+        if (args.Contains("--provision"))
+        {
+            ProvisionFromArgs(args);
+            return;
+        }
+
         var isService = WindowsServiceHelpers.IsWindowsService();
         var forceConsole = args.Contains("--console");
         IsServiceMode = isService;
@@ -53,6 +60,39 @@ internal static class Program
         }
     }
 
+    /// <summary>
+    /// Записывает в config.json параметры, переданные установщиком (--server, --apikey, --service).
+    /// Существующий конфиг (задания и пр.) сохраняется — меняются только указанные поля.
+    /// </summary>
+    private static void ProvisionFromArgs(string[] args)
+    {
+        try
+        {
+            var store = new ConfigStore();
+            var cfg = store.Load();
+            var server = GetArg(args, "--server");
+            var apiKey = GetArg(args, "--apikey");
+            var service = GetArg(args, "--service");
+            if (!string.IsNullOrWhiteSpace(server)) cfg.ServerUrl = server!.Trim();
+            if (!string.IsNullOrWhiteSpace(apiKey)) cfg.ApiKey = apiKey!.Trim();
+            if (!string.IsNullOrWhiteSpace(service)) cfg.ServiceName = service!.Trim();
+            store.Save(cfg);
+        }
+        catch
+        {
+            // Молча: установщик всё равно продолжит, настройки можно ввести в окне агента.
+        }
+    }
+
+    /// <summary>Значение аргумента "--name value" (без учёта регистра имени).</summary>
+    private static string? GetArg(string[] args, string name)
+    {
+        for (var i = 0; i < args.Length - 1; i++)
+            if (string.Equals(args[i], name, StringComparison.OrdinalIgnoreCase))
+                return args[i + 1];
+        return null;
+    }
+
     private static Mutex? TryAcquire(out bool acquired)
     {
         try
@@ -79,6 +119,7 @@ internal static class Program
             {
                 services.AddSingleton<ConfigStore>();
                 services.AddSingleton<BackupRunner>();
+                services.AddSingleton<EventLogReaderService>();
                 services.AddSingleton<Reporter>();
                 services.AddHostedService(sp => sp.GetRequiredService<BackupRunner>());
                 services.AddHostedService(sp => sp.GetRequiredService<Reporter>());

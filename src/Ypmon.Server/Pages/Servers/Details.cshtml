@@ -105,6 +105,33 @@
                 </table>
             }
         </div>
+
+        <div class="card-y">
+            <h3>Ошибки журнала Windows</h3>
+            @if (!Model.Events.Any())
+            {
+                <div class="muted">Ошибок из журнала Windows пока нет.</div>
+            }
+            else
+            {
+                <table class="tbl">
+                    <thead><tr><th>Время</th><th>Уровень</th><th>Журнал / источник</th><th>ID</th><th>Сообщение</th></tr></thead>
+                    <tbody>
+                    @foreach (var e in Model.Events)
+                    {
+                        var lvlCss = e.Level == "Warning" ? "st-warn" : "st-err";
+                        <tr>
+                            <td style="white-space:nowrap">@UiHelpers.DateTimeAbs(e.TimeCreated)</td>
+                            <td><span class="badge-status @lvlCss">@e.Level</span></td>
+                            <td>@e.LogName<div class="muted" style="font-size:12px">@e.Source</div></td>
+                            <td>@e.EventId</td>
+                            <td style="max-width:420px"><div style="white-space:pre-wrap;font-size:12px;max-height:120px;overflow:auto">@e.Message</div></td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            }
+        </div>
     </div>
 
     <div class="panel">

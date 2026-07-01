@@ -62,8 +62,8 @@ public class MaintenanceService : BackgroundService
         if (settings.ReportRetentionDays > 0)
         {
             var cutoff = DateTimeOffset.UtcNow.AddDays(-settings.ReportRetentionDays);
-            var old = db.Reports.Where(r => r.ReceivedAt < cutoff);
-            db.Reports.RemoveRange(old);
+            db.Reports.RemoveRange(db.Reports.Where(r => r.ReceivedAt < cutoff));
+            db.Events.RemoveRange(db.Events.Where(e => e.ReceivedAt < cutoff));
             await db.SaveChangesAsync(ct);
         }
     }

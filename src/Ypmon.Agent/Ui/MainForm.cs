@@ -57,6 +57,11 @@ public sealed class MainForm : Form
     private CheckBox _mssqlEnabled = null!;
     private TextBox _mssqlFolder = null!, _mssqlPattern = null!;
 
+    // Журнал событий Windows
+    private CheckBox _evtEnabled = null!, _evtWarnings = null!;
+    private TextBox _evtLogs = null!, _evtExclude = null!;
+    private NumericUpDown _evtMax = null!, _evtLookback = null!;
+
     // Служба / обновления
     private TextBox _svcName = null!, _svcUser = null!, _svcPass = null!;
     private Label _svcStatus = null!;
@@ -81,6 +86,7 @@ public sealed class MainForm : Form
         tabs.TabPages.Add(BuildConnectionTab());
         tabs.TabPages.Add(BuildJobsTab());
         tabs.TabPages.Add(BuildMssqlTab());
+        tabs.TabPages.Add(BuildEventLogTab());
         tabs.TabPages.Add(BuildReportTab());
         tabs.TabPages.Add(BuildServiceTab());
         tabs.TabPages.Add(BuildStatusTab());
@@ -350,6 +356,69 @@ public sealed class MainForm : Form
         return page;
     }
 
+    // ---------- Журнал событий Windows ----------
+    private TabPage BuildEventLogTab()
+    {
+        var page = new TabPage("Журнал Windows");
+        var t = NewTable();
+        _evtEnabled = AddCheck(t, "Читать журнал событий Windows и передавать ошибки серверу");
+        _evtLogs = AddText(t, "Журналы через запятую (System, Application)");
+        _evtWarnings = AddCheck(t, "Передавать и предупреждения (не только ошибки)");
+        _evtMax = AddNum(t, "Максимум записей за отчёт (на журнал)", 1, 1000);
+        _evtLookback = AddNum(t, "При первом запуске смотреть назад, часов", 1, 100000);
+        _evtExclude = AddText(t, "Исключить источники через запятую (необязательно)");
+
+        var btnCheck = new Button { Text = "🔎 Показать последние ошибки журнала", AutoSize = true, Margin = new Padding(3, 4, 3, 4) };
+        btnCheck.Click += (_, _) => EventLogPreview();
+        AddFull(t, btnCheck);
+
+        var note = new Label { AutoSize = true, ForeColor = Color.DimGray, MaximumSize = new Size(500, 0), Margin = new Padding(3, 8, 3, 3) };
+        note.Text = "Агент собирает новые ошибки (и, по желанию, предупреждения) из указанных журналов Windows " +
+                    "и включает их в отчёт серверу. Только чтение, система не изменяется. " +
+                    "Ошибки видны на странице сервера в веб-интерфейсе.";
+        AddFull(t, note);
+        page.Controls.Add(t);
+        return page;
+    }
+
+    private void EventLogPreview()
+    {
+        if (!OperatingSystem.IsWindows()) { Info("Чтение журнала доступно только в Windows."); return; }
+        var logs = (_evtLogs.Text ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
+        if (logs.Count == 0) logs = new List<string> { "System", "Application" };
+        try
+        {
+            var reader = new Ypmon.Agent.Services.EventLogReaderService(_store);
+            // Предпросмотр не должен сдвигать отметку — читаем во временную конфигурацию с чистым состоянием.
+            var previewCfg = new AgentConfig
+            {
+                EventLog = new EventLogConfig
+                {
+                    Enabled = true,
+                    Logs = logs,
+                    IncludeWarnings = _evtWarnings.Checked,
+                    MaxEntriesPerReport = (int)_evtMax.Value,
+                    LookbackHoursOnFirstRun = (int)_evtLookback.Value,
+                    ExcludeSources = (_evtExclude.Text ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList()
+                }
+            };
+            var list = reader.PreviewRecent(previewCfg, 20);
+            if (list.Count == 0) { Info("За выбранный период ошибок в журнале не найдено."); return; }
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine($"Найдено записей: {list.Count}. Последние:");
+            sb.AppendLine();
+            foreach (var e in list.Take(20))
+            {
+                var m = e.Message.Replace("\r", " ").Replace("\n", " ");
+                if (m.Length > 160) m = m[..160] + "…";
+                sb.AppendLine($"[{e.Level}] {e.TimeCreated.LocalDateTime:yyyy-MM-dd HH:mm} {e.LogName}/{e.Source} (ID {e.EventId})");
+                sb.AppendLine("   " + m);
+            }
+            Info(sb.ToString());
+        }
+        catch (Exception ex) { Info("Не удалось прочитать журнал: " + ex.Message); }
+    }
+
     // ---------- Отчёт (история созданных архивов) ----------
     private TabPage BuildReportTab()
     {
@@ -411,6 +480,13 @@ public sealed class MainForm : Form
         _mssqlEnabled.Checked = _cfg.Mssql.Enabled;
         _mssqlFolder.Text = _cfg.Mssql.LogFolder;
         _mssqlPattern.Text = _cfg.Mssql.FilePattern;
+        var evt = _cfg.EventLog ?? new EventLogConfig();
+        _evtEnabled.Checked = evt.Enabled;
+        _evtLogs.Text = string.Join(", ", evt.Logs ?? new());
+        _evtWarnings.Checked = evt.IncludeWarnings;
+        _evtMax.Value = Clamp(evt.MaxEntriesPerReport, 1, 1000);
+        _evtLookback.Value = Clamp(evt.LookbackHoursOnFirstRun, 1, 100000);
+        _evtExclude.Text = string.Join(", ", evt.ExcludeSources ?? new());
         _svcName.Text = string.IsNullOrWhiteSpace(_cfg.ServiceName) ? "YpmonAgent" : _cfg.ServiceName;
         _autoUpdate.Checked = _cfg.AutoUpdate;
         _loading = false;
@@ -432,6 +508,13 @@ public sealed class MainForm : Form
         _cfg.Mssql.Enabled = _mssqlEnabled.Checked;
         _cfg.Mssql.LogFolder = _mssqlFolder.Text.Trim();
         _cfg.Mssql.FilePattern = string.IsNullOrWhiteSpace(_mssqlPattern.Text) ? "*.txt" : _mssqlPattern.Text.Trim();
+        _cfg.EventLog ??= new EventLogConfig();
+        _cfg.EventLog.Enabled = _evtEnabled.Checked;
+        _cfg.EventLog.Logs = SplitCsv(_evtLogs.Text, "System", "Application");
+        _cfg.EventLog.IncludeWarnings = _evtWarnings.Checked;
+        _cfg.EventLog.MaxEntriesPerReport = (int)_evtMax.Value;
+        _cfg.EventLog.LookbackHoursOnFirstRun = (int)_evtLookback.Value;
+        _cfg.EventLog.ExcludeSources = SplitCsv(_evtExclude.Text);
         _cfg.ServiceName = string.IsNullOrWhiteSpace(_svcName.Text) ? "YpmonAgent" : _svcName.Text.Trim();
         _cfg.AutoUpdate = _autoUpdate.Checked;
 
@@ -1083,6 +1166,13 @@ public sealed class MainForm : Form
 
     private static string Sanitize(string s)
         => string.Concat((s ?? "").Select(c => Path.GetInvalidFileNameChars().Contains(c) ? '_' : c));
+
+    /// <summary>Разбор строки «a, b, c» в список; если пусто — значения по умолчанию.</summary>
+    private static List<string> SplitCsv(string? text, params string[] defaults)
+    {
+        var list = (text ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
+        return list.Count > 0 ? list : defaults.ToList();
+    }
 
     private static string Bytes(long b)
     {

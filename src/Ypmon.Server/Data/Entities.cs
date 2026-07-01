@@ -92,6 +92,22 @@ public class Report
     public string PayloadJson { get; set; } = "";
 }
 
+/// <summary>Ошибка/предупреждение из журнала событий Windows, присланная агентом.</summary>
+public class AgentEvent
+{
+    public long Id { get; set; }
+    public int ServerId { get; set; }
+    public MonitoredServer? Server { get; set; }
+
+    public DateTimeOffset ReceivedAt { get; set; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset TimeCreated { get; set; }
+    public string LogName { get; set; } = "";
+    public string Source { get; set; } = "";
+    public string Level { get; set; } = "";
+    public int EventId { get; set; }
+    public string Message { get; set; } = "";
+}
+
 /// <summary>Глобальные настройки сервера (одна запись, key/value-подход не нужен).</summary>
 public class ServerSettings
 {

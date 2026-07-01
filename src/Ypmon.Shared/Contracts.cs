@@ -43,6 +43,28 @@ public class JobStatusDto
     public string? Target { get; set; }
 }
 
+/// <summary>Запись из журнала событий Windows (ошибка/предупреждение), передаётся серверу.</summary>
+public class EventLogEntryDto
+{
+    /// <summary>Имя журнала: System, Application и т.п.</summary>
+    public string LogName { get; set; } = "";
+
+    /// <summary>Источник (провайдер) события.</summary>
+    public string Source { get; set; } = "";
+
+    /// <summary>Уровень: Critical / Error / Warning.</summary>
+    public string Level { get; set; } = "";
+
+    /// <summary>Код события (EventID).</summary>
+    public int EventId { get; set; }
+
+    /// <summary>Время события.</summary>
+    public DateTimeOffset TimeCreated { get; set; }
+
+    /// <summary>Текст события.</summary>
+    public string Message { get; set; } = "";
+}
+
 /// <summary>Информация о диске на машине агента.</summary>
 public class DiskInfoDto
 {
@@ -87,6 +109,9 @@ public class AgentReportDto
 
     /// <summary>Состояние дисков (для мониторинга свободного места).</summary>
     public List<DiskInfoDto> Disks { get; set; } = new();
+
+    /// <summary>Новые ошибки/предупреждения из журнала событий Windows с прошлого отчёта.</summary>
+    public List<EventLogEntryDto> EventLogErrors { get; set; } = new();
 
     /// <summary>Итоговый статус (худший из заданий + доступность).</summary>
     public JobOutcome OverallOutcome
