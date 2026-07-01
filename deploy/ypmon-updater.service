@@ -1,0 +1,16 @@
+[Unit]
+Description=YPMonitor self-updater (git pull + docker compose rebuild on request)
+After=docker.service network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+User=admin_yp
+Group=admin_yp
+WorkingDirectory=/home/admin_yp/ypmonitor
+ExecStart=/home/admin_yp/ypmonitor/deploy/ypmon-updater.sh
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

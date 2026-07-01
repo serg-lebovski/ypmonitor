@@ -48,6 +48,7 @@ builder.Services.AddDbContext<AppDbContext>(opt =>
 builder.Services.AddHttpClient();
 builder.Services.AddScoped<AlertService>();
 builder.Services.AddScoped<ReportIngestService>();
+builder.Services.AddSingleton<ServerUpdateService>();
 builder.Services.AddHostedService<MaintenanceService>();
 
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)

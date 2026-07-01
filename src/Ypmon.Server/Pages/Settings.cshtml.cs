@@ -13,9 +13,10 @@ public class SettingsModel : PageModel
     private readonly IConfiguration _cfg;
     private readonly AlertService _alerts;
     private readonly IWebHostEnvironment _env;
-    public SettingsModel(AppDbContext db, IConfiguration cfg, AlertService alerts, IWebHostEnvironment env)
+    private readonly ServerUpdateService _upd;
+    public SettingsModel(AppDbContext db, IConfiguration cfg, AlertService alerts, IWebHostEnvironment env, ServerUpdateService upd)
     {
-        _db = db; _cfg = cfg; _alerts = alerts; _env = env;
+        _db = db; _cfg = cfg; _alerts = alerts; _env = env; _upd = upd;
     }
 
     public ServerSettings Settings { get; set; } = new();
@@ -32,6 +33,11 @@ public class SettingsModel : PageModel
     public string? AgentInstallerVersion { get; set; }
     public long AgentInstallerSize { get; set; }
     public DateTime? AgentInstallerDate { get; set; }
+
+    // Самообновление сервера (через git + воркер ypmon-updater)
+    public bool UpdateConfigured { get; set; }
+    public ServerUpdateStatus? UpdateStatus { get; set; }
+    public string[] UpdateChangelog { get; set; } = Array.Empty<string>();
 
     private int CurrentUserId => int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "0");
     private bool IsAdmin => User.IsInRole("Admin");
@@ -57,6 +63,40 @@ public class SettingsModel : PageModel
             if (System.IO.File.Exists(verFile))
                 AgentInstallerVersion = (await System.IO.File.ReadAllTextAsync(verFile)).Trim();
         }
+
+        UpdateConfigured = _upd.Configured;
+        if (UpdateConfigured)
+        {
+            UpdateStatus = _upd.ReadStatus();
+            UpdateChangelog = _upd.ReadChangelog();
+        }
+    }
+
+    public async Task<IActionResult> OnPostCheckUpdateAsync()
+    {
+        if (!IsAdmin) return Forbid();
+        if (!_upd.Configured) { await Load(); IsError = true; Message = "Самообновление не настроено на сервере."; return Page(); }
+        var since = _upd.ReadStatus()?.LastChecked ?? DateTimeOffset.MinValue;
+        _upd.RequestCheck();
+        var s = await _upd.WaitForFreshStatusAsync(since, TimeSpan.FromSeconds(20));
+        await Load();
+        if (s is null) { IsError = true; Message = "Воркер обновления не ответил. Проверьте службу ypmon-updater."; }
+        else if (s.State == "error") { IsError = true; Message = s.Message ?? "Ошибка проверки обновлений."; }
+        else Message = s.UpdateAvailable
+            ? $"Доступно обновление: +{s.Behind} коммит(ов) (текущая {s.CurrentShort} → {s.RemoteShort}). Нажмите «Установить обновление»."
+            : $"Установлена актуальная версия ({s.CurrentShort}).";
+        return Page();
+    }
+
+    public async Task<IActionResult> OnPostApplyUpdateAsync()
+    {
+        if (!IsAdmin) return Forbid();
+        if (!_upd.Configured) { await Load(); IsError = true; Message = "Самообновление не настроено на сервере."; return Page(); }
+        _upd.RequestApply();
+        await Load();
+        Message = "Обновление запущено. Сервер выполнит git pull и пересоберётся (≈1–3 мин), затем перезапустится. " +
+                  "Через пару минут обновите страницу.";
+        return Page();
     }
 
     public async Task<IActionResult> OnPostSaveSettingsAsync(ServerSettings input)

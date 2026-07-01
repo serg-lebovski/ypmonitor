@@ -39,6 +39,64 @@
             }
         </div>
 
+        @if (isAdmin)
+        {
+            var us = Model.UpdateStatus;
+            <div class="card-y">
+                <h3>Обновление сервера</h3>
+                @if (!Model.UpdateConfigured)
+                {
+                    <div class="muted" style="font-size:13px">Самообновление не настроено. На сервере выполните один раз:
+                        <span class="code mono">sudo bash deploy/install-updater.sh</span> — после этого обновление доступно кнопкой.</div>
+                }
+                else
+                {
+                    <div class="muted mb-2" style="font-size:13px">Обновление берётся из git-репозитория. Сначала «Проверить», затем «Установить» — сервер сам сделает <span class="code mono">git pull</span> и пересоберётся.</div>
+                    <div class="kv"><span class="k">Текущая ревизия</span><span class="v mono">@(us?.CurrentShort ?? "—")</span></div>
+                    <div class="kv"><span class="k">В репозитории</span><span class="v mono">@(us?.RemoteShort ?? "—")</span></div>
+                    <div class="kv"><span class="k">Проверено</span><span class="v mono">@(us?.LastChecked?.ToLocalTime().ToString("yyyy-MM-dd HH:mm") ?? "—")</span></div>
+                    @if (us?.State == "updating")
+                    {
+                        <div class="alert-y alert-ok mt-2">Идёт обновление… Сервер скоро перезапустится, обновите страницу через пару минут.</div>
+                    }
+                    else if (us?.State == "error")
+                    {
+                        <div class="alert-y alert-err mt-2">@(us.Message ?? "Ошибка обновления.")</div>
+                    }
+                    else if (us?.UpdateAvailable == true)
+                    {
+                        <div class="alert-y alert-ok mt-2">Доступно обновление: +@us.Behind коммит(ов).</div>
+                        @if (Model.UpdateChangelog.Length > 0)
+                        {
+                            <div class="mono" style="font-size:12px;max-height:160px;overflow:auto;background:var(--card-2);padding:8px;border-radius:6px;margin:6px 0">
+                                @foreach (var line in Model.UpdateChangelog)
+                                {
+                                    <div>@line</div>
+                                }
+                            </div>
+                        }
+                    }
+                    else if (us is not null)
+                    {
+                        <div class="muted mt-2" style="font-size:13px">Установлена актуальная версия.</div>
+                    }
+
+                    <div class="mt-2" style="display:flex;gap:8px;flex-wrap:wrap">
+                        <form method="post" asp-page-handler="CheckUpdate">
+                            <button class="btn btn-primary" type="submit">Проверить обновления</button>
+                        </form>
+                        @if (us?.UpdateAvailable == true && us.State != "updating")
+                        {
+                            <form method="post" asp-page-handler="ApplyUpdate"
+                                  onsubmit="return confirm('Установить обновление? Сервер пересоберётся и перезапустится на 1–3 минуты.')">
+                                <button class="btn btn-y-danger" type="submit">Установить обновление</button>
+                            </form>
+                        }
+                    </div>
+                }
+            </div>
+        }
+
         <div class="card-y">
             <h3>Оповещения и обслуживание</h3>
             <form method="post" asp-page-handler="SaveSettings">
