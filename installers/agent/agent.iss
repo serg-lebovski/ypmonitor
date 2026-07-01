@@ -144,15 +144,19 @@ begin
       if svcUser <> '' then
         acct := ' obj= "' + svcUser + '" password= "' + svcPass + '"'
       else
-        acct := ' obj= "LocalSystem"';
+        acct := '';   // учётка не указана
 
       if ServiceExists() then
-        // служба уже есть (возможно, старая папка) — переключаем путь и учётную запись
+        // служба уже есть — переключаем путь; учётку меняем только если задана (иначе сохраняем текущую)
         Exec('sc.exe', 'config "' + SVC + '" binPath= "' + exe + '" start= auto' + acct,
              '', SW_HIDE, ewWaitUntilTerminated, rc)
       else
+      begin
+        // новая служба: если учётка не задана — LocalSystem
+        if svcUser = '' then acct := ' obj= "LocalSystem"';
         Exec('sc.exe', 'create "' + SVC + '" binPath= "' + exe + '" start= auto DisplayName= "YPMon Agent"' + acct,
              '', SW_HIDE, ewWaitUntilTerminated, rc);
+      end;
       Exec('sc.exe', 'failure "' + SVC + '" reset= 60 actions= restart/5000/restart/5000/restart/5000',
            '', SW_HIDE, ewWaitUntilTerminated, rc);
       Exec('sc.exe', 'start "' + SVC + '"', '', SW_HIDE, ewWaitUntilTerminated, rc);
