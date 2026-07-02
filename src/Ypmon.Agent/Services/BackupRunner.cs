@@ -290,24 +290,32 @@ public class BackupRunner : BackgroundService
                 return st;
             }
 
-            var files = new DirectoryInfo(job.BackupFolder)
-                .GetFiles(string.IsNullOrWhiteSpace(job.FilePattern) ? "*.*" : job.FilePattern);
+            var files = EnumerateByPatterns(job.BackupFolder, job.FilePattern).ToArray();
             st.BackupCount = files.Length;
             st.TotalSizeBytes = files.Sum(f => f.Length);
             var latest = files.OrderByDescending(f => f.LastWriteTimeUtc).FirstOrDefault();
             st.LastBackupAt = latest is null ? null : new DateTimeOffset(latest.LastWriteTimeUtc, TimeSpan.Zero);
             st.LastRunAt = st.LastBackupAt;
 
+            // Порог «свежести»: приоритет — период в днях; если 0, используем устаревший порог в часах.
+            var thresholdHours = job.WarnIfNoNewFilesDays > 0
+                ? job.WarnIfNoNewFilesDays * 24.0
+                : job.WarnIfOlderThanHours;
+            var periodText = job.WarnIfNoNewFilesDays > 0
+                ? $"{job.WarnIfNoNewFilesDays} дн."
+                : $"{job.WarnIfOlderThanHours} ч";
+
             if (files.Length == 0)
             {
-                st.Outcome = JobOutcome.Warning;
-                st.Message = "В папке нет файлов бэкапов";
+                st.Outcome = JobOutcome.Error;
+                st.Message = "В папке нет файлов бэкапов (маски: " +
+                             (string.IsNullOrWhiteSpace(job.FilePattern) ? "*.*" : job.FilePattern) + ")";
             }
-            else if (job.WarnIfOlderThanHours > 0 && latest is not null &&
-                     (DateTime.UtcNow - latest.LastWriteTimeUtc).TotalHours > job.WarnIfOlderThanHours)
+            else if (thresholdHours > 0 && latest is not null &&
+                     (DateTime.UtcNow - latest.LastWriteTimeUtc).TotalHours > thresholdHours)
             {
                 st.Outcome = JobOutcome.Error;
-                st.Message = $"Свежий бэкап старше {job.WarnIfOlderThanHours} ч (от {latest.LastWriteTime:yyyy-MM-dd HH:mm})";
+                st.Message = $"Нет новых бэкапов за {periodText} — свежий от {latest.LastWriteTime:yyyy-MM-dd HH:mm}";
             }
             else
             {
@@ -338,6 +346,25 @@ public class BackupRunner : BackgroundService
         finally { net?.Dispose(); }
 
         return st;
+    }
+
+    /// <summary>Файлы папки по нескольким маскам (через «;» или «,»), без дублей.</summary>
+    private static IEnumerable<FileInfo> EnumerateByPatterns(string dir, string? patterns)
+    {
+        var di = new DirectoryInfo(dir);
+        var masks = (patterns ?? "").Split(new[] { ';', ',' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (masks.Length == 0) masks = new[] { "*.*" };
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var result = new List<FileInfo>();
+        foreach (var m in masks)
+        {
+            FileInfo[] found;
+            try { found = di.GetFiles(m); }
+            catch { continue; }
+            foreach (var f in found)
+                if (seen.Add(f.FullName)) result.Add(f);
+        }
+        return result;
     }
 
     private static (int count, long size) CountBackups(string? dir, string pattern)

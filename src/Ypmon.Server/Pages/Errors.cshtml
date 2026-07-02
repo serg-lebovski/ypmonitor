@@ -1,0 +1,62 @@
+@page
+@model ErrorsModel
+@using Ypmon.Server.Services
+@{
+    ViewData["Title"] = "Ошибки";
+}
+
+<h1 class="page-title">⚠️ Ошибки журнала Windows</h1>
+
+<div class="card-y">
+    <form method="get" class="row g-2 align-items-end" style="margin-bottom:4px">
+        <div class="col-md-5">
+            <label class="muted" style="font-size:12px">Сервер клиента</label>
+            <select class="form-select" name="ServerId" onchange="this.form.submit()">
+                <option value="">Все серверы</option>
+                @foreach (var s in Model.ServerOptions)
+                {
+                    <option value="@s.Id" selected="@(Model.ServerId == s.Id)">@s.Name</option>
+                }
+            </select>
+        </div>
+        <div class="col-md-4">
+            <label class="muted" style="font-size:12px">Уровень</label>
+            <select class="form-select" name="Level" onchange="this.form.submit()">
+                <option value="">Все</option>
+                <option value="Critical" selected="@(Model.Level == "Critical")">Critical</option>
+                <option value="Error" selected="@(Model.Level == "Error")">Error</option>
+                <option value="Warning" selected="@(Model.Level == "Warning")">Warning</option>
+            </select>
+        </div>
+        <div class="col-md-3">
+            <span class="muted">Найдено: @Model.Total (показаны последние @Model.Items.Count)</span>
+        </div>
+    </form>
+</div>
+
+<div class="card-y">
+    @if (!Model.Items.Any())
+    {
+        <div class="muted">Ошибок из журнала Windows пока нет. Агент присылает их в составе отчёта (нужен агент 1.2.0+ с включённым чтением журнала).</div>
+    }
+    else
+    {
+        <table class="tbl">
+            <thead><tr><th>Время</th><th>Уровень</th><th>Сервер</th><th>Журнал / источник</th><th>ID</th><th>Сообщение</th></tr></thead>
+            <tbody>
+            @foreach (var e in Model.Items)
+            {
+                var lvlCss = e.Level == "Warning" ? "st-warn" : "st-err";
+                <tr>
+                    <td style="white-space:nowrap">@UiHelpers.DateTimeAbs(e.TimeCreated)</td>
+                    <td><span class="badge-status @lvlCss">@e.Level</span></td>
+                    <td><a href="/Servers/Details?id=@e.ServerId">@e.ServerName</a><div class="muted" style="font-size:12px">@e.ClientName</div></td>
+                    <td>@e.LogName<div class="muted" style="font-size:12px">@e.Source</div></td>
+                    <td>@e.EventId</td>
+                    <td style="max-width:460px"><div style="white-space:pre-wrap;font-size:12px;max-height:120px;overflow:auto">@e.Message</div></td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    }
+</div>

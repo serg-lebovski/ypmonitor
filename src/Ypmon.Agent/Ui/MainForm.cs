@@ -50,7 +50,7 @@ public sealed class MainForm : Form
 
     // Поля Мониторинг папки
     private TextBox _folName = null!, _folBackupDir = null!, _folPattern = null!, _folLogsDir = null!, _folLogsPattern = null!, _folNetUser = null!, _folNetPass = null!;
-    private NumericUpDown _folMaxAge = null!;
+    private NumericUpDown _folDays = null!;
     private CheckBox _folEnabled = null!;
 
     // MSSQL
@@ -217,8 +217,8 @@ public sealed class MainForm : Form
         _folName = AddText(t, "Название");
         _folEnabled = AddCheck(t, "Включено");
         _folBackupDir = AddBrowse(t, "Папка с бэкапами (можно сетевую \\\\сервер\\папка)");
-        _folPattern = AddText(t, "Маска файлов (напр. *.adi, *.bak, *.zip, *.*)");
-        _folMaxAge = AddNum(t, "Тревога, если свежий бэкап старше N часов (0 = выкл)", 0, 100000);
+        _folPattern = AddText(t, "Маски файлов, форматы через ; (напр. *.bak;*.zip;*.adi)");
+        _folDays = AddNum(t, "Тревога, если нет новых файлов N дней (0 = не проверять)", 0, 3650);
         _folLogsDir = AddBrowse(t, "Папка логов (опционально)");
         _folLogsPattern = AddText(t, "Маска логов (*.txt)");
         _folNetUser = AddText(t, "Учётная запись Windows для сетевых папок (DOMAIN\\User)");
@@ -609,7 +609,7 @@ public sealed class MainForm : Form
         {
             _curFolder.Name = _folName.Text; _curFolder.Enabled = _folEnabled.Checked;
             _curFolder.BackupFolder = _folBackupDir.Text; _curFolder.FilePattern = _folPattern.Text;
-            _curFolder.WarnIfOlderThanHours = (int)_folMaxAge.Value;
+            _curFolder.WarnIfNoNewFilesDays = (int)_folDays.Value;
             _curFolder.LogsFolder = _folLogsDir.Text; _curFolder.LogsPattern = _folLogsPattern.Text;
             _curFolder.NetworkUsername = _folNetUser.Text; _curFolder.NetworkPassword = _folNetPass.Text;
         }
@@ -660,7 +660,10 @@ public sealed class MainForm : Form
         _loading = true;
         _folName.Text = j.Name; _folEnabled.Checked = j.Enabled;
         _folBackupDir.Text = j.BackupFolder; _folPattern.Text = j.FilePattern;
-        _folMaxAge.Value = Clamp(j.WarnIfOlderThanHours, 0, 100000);
+        // Совместимость: старые конфиги хранили часы — показываем как дни, если поле дней не задано.
+        var days = j.WarnIfNoNewFilesDays > 0 ? j.WarnIfNoNewFilesDays
+                   : (j.WarnIfOlderThanHours > 0 ? Math.Max(1, j.WarnIfOlderThanHours / 24) : 0);
+        _folDays.Value = Clamp(days, 0, 3650);
         _folLogsDir.Text = j.LogsFolder; _folLogsPattern.Text = j.LogsPattern;
         _folNetUser.Text = j.NetworkUsername; _folNetPass.Text = j.NetworkPassword;
         _loading = false;
@@ -670,7 +673,7 @@ public sealed class MainForm : Form
     {
         EventHandler h = (_, _) => { CommitCurrent(); UpdateCurrentItemText(); };
         foreach (var c in new Control[] { _folName, _folBackupDir, _folPattern, _folLogsDir, _folLogsPattern, _folNetUser, _folNetPass }) c.TextChanged += h;
-        _folMaxAge.ValueChanged += h;
+        _folDays.ValueChanged += h;
         _folEnabled.CheckedChanged += h;
     }
 

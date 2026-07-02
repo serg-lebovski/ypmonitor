@@ -80,11 +80,20 @@ public class FolderMonitorJob
     /// <summary>Папка, куда внешняя программа складывает бэкапы (можно сетевую).</summary>
     public string BackupFolder { get; set; } = "";
 
-    /// <summary>Маска файлов бэкапов (напр. *.adi для AOMEI, *.bak, *.zip, *.*).</summary>
+    /// <summary>
+    /// Маски файлов бэкапов. Можно указать несколько форматов через «;» или «,»
+    /// (напр. *.bak;*.zip;*.adi). Пусто = все файлы.
+    /// </summary>
     public string FilePattern { get; set; } = "*.*";
 
-    /// <summary>Тревога, если самый свежий бэкап старше N часов (0 = не проверять).</summary>
-    public int WarnIfOlderThanHours { get; set; } = 26;
+    /// <summary>
+    /// Тревога, если за последние N дней в папке не появилось новых файлов (0 = не проверять).
+    /// Основной период проверки «свежести» бэкапов.
+    /// </summary>
+    public int WarnIfNoNewFilesDays { get; set; } = 1;
+
+    /// <summary>Устаревшее: порог в часах (используется, если период в днях = 0). Для обратной совместимости.</summary>
+    public int WarnIfOlderThanHours { get; set; } = 0;
 
     /// <summary>Папка логов (опционально) — агент определит статус (ок/ошибка).</summary>
     public string LogsFolder { get; set; } = "";
