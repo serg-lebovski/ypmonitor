@@ -15,9 +15,13 @@ RUN dotnet publish src/Ypmon.Server/Ypmon.Server.csproj -c Release -o /app /p:Us
 # --- Среда выполнения ---
 FROM mcr.microsoft.com/dotnet/aspnet:8.0
 WORKDIR /app
-# curl нужен для healthcheck
-RUN apt-get update && apt-get install -y --no-install-recommends curl \
-    && rm -rf /var/lib/apt/lists/*
+# curl нужен для healthcheck; wireproxy — userspace-WireGuard для доступа бота к Telegram
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && ( curl -fsSL https://github.com/whyvl/wireproxy/releases/download/v1.0.9/wireproxy_linux_amd64.tar.gz -o /tmp/wp.tgz \
+         && tar -xzf /tmp/wp.tgz -C /usr/local/bin wireproxy \
+         && chmod +x /usr/local/bin/wireproxy \
+         && rm -f /tmp/wp.tgz ) || echo "ВНИМАНИЕ: wireproxy не установлен — WireGuard будет недоступен"
 COPY --from=build /app .
 
 # Папка для данных (SQLite/логи), если используется sqlite; для postgres не нужна, но пусть будет

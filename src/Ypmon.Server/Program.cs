@@ -49,6 +49,10 @@ builder.Services.AddHttpClient();
 builder.Services.AddScoped<AlertService>();
 builder.Services.AddScoped<ReportIngestService>();
 builder.Services.AddSingleton<ServerUpdateService>();
+builder.Services.AddSingleton<WireGuardProxyService>();
+builder.Services.AddSingleton<TelegramService>();
+builder.Services.AddScoped<TelegramReportService>();
+builder.Services.AddHostedService<DailyReportScheduler>();
 builder.Services.AddHostedService<MaintenanceService>();
 
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
@@ -98,6 +102,12 @@ using (var scope = app.Services.CreateScope())
                     db.Database.ExecuteSqlRaw("ALTER TABLE \"Settings\" ADD COLUMN IF NOT EXISTS \"DefaultBackupStaleDays\" integer NOT NULL DEFAULT 1;");
                     db.Database.ExecuteSqlRaw("ALTER TABLE \"Settings\" ADD COLUMN IF NOT EXISTS \"WindowsErrorIgnore\" text;");
                     db.Database.ExecuteSqlRaw("ALTER TABLE \"Servers\" ADD COLUMN IF NOT EXISTS \"BackupStaleDays\" integer NOT NULL DEFAULT 0;");
+                    db.Database.ExecuteSqlRaw("ALTER TABLE \"Settings\" ADD COLUMN IF NOT EXISTS \"PublicBaseUrl\" text;");
+                    db.Database.ExecuteSqlRaw("ALTER TABLE \"Settings\" ADD COLUMN IF NOT EXISTS \"DailyReportEnabled\" boolean NOT NULL DEFAULT false;");
+                    db.Database.ExecuteSqlRaw("ALTER TABLE \"Settings\" ADD COLUMN IF NOT EXISTS \"DailyReportHourOmsk\" integer NOT NULL DEFAULT 10;");
+                    db.Database.ExecuteSqlRaw("ALTER TABLE \"Settings\" ADD COLUMN IF NOT EXISTS \"WireGuardEnabled\" boolean NOT NULL DEFAULT false;");
+                    db.Database.ExecuteSqlRaw("ALTER TABLE \"Settings\" ADD COLUMN IF NOT EXISTS \"WireGuardConfig\" text;");
+                    db.Database.ExecuteSqlRaw("ALTER TABLE \"Clients\" ADD COLUMN IF NOT EXISTS \"TelegramTopicId\" bigint;");
                 }
                 else
                 {
@@ -105,6 +115,12 @@ using (var scope = app.Services.CreateScope())
                     try { db.Database.ExecuteSqlRaw("ALTER TABLE \"Settings\" ADD COLUMN \"DefaultBackupStaleDays\" INTEGER NOT NULL DEFAULT 1;"); } catch { }
                     try { db.Database.ExecuteSqlRaw("ALTER TABLE \"Settings\" ADD COLUMN \"WindowsErrorIgnore\" TEXT;"); } catch { }
                     try { db.Database.ExecuteSqlRaw("ALTER TABLE \"Servers\" ADD COLUMN \"BackupStaleDays\" INTEGER NOT NULL DEFAULT 0;"); } catch { }
+                    try { db.Database.ExecuteSqlRaw("ALTER TABLE \"Settings\" ADD COLUMN \"PublicBaseUrl\" TEXT;"); } catch { }
+                    try { db.Database.ExecuteSqlRaw("ALTER TABLE \"Settings\" ADD COLUMN \"DailyReportEnabled\" INTEGER NOT NULL DEFAULT 0;"); } catch { }
+                    try { db.Database.ExecuteSqlRaw("ALTER TABLE \"Settings\" ADD COLUMN \"DailyReportHourOmsk\" INTEGER NOT NULL DEFAULT 10;"); } catch { }
+                    try { db.Database.ExecuteSqlRaw("ALTER TABLE \"Settings\" ADD COLUMN \"WireGuardEnabled\" INTEGER NOT NULL DEFAULT 0;"); } catch { }
+                    try { db.Database.ExecuteSqlRaw("ALTER TABLE \"Settings\" ADD COLUMN \"WireGuardConfig\" TEXT;"); } catch { }
+                    try { db.Database.ExecuteSqlRaw("ALTER TABLE \"Clients\" ADD COLUMN \"TelegramTopicId\" INTEGER;"); } catch { }
                 }
             }
             catch (Exception ex) { logger.LogWarning("Обновление схемы: {Msg}", ex.Message); }

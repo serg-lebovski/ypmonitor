@@ -14,10 +14,16 @@ public class SettingsModel : PageModel
     private readonly AlertService _alerts;
     private readonly IWebHostEnvironment _env;
     private readonly ServerUpdateService _upd;
-    public SettingsModel(AppDbContext db, IConfiguration cfg, AlertService alerts, IWebHostEnvironment env, ServerUpdateService upd)
+    private readonly TelegramService _tg;
+    private readonly TelegramReportService _report;
+    private readonly WireGuardProxyService _wg;
+    public SettingsModel(AppDbContext db, IConfiguration cfg, AlertService alerts, IWebHostEnvironment env,
+        ServerUpdateService upd, TelegramService tg, TelegramReportService report, WireGuardProxyService wg)
     {
-        _db = db; _cfg = cfg; _alerts = alerts; _env = env; _upd = upd;
+        _db = db; _cfg = cfg; _alerts = alerts; _env = env; _upd = upd; _tg = tg; _report = report; _wg = wg;
     }
+
+    public bool WireGuardRunning { get; set; }
 
     public ServerSettings Settings { get; set; } = new();
     public List<AppUser> Users { get; set; } = new();
@@ -70,6 +76,7 @@ public class SettingsModel : PageModel
             UpdateStatus = _upd.ReadStatus();
             UpdateChangelog = _upd.ReadChangelog();
         }
+        WireGuardRunning = _wg.IsRunning;
     }
 
     public async Task<IActionResult> OnPostCheckUpdateAsync()
@@ -112,6 +119,9 @@ public class SettingsModel : PageModel
         s.TelegramBotToken = input.TelegramBotToken;
         s.TelegramChatId = input.TelegramChatId;
         s.TelegramProxyUrl = input.TelegramProxyUrl;
+        s.PublicBaseUrl = input.PublicBaseUrl;
+        s.DailyReportEnabled = input.DailyReportEnabled;
+        s.DailyReportHourOmsk = Math.Clamp(input.DailyReportHourOmsk, 0, 23);
         s.EmailEnabled = input.EmailEnabled;
         s.SmtpHost = input.SmtpHost;
         s.SmtpPort = input.SmtpPort;
@@ -124,6 +134,58 @@ public class SettingsModel : PageModel
         await _db.SaveChangesAsync();
         await Load();
         Message = "Настройки сохранены";
+        return Page();
+    }
+
+    public async Task<IActionResult> OnPostSaveWireGuardAsync(IFormFile? wgFile, bool wgEnabled)
+    {
+        if (!IsAdmin) return Forbid();
+        var s = await _db.Settings.FirstOrDefaultAsync() ?? new ServerSettings();
+        if (wgFile is { Length: > 0 })
+        {
+            using var reader = new StreamReader(wgFile.OpenReadStream());
+            s.WireGuardConfig = await reader.ReadToEndAsync();
+        }
+        s.WireGuardEnabled = wgEnabled;
+        if (s.Id == 0) _db.Settings.Add(s);
+        await _db.SaveChangesAsync();
+        _wg.Apply(s.WireGuardEnabled, s.WireGuardConfig);
+        await Load();
+        Message = s.WireGuardEnabled
+            ? (_wg.IsRunning ? "WireGuard применён, туннель поднят." : "WireGuard включён, но туннель не поднялся (проверьте конфиг/бинарник).")
+            : "WireGuard выключен.";
+        IsError = s.WireGuardEnabled && !_wg.IsRunning;
+        return Page();
+    }
+
+    public async Task<IActionResult> OnPostDiscoverChatsAsync()
+    {
+        if (!IsAdmin) return Forbid();
+        var s = await _db.Settings.FirstOrDefaultAsync() ?? new ServerSettings();
+        Message = await _tg.DiscoverChatsAsync(s);
+        await Load();
+        return Page();
+    }
+
+    public async Task<IActionResult> OnPostSendReportNowAsync()
+    {
+        if (!IsAdmin) return Forbid();
+        Message = await _report.SendReportAsync();
+        await Load();
+        return Page();
+    }
+
+    public async Task<IActionResult> OnPostCreateTopicsAsync()
+    {
+        if (!IsAdmin) return Forbid();
+        var s = await _db.Settings.FirstOrDefaultAsync();
+        if (s is null || !s.TelegramEnabled) { await Load(); IsError = true; Message = "Telegram выключен."; return Page(); }
+        var clients = await _db.Clients.ToListAsync();
+        int made = 0;
+        foreach (var c in clients.Where(c => c.TelegramTopicId is null))
+            if (await _report.EnsureTopicAsync(s, c) is not null) made++;
+        await Load();
+        Message = $"Темы созданы/проверены. Новых тем: {made}.";
         return Page();
     }
 

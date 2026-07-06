@@ -30,6 +30,9 @@ public class Client
     public string? Description { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 
+    /// <summary>ID темы (forum topic) в Telegram-группе, куда пишется ежедневный отчёт по этому клиенту.</summary>
+    public long? TelegramTopicId { get; set; }
+
     public List<MonitoredServer> Servers { get; set; } = new();
 }
 
@@ -136,10 +139,27 @@ public class ServerSettings
 
     public bool TelegramEnabled { get; set; }
     public string? TelegramBotToken { get; set; }
+
+    /// <summary>ID группы Telegram (супергруппа с включёнными темами/Topics), напр. -1001234567890.</summary>
     public string? TelegramChatId { get; set; }
 
     /// <summary>Прокси для доступа к Telegram API (http://host:port или socks5://host:port). Пусто = без прокси.</summary>
     public string? TelegramProxyUrl { get; set; }
+
+    /// <summary>Публичный адрес сервера для ссылок в сообщениях (напр. http://10.10.20.25:8080).</summary>
+    public string? PublicBaseUrl { get; set; }
+
+    /// <summary>Слать ежедневный отчёт по архивации в темы клиентов.</summary>
+    public bool DailyReportEnabled { get; set; }
+
+    /// <summary>Час ежедневного отчёта по омскому времени (UTC+6). По умолчанию 10.</summary>
+    public int DailyReportHourOmsk { get; set; } = 10;
+
+    // --- WireGuard для доступа бота к Telegram (userspace wireproxy → SOCKS5) ---
+    public bool WireGuardEnabled { get; set; }
+
+    /// <summary>Содержимое конфигурации WireGuard (.conf), которую загрузил администратор.</summary>
+    public string? WireGuardConfig { get; set; }
 
     public bool EmailEnabled { get; set; }
     public string? SmtpHost { get; set; }

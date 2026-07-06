@@ -124,10 +124,28 @@
                 </div>
                 <div class="mb-2"><label>Bot Token</label>
                     <input class="form-control" name="TelegramBotToken" value="@s.TelegramBotToken" @(isAdmin ? "" : "disabled") /></div>
-                <div class="mb-2"><label>Chat ID</label>
+                <div class="mb-2"><label>ID группы (супергруппа с включёнными Темами, напр. -1001234567890)</label>
                     <input class="form-control" name="TelegramChatId" value="@s.TelegramChatId" @(isAdmin ? "" : "disabled") /></div>
-                <div class="mb-3"><label>Прокси (http://host:port или socks5://host:port; пусто = без прокси)</label>
+                <div class="mb-2"><label>Публичный адрес сервера для ссылок (напр. http://10.10.20.25:8080)</label>
+                    <input class="form-control" name="PublicBaseUrl" value="@s.PublicBaseUrl" @(isAdmin ? "" : "disabled") /></div>
+                <div class="mb-2"><label>Прокси (http://host:port или socks5://host:port; пусто = без прокси)</label>
                     <input class="form-control" name="TelegramProxyUrl" value="@s.TelegramProxyUrl" @(isAdmin ? "" : "disabled") /></div>
+                <div class="row">
+                    <div class="col-md-7 mb-2"><div class="form-check" style="margin-top:30px">
+                        <input class="form-check-input" type="checkbox" name="DailyReportEnabled" value="true" id="dre" @(s.DailyReportEnabled ? "checked" : "") @(isAdmin ? "" : "disabled") />
+                        <label class="form-check-label" for="dre">Ежедневный отчёт по архивации в темы клиентов</label>
+                    </div></div>
+                    <div class="col-md-5 mb-2"><label>Час отчёта (по Омску, UTC+6)</label>
+                        <input class="form-control" type="number" min="0" max="23" name="DailyReportHourOmsk" value="@s.DailyReportHourOmsk" @(isAdmin ? "" : "disabled") /></div>
+                </div>
+                @if (isAdmin)
+                {
+                    <div class="mb-3" style="display:flex;gap:8px;flex-wrap:wrap">
+                        <button class="btn btn-sm btn-primary" type="submit" asp-page-handler="DiscoverChats" formnovalidate>Определить chat_id</button>
+                        <button class="btn btn-sm btn-primary" type="submit" asp-page-handler="CreateTopics" formnovalidate>Создать темы клиентов</button>
+                        <button class="btn btn-sm btn-primary" type="submit" asp-page-handler="SendReportNow" formnovalidate>Отправить отчёт сейчас</button>
+                    </div>
+                }
 
                 <h4 style="font-size:16px">E-mail (SMTP)</h4>
                 <div class="form-check mb-2">
@@ -164,6 +182,31 @@
                 }
             </form>
         </div>
+
+        @if (isAdmin)
+        {
+            <div class="card-y">
+                <h3>WireGuard для Telegram</h3>
+                <div class="muted mb-2" style="font-size:13px">
+                    Если Telegram недоступен напрямую — загрузите конфиг WireGuard (.conf). Бот будет ходить в Telegram
+                    через туннель (userspace, SOCKS5) без прав root. Статус:
+                    <strong style="color:@(Model.WireGuardRunning ? "var(--ok)" : "var(--unknown)")">@(Model.WireGuardRunning ? "туннель поднят" : "выключен")</strong>.
+                </div>
+                <form method="post" asp-page-handler="SaveWireGuard" enctype="multipart/form-data">
+                    <div class="form-check mb-2">
+                        <input class="form-check-input" type="checkbox" name="wgEnabled" value="true" id="wge" @(s.WireGuardEnabled ? "checked" : "") />
+                        <label class="form-check-label" for="wge">Использовать WireGuard для доступа бота к Telegram</label>
+                    </div>
+                    <div class="mb-2"><label>Файл конфигурации WireGuard (.conf)</label>
+                        <input class="form-control" type="file" name="wgFile" accept=".conf,text/plain" /></div>
+                    @if (!string.IsNullOrWhiteSpace(s.WireGuardConfig))
+                    {
+                        <div class="muted mb-2" style="font-size:12px">Конфиг загружен (@(s.WireGuardConfig!.Length) симв.). Загрузка нового файла заменит его.</div>
+                    }
+                    <button class="btn btn-primary" type="submit">Сохранить и применить</button>
+                </form>
+            </div>
+        }
     </div>
 
     <div class="panel">
