@@ -93,9 +93,19 @@ using (var scope = app.Services.CreateScope())
             try
             {
                 if (dbProvider == "postgres")
+                {
                     db.Database.ExecuteSqlRaw("ALTER TABLE \"Settings\" ADD COLUMN IF NOT EXISTS \"TelegramProxyUrl\" text;");
+                    db.Database.ExecuteSqlRaw("ALTER TABLE \"Settings\" ADD COLUMN IF NOT EXISTS \"DefaultBackupStaleDays\" integer NOT NULL DEFAULT 1;");
+                    db.Database.ExecuteSqlRaw("ALTER TABLE \"Settings\" ADD COLUMN IF NOT EXISTS \"WindowsErrorIgnore\" text;");
+                    db.Database.ExecuteSqlRaw("ALTER TABLE \"Servers\" ADD COLUMN IF NOT EXISTS \"BackupStaleDays\" integer NOT NULL DEFAULT 0;");
+                }
                 else
+                {
                     try { db.Database.ExecuteSqlRaw("ALTER TABLE \"Settings\" ADD COLUMN \"TelegramProxyUrl\" TEXT;"); } catch { }
+                    try { db.Database.ExecuteSqlRaw("ALTER TABLE \"Settings\" ADD COLUMN \"DefaultBackupStaleDays\" INTEGER NOT NULL DEFAULT 1;"); } catch { }
+                    try { db.Database.ExecuteSqlRaw("ALTER TABLE \"Settings\" ADD COLUMN \"WindowsErrorIgnore\" TEXT;"); } catch { }
+                    try { db.Database.ExecuteSqlRaw("ALTER TABLE \"Servers\" ADD COLUMN \"BackupStaleDays\" INTEGER NOT NULL DEFAULT 0;"); } catch { }
+                }
             }
             catch (Exception ex) { logger.LogWarning("Обновление схемы: {Msg}", ex.Message); }
 

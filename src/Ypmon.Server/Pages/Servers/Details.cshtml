@@ -41,45 +41,39 @@
             <div class="kv"><span class="k">IP / адрес</span><span class="v">@(s.IpAddress ?? "—")</span></div>
             <div class="kv"><span class="k">Машина агента</span><span class="v">@(s.LastMachineName ?? "—")</span></div>
             <div class="kv"><span class="k">Версия агента</span><span class="v">@(s.LastAgentVersion ?? "—")</span></div>
-            <div class="kv"><span class="k">Сервер БД</span><span class="v">@(s.LastServerAvailable ? "доступен" : "недоступен")</span></div>
             <div class="kv"><span class="k">Последний отчёт</span><span class="v">@UiHelpers.DateTimeAbs(s.LastSeenAt) <span class="muted">(@UiHelpers.Ago(s.LastSeenAt))</span></span></div>
             <div class="kv"><span class="k">Последний бэкап</span><span class="v">@UiHelpers.DateTimeAbs(lastBackup)</span></div>
-            <div class="kv"><span class="k">Объём копий</span><span class="v">@UiHelpers.Bytes(sizeBytes) <span class="muted">(копий: @s.LastBackupCount)</span></span></div>
+            <div class="kv"><span class="k">Объём копий</span><span class="v">@UiHelpers.Bytes(sizeBytes) <span class="muted">(файлов: @s.LastBackupCount)</span></span></div>
+            <div class="kv"><span class="k">Порог устаревания</span><span class="v">@(s.BackupStaleDays > 0 ? s.BackupStaleDays + " дн." : $"по умолчанию ({Model.DefaultBackupStaleDays} дн.)")</span></div>
         </div>
 
-        @if (Model.Report is not null && Model.Report.Jobs.Any())
-        {
-            <div class="card-y">
-                <h3>Задания</h3>
+        <div class="card-y">
+            <h3>Папки бэкапов (архивация)</h3>
+            @if (Model.Report is null || !Model.Report.Folders.Any())
+            {
+                <div class="muted">Агент ещё не прислал данные по папкам.</div>
+            }
+            else
+            {
                 <table class="tbl">
-                    <thead><tr><th>Задание</th><th>Тип</th><th>Статус</th><th>Копий</th><th>Объём</th><th>Посл. копия</th></tr></thead>
+                    <thead><tr><th>Папка</th><th>Статус</th><th>Файлов</th><th>Объём</th><th>Посл. файл</th></tr></thead>
                     <tbody>
-                    @foreach (var j in Model.Report.Jobs)
+                    @foreach (var f in Model.Report.Folders)
                     {
                         <tr>
-                            <td><span class="dot @UiHelpers.DotCss(j.Outcome)"></span>@j.Name<div class="muted" style="font-size:12px">@j.Message</div></td>
-                            <td>@UiHelpers.JobTypeText(j.Type)</td>
-                            <td><span class="badge-status @UiHelpers.OutcomeCss(j.Outcome)">@UiHelpers.OutcomeText(j.Outcome)</span></td>
-                            <td>@j.BackupCount</td>
-                            <td>@UiHelpers.Bytes(j.TotalSizeBytes)</td>
-                            <td>@UiHelpers.DateTimeAbs(j.LastBackupAt)</td>
+                            <td><span class="dot @UiHelpers.DotCss(f.Outcome)"></span>@f.Name
+                                <div class="muted" style="font-size:12px">@f.Path</div>
+                                <div class="muted" style="font-size:12px">@f.Message</div></td>
+                            <td><span class="badge-status @UiHelpers.OutcomeCss(f.Outcome)">@UiHelpers.OutcomeText(f.Outcome)</span></td>
+                            <td>@f.FileCount</td>
+                            <td>@UiHelpers.Bytes(f.TotalSizeBytes)</td>
+                            <td>@UiHelpers.DateTimeAbs(f.LastBackupAt)</td>
                         </tr>
                     }
                     </tbody>
                 </table>
-            </div>
-        }
-
-        @if (Model.Report is not null && Model.Report.Disks.Any())
-        {
-            <div class="card-y">
-                <h3>Диски</h3>
-                @foreach (var d in Model.Report.Disks)
-                {
-                    <div class="kv"><span class="k">@d.Name</span><span class="v">@UiHelpers.Bytes(d.FreeBytes) своб. из @UiHelpers.Bytes(d.TotalBytes) <span class="muted">(@d.UsedPercent%)</span></span></div>
-                }
-            </div>
-        }
+            }
+        </div>
 
         <div class="card-y">
             <h3>История отчётов</h3>
@@ -166,6 +160,8 @@
                     <div class="mb-2"><label>Название</label><input class="form-control" asp-for="Name" /></div>
                     <div class="mb-2"><label>Физический адрес</label><input class="form-control" asp-for="PhysicalAddress" /></div>
                     <div class="mb-2"><label>Сетевой адрес / IP</label><input class="form-control" asp-for="IpAddress" /></div>
+                    <div class="mb-2"><label>Тревога, если нет новых файлов N дней (0 = по умолчанию @Model.DefaultBackupStaleDays)</label>
+                        <input class="form-control" type="number" min="0" asp-for="BackupStaleDays" /></div>
                     <div class="mb-3"><label>Описание</label><textarea class="form-control" asp-for="Description" rows="2"></textarea></div>
                     <button class="btn btn-primary w-100" type="submit">Сохранить</button>
                 </form>

@@ -13,9 +13,9 @@ public static class UiHelpers
         {
             var r = JsonSerializer.Deserialize<AgentReportDto>(reportJson);
             if (r is null) return (null, 0);
-            DateTimeOffset? last = r.Jobs.Where(j => j.LastBackupAt != null)
-                .Select(j => j.LastBackupAt).DefaultIfEmpty(null).Max();
-            return (last, r.Jobs.Sum(j => j.TotalSizeBytes));
+            DateTimeOffset? last = r.Folders.Where(f => f.LastBackupAt != null)
+                .Select(f => f.LastBackupAt).DefaultIfEmpty(null).Max();
+            return (last, r.Folders.Sum(f => f.TotalSizeBytes));
         }
         catch { return (null, 0); }
     }
@@ -46,14 +46,6 @@ public static class UiHelpers
         JobOutcome.Warning => "Предупреждение",
         JobOutcome.Error => "Ошибка",
         _ => "Нет данных"
-    };
-
-    public static string JobTypeText(JobType t) => t switch
-    {
-        JobType.PostgresBackup => "Бэкап PostgreSQL",
-        JobType.FileArchive => "Архивация файлов",
-        JobType.MssqlLog => "Логи MSSQL",
-        _ => t.ToString()
     };
 
     public static string Bytes(long b)

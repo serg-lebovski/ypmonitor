@@ -53,6 +53,9 @@ public class MonitoredServer
     /// <summary>Ключ, которым агент аутентифицируется при отправке отчётов.</summary>
     public string ApiKey { get; set; } = "";
 
+    /// <summary>Порог тревоги: нет новых файлов в папках дольше N дней (0 = использовать глобальное значение).</summary>
+    public int BackupStaleDays { get; set; } = 0;
+
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 
     // --- Кэш последнего состояния (для быстрого дашборда) ---
@@ -118,6 +121,15 @@ public class ServerSettings
 
     /// <summary>Сколько дней хранить историю отчётов.</summary>
     public int ReportRetentionDays { get; set; } = 30;
+
+    /// <summary>Порог по умолчанию: тревога, если в папках нет новых файлов дольше N дней.</summary>
+    public int DefaultBackupStaleDays { get; set; } = 1;
+
+    /// <summary>
+    /// Игнорируемые ошибки Windows: по одному правилу в строке — либо код события (число),
+    /// либо имя/подстрока источника. Совпавшие события не сохраняются и не участвуют в алертах.
+    /// </summary>
+    public string? WindowsErrorIgnore { get; set; }
 
     // --- Оповещения ---
     public bool AlertsEnabled { get; set; }

@@ -106,6 +106,12 @@
                     <div class="col-md-6 mb-3"><label>Хранить историю, дней</label>
                         <input class="form-control" name="ReportRetentionDays" type="number" value="@s.ReportRetentionDays" @(isAdmin ? "" : "disabled") /></div>
                 </div>
+                <div class="mb-3"><label>Порог по умолчанию: нет новых бэкапов N дней → тревога</label>
+                    <input class="form-control" name="DefaultBackupStaleDays" type="number" min="0" value="@s.DefaultBackupStaleDays" @(isAdmin ? "" : "disabled") />
+                    <div class="muted" style="font-size:12px">Применяется к серверам, где не задан свой порог.</div></div>
+                <div class="mb-3"><label>Игнорировать ошибки Windows (по одному правилу в строке: код события или источник)</label>
+                    <textarea class="form-control mono" name="WindowsErrorIgnore" rows="3" placeholder="например:&#10;10016&#10;DistributedCOM" @(isAdmin ? "" : "disabled")>@s.WindowsErrorIgnore</textarea>
+                    <div class="muted" style="font-size:12px">Совпавшие события не сохраняются и не участвуют в оповещениях.</div></div>
                 <div class="form-check mb-3">
                     <input class="form-check-input" type="checkbox" name="AlertsEnabled" value="true" id="ae" @(s.AlertsEnabled ? "checked" : "") @(isAdmin ? "" : "disabled") />
                     <label class="form-check-label" for="ae">Включить оповещения при проблемах</label>

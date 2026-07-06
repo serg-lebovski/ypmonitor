@@ -1,18 +1,15 @@
 using System.Text.Json;
-using Ypmon.Shared;
 
 namespace Ypmon.Agent.Services;
 
 /// <summary>
-/// Загрузка/сохранение конфигурации агента, состояния заданий и снапшота статуса (потокобезопасно).
-/// Всё хранится в файлах рядом с исполняемым файлом — обмена с сервером для настройки нет.
+/// Загрузка/сохранение конфигурации, снапшота статуса и отметки прочитанного журнала.
+/// Всё в файлах рядом с исполняемым файлом — обмена с сервером для настройки нет.
 /// </summary>
 public class ConfigStore
 {
     private readonly string _configPath;
-    private readonly string _statePath;
     private readonly string _snapshotPath;
-    private readonly string _runNowFlagPath;
     private readonly string _eventStatePath;
     private readonly object _lock = new();
     private static readonly JsonSerializerOptions JsonOpts =
@@ -22,15 +19,12 @@ public class ConfigStore
     {
         var dir = AppContext.BaseDirectory;
         _configPath = Path.Combine(dir, "config.json");
-        _statePath = Path.Combine(dir, "state.json");
         _snapshotPath = Path.Combine(dir, "snapshot.json");
-        _runNowFlagPath = Path.Combine(dir, "runnow.flag");
         _eventStatePath = Path.Combine(dir, "eventlog-state.json");
     }
 
     public string ConfigPath => _configPath;
 
-    // --- Конфигурация ---
     public AgentConfig Load()
     {
         lock (_lock)
@@ -52,24 +46,7 @@ public class ConfigStore
             File.WriteAllText(_configPath, JsonSerializer.Serialize(cfg, JsonOpts));
     }
 
-    // --- Состояние заданий (расписание) ---
-    public Dictionary<string, JobState> LoadState()
-    {
-        lock (_lock)
-        {
-            if (!File.Exists(_statePath)) return new();
-            try { return JsonSerializer.Deserialize<Dictionary<string, JobState>>(File.ReadAllText(_statePath), JsonOpts) ?? new(); }
-            catch { return new(); }
-        }
-    }
-
-    public void SaveState(Dictionary<string, JobState> state)
-    {
-        lock (_lock)
-            File.WriteAllText(_statePath, JsonSerializer.Serialize(state, JsonOpts));
-    }
-
-    // --- Снапшот статуса (для окна настроек, читается из файла) ---
+    // --- Снапшот статуса (для окна настроек) ---
     public AgentSnapshot LoadSnapshot()
     {
         lock (_lock)
@@ -88,7 +65,7 @@ public class ConfigStore
         }
     }
 
-    // --- Отметка прочитанного журнала событий (RecordId по каждому журналу) ---
+    // --- Отметка прочитанного журнала (RecordId по каждому журналу) ---
     public Dictionary<string, long> LoadEventLogState()
     {
         lock (_lock)
@@ -106,32 +83,4 @@ public class ConfigStore
             try { File.WriteAllText(_eventStatePath, JsonSerializer.Serialize(state, JsonOpts)); } catch { }
         }
     }
-
-    // --- Локальный сигнал «выполнить сейчас» (флаг-файл; задаётся только из окна агента) ---
-    public void SignalRunNow()
-    {
-        lock (_lock)
-        {
-            try { File.WriteAllText(_runNowFlagPath, DateTimeOffset.UtcNow.ToString("o")); } catch { }
-        }
-    }
-
-    public bool ConsumeRunNow()
-    {
-        lock (_lock)
-        {
-            if (!File.Exists(_runNowFlagPath)) return false;
-            try { File.Delete(_runNowFlagPath); } catch { }
-            return true;
-        }
-    }
-}
-
-/// <summary>Состояние выполнения одного задания (для расписания и отчётов).</summary>
-public class JobState
-{
-    public DateTimeOffset? LastRunAt { get; set; }
-    public DateTimeOffset? LastBackupAt { get; set; }
-    public JobOutcome LastOutcome { get; set; } = JobOutcome.Unknown;
-    public string? LastMessage { get; set; }
 }

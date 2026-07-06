@@ -105,6 +105,8 @@ public class SettingsModel : PageModel
         var s = await _db.Settings.FirstOrDefaultAsync() ?? new ServerSettings();
         s.OfflineThresholdSeconds = Math.Max(60, input.OfflineThresholdSeconds);
         s.ReportRetentionDays = Math.Max(0, input.ReportRetentionDays);
+        s.DefaultBackupStaleDays = Math.Max(0, input.DefaultBackupStaleDays);
+        s.WindowsErrorIgnore = input.WindowsErrorIgnore;
         s.AlertsEnabled = input.AlertsEnabled;
         s.TelegramEnabled = input.TelegramEnabled;
         s.TelegramBotToken = input.TelegramBotToken;

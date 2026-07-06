@@ -25,6 +25,8 @@ public class DetailsModel : PageModel
     [BindProperty] public string? PhysicalAddress { get; set; }
     [BindProperty] public string? IpAddress { get; set; }
     [BindProperty] public string? Description { get; set; }
+    [BindProperty] public int BackupStaleDays { get; set; }
+    public int DefaultBackupStaleDays { get; set; } = 1;
     public string? Message { get; set; }
 
     public async Task<IActionResult> OnGetAsync()
@@ -35,12 +37,15 @@ public class DetailsModel : PageModel
         PhysicalAddress = Server.PhysicalAddress;
         IpAddress = Server.IpAddress;
         Description = Server.Description;
+        BackupStaleDays = Server.BackupStaleDays;
         return Page();
     }
 
     private async Task Load()
     {
-        OfflineThreshold = (await _db.Settings.FirstOrDefaultAsync())?.OfflineThresholdSeconds ?? 300;
+        var settings = await _db.Settings.FirstOrDefaultAsync();
+        OfflineThreshold = settings?.OfflineThresholdSeconds ?? 300;
+        DefaultBackupStaleDays = settings?.DefaultBackupStaleDays ?? 1;
         Server = await _db.Servers.Include(s => s.Client).FirstOrDefaultAsync(s => s.Id == Id);
         if (Server is null) return;
         if (Server.LastReportJson is not null)
@@ -62,6 +67,7 @@ public class DetailsModel : PageModel
         s.PhysicalAddress = PhysicalAddress?.Trim();
         s.IpAddress = IpAddress?.Trim();
         s.Description = Description?.Trim();
+        s.BackupStaleDays = Math.Max(0, BackupStaleDays);
         await _db.SaveChangesAsync();
         await Load();
         Message = "Сохранено";

@@ -1,16 +1,6 @@
 namespace Ypmon.Shared;
 
-/// <summary>Тип задания резервного копирования на агенте.</summary>
-public enum JobType
-{
-    PostgresBackup = 0,
-    FileArchive = 1,
-    MssqlLog = 2,
-    /// <summary>Мониторинг готовой папки бэкапов (сделанных любой программой, напр. AOMEI).</summary>
-    FolderMonitor = 3
-}
-
-/// <summary>Итог выполнения задания.</summary>
+/// <summary>Итог проверки (папки архивации, общий статус).</summary>
 public enum JobOutcome
 {
     Unknown = 0,
@@ -19,125 +9,76 @@ public enum JobOutcome
     Error = 3
 }
 
-/// <summary>Статус одного задания резервного копирования/архивации.</summary>
-public class JobStatusDto
+/// <summary>
+/// Статус одной наблюдаемой папки с бэкапами. Агент присылает фактические данные
+/// (количество файлов, дата последнего, объём, доступность). Порог «нет новых файлов N дней»
+/// и итоговый статус вычисляет сервер.
+/// </summary>
+public class FolderStatusDto
 {
     public string Name { get; set; } = "";
-    public JobType Type { get; set; }
-    public JobOutcome Outcome { get; set; }
-    public string? Message { get; set; }
+    public string Path { get; set; } = "";
 
-    /// <summary>Когда задание последний раз отрабатывало.</summary>
-    public DateTimeOffset? LastRunAt { get; set; }
+    /// <summary>Доступна ли папка (существует и читается).</summary>
+    public bool Accessible { get; set; }
 
-    /// <summary>Время самой свежей резервной копии.</summary>
-    public DateTimeOffset? LastBackupAt { get; set; }
+    /// <summary>Сколько файлов сейчас в папке (любого формата).</summary>
+    public int FileCount { get; set; }
 
-    /// <summary>Сколько резервных копий сейчас хранится.</summary>
-    public int BackupCount { get; set; }
-
-    /// <summary>Суммарный размер хранящихся копий, байт.</summary>
+    /// <summary>Суммарный объём файлов, байт.</summary>
     public long TotalSizeBytes { get; set; }
 
-    /// <summary>Куда складываются копии/что архивируется.</summary>
-    public string? Target { get; set; }
+    /// <summary>Дата/время самого свежего файла.</summary>
+    public DateTimeOffset? LastBackupAt { get; set; }
+
+    /// <summary>Имя самого свежего файла (для наглядности).</summary>
+    public string? LastFileName { get; set; }
+
+    /// <summary>Примечание агента (например, ошибка доступа).</summary>
+    public string? Message { get; set; }
+
+    /// <summary>Итог, вычисленный сервером (агент оставляет Unknown).</summary>
+    public JobOutcome Outcome { get; set; } = JobOutcome.Unknown;
 }
 
-/// <summary>Запись из журнала событий Windows (ошибка/предупреждение), передаётся серверу.</summary>
+/// <summary>Ошибка/предупреждение из журнала событий Windows.</summary>
 public class EventLogEntryDto
 {
-    /// <summary>Имя журнала: System, Application и т.п.</summary>
     public string LogName { get; set; } = "";
-
-    /// <summary>Источник (провайдер) события.</summary>
     public string Source { get; set; } = "";
-
-    /// <summary>Уровень: Critical / Error / Warning.</summary>
     public string Level { get; set; } = "";
-
-    /// <summary>Код события (EventID).</summary>
     public int EventId { get; set; }
-
-    /// <summary>Время события.</summary>
     public DateTimeOffset TimeCreated { get; set; }
-
-    /// <summary>Текст события.</summary>
     public string Message { get; set; } = "";
 }
 
-/// <summary>Информация о диске на машине агента.</summary>
-public class DiskInfoDto
-{
-    public string Name { get; set; } = "";
-    public long TotalBytes { get; set; }
-    public long FreeBytes { get; set; }
-    public double UsedPercent => TotalBytes == 0 ? 0 : Math.Round((TotalBytes - FreeBytes) * 100.0 / TotalBytes, 1);
-}
-
 /// <summary>
-/// Полный отчёт, который агент отправляет на сервер (POST /api/report).
-/// Идентификация — по заголовку X-Api-Key, привязанному к серверу клиента.
+/// Отчёт агента серверу (POST /api/report). Идентификация — по заголовку X-Api-Key.
+/// Агент только отдаёт данные: статусы папок и ошибки журнала Windows.
 /// </summary>
 public class AgentReportDto
 {
-    /// <summary>Имя машины, где работает агент.</summary>
     public string MachineName { get; set; } = "";
-
-    /// <summary>Версия агента.</summary>
     public string AgentVersion { get; set; } = "";
-
-    /// <summary>Момент формирования отчёта (по часам агента).</summary>
     public DateTimeOffset ReportedAt { get; set; } = DateTimeOffset.UtcNow;
 
-    /// <summary>
-    /// true — это лёгкий отчёт о доступности (heartbeat): сервер обновит только время связи
-    /// и доступность, не затрагивая данные заданий. false — полный отчёт о состоянии.
-    /// </summary>
+    /// <summary>true — лёгкий отчёт о связи (heartbeat): обновляется только время связи.</summary>
     public bool IsHeartbeat { get; set; }
 
-    /// <summary>Доступен ли наблюдаемый сервер БД (true = ок).</summary>
-    public bool ServerAvailable { get; set; }
+    /// <summary>Статусы наблюдаемых папок бэкапов.</summary>
+    public List<FolderStatusDto> Folders { get; set; } = new();
 
-    /// <summary>Пояснение к доступности (например, ошибка подключения).</summary>
-    public string? AvailabilityMessage { get; set; }
-
-    /// <summary>Аптайм машины агента в секундах.</summary>
-    public long UptimeSeconds { get; set; }
-
-    /// <summary>Что архивируется и в каком состоянии — список заданий.</summary>
-    public List<JobStatusDto> Jobs { get; set; } = new();
-
-    /// <summary>Состояние дисков (для мониторинга свободного места).</summary>
-    public List<DiskInfoDto> Disks { get; set; } = new();
-
-    /// <summary>Новые ошибки/предупреждения из журнала событий Windows с прошлого отчёта.</summary>
+    /// <summary>Новые ошибки/предупреждения журнала Windows с прошлого отчёта.</summary>
     public List<EventLogEntryDto> EventLogErrors { get; set; } = new();
-
-    /// <summary>Итоговый статус (худший из заданий + доступность).</summary>
-    public JobOutcome OverallOutcome
-    {
-        get
-        {
-            if (!ServerAvailable) return JobOutcome.Error;
-            if (Jobs.Count == 0) return JobOutcome.Unknown;
-            return Jobs.Max(j => j.Outcome);
-        }
-    }
-
-    /// <summary>Суммарно копий по всем заданиям.</summary>
-    public int TotalBackupCount => Jobs.Sum(j => j.BackupCount);
 }
 
 /// <summary>
-/// Ответ сервера на отчёт агента. Содержит ТОЛЬКО подтверждение приёма —
-/// сервер не передаёт агенту никаких команд на выполнение (одностороннее, исходящее соединение).
+/// Ответ сервера на отчёт. Только подтверждение приёма — сервер не передаёт агенту команд.
 /// </summary>
 public class ReportAckDto
 {
     public bool Accepted { get; set; }
     public string? Message { get; set; }
-
-    /// <summary>Имя клиента и сервера, как их видит сервер (для отображения в агенте).</summary>
     public string? ClientName { get; set; }
     public string? ServerName { get; set; }
 }

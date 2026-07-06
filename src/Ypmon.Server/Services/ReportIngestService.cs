@@ -5,7 +5,7 @@ using Ypmon.Shared;
 
 namespace Ypmon.Server.Services;
 
-/// <summary>Обработка входящего отчёта агента: сохранение, обновление статуса, оповещения.</summary>
+/// <summary>Обработка входящего отчёта агента: статусы папок, ошибки Windows, оповещения.</summary>
 public class ReportIngestService
 {
     private readonly AppDbContext _db;
@@ -14,9 +14,7 @@ public class ReportIngestService
 
     public ReportIngestService(AppDbContext db, AlertService alerts, ILogger<ReportIngestService> log)
     {
-        _db = db;
-        _alerts = alerts;
-        _log = log;
+        _db = db; _alerts = alerts; _log = log;
     }
 
     public async Task<ReportAckDto> IngestAsync(string apiKey, AgentReportDto report)
@@ -27,102 +25,148 @@ public class ReportIngestService
         if (server is null)
             return new ReportAckDto { Accepted = false, Message = "Неизвестный API-ключ" };
 
-        // Heartbeat: обновляем только время связи и доступность БД, не затрагивая данные заданий.
+        // Heartbeat: только время связи.
         if (report.IsHeartbeat)
         {
             server.LastSeenAt = DateTimeOffset.UtcNow;
             server.LastReportedAt = report.ReportedAt;
-            server.LastServerAvailable = report.ServerAvailable;
             await _db.SaveChangesAsync();
-            return new ReportAckDto
-            {
-                Accepted = true,
-                Message = "OK (heartbeat)",
-                ClientName = server.Client?.Name,
-                ServerName = server.Name
-            };
+            return Ack(server, "OK (heartbeat)");
         }
 
+        var settings = await _db.Settings.FirstOrDefaultAsync();
         var prevOutcome = server.LastOutcome;
-        var prevSeen = server.LastSeenAt;
 
-        // Сохраняем историю
+        // Порог устаревания: у сервера, иначе глобальный по умолчанию.
+        var staleDays = server.BackupStaleDays > 0
+            ? server.BackupStaleDays
+            : (settings?.DefaultBackupStaleDays ?? 1);
+
+        // Вычисляем статус каждой папки.
+        foreach (var f in report.Folders)
+            f.Outcome = EvaluateFolder(f, staleDays);
+
+        var overall = report.Folders.Count == 0
+            ? JobOutcome.Unknown
+            : report.Folders.Max(f => f.Outcome);
+
+        // Фильтрация игнорируемых ошибок Windows.
+        var ignore = IgnoreRules.Parse(settings?.WindowsErrorIgnore);
+        var events = report.EventLogErrors.Where(e => !ignore.IsIgnored(e)).ToList();
+        report.EventLogErrors = events;
+
+        // История + кэш состояния.
         _db.Reports.Add(new Report
         {
             ServerId = server.Id,
             ReceivedAt = DateTimeOffset.UtcNow,
             ReportedAt = report.ReportedAt,
-            ServerAvailable = report.ServerAvailable,
-            Outcome = report.OverallOutcome,
-            BackupCount = report.TotalBackupCount,
+            ServerAvailable = true,
+            Outcome = overall,
+            BackupCount = report.Folders.Sum(f => f.FileCount),
             MachineName = report.MachineName,
             PayloadJson = JsonSerializer.Serialize(report)
         });
 
-        // Обновляем кэш состояния
         server.LastSeenAt = DateTimeOffset.UtcNow;
         server.LastReportedAt = report.ReportedAt;
-        server.LastOutcome = report.OverallOutcome;
-        server.LastServerAvailable = report.ServerAvailable;
-        server.LastBackupCount = report.TotalBackupCount;
+        server.LastOutcome = overall;
+        server.LastServerAvailable = true;
+        server.LastBackupCount = report.Folders.Sum(f => f.FileCount);
         server.LastMachineName = report.MachineName;
         server.LastAgentVersion = report.AgentVersion;
         server.LastReportJson = JsonSerializer.Serialize(report);
 
-        // Ошибки журнала событий Windows — сохраняем новые (без дублей).
-        if (report.EventLogErrors is { Count: > 0 })
+        // Сохраняем новые ошибки Windows (без дублей).
+        if (events.Count > 0)
         {
-            var incoming = report.EventLogErrors
-                .Where(e => e.TimeCreated != default)
-                .OrderBy(e => e.TimeCreated)
-                .ToList();
-            var minT = incoming.First().TimeCreated;
-            var maxT = incoming.Last().TimeCreated;
-
-            var existing = await _db.Events
-                .Where(e => e.ServerId == server.Id && e.TimeCreated >= minT && e.TimeCreated <= maxT)
-                .Select(e => new { e.TimeCreated, e.EventId, e.Source })
-                .ToListAsync();
-            var seen = new HashSet<string>(existing.Select(x => $"{x.TimeCreated:O}|{x.EventId}|{x.Source}"));
-
-            foreach (var e in incoming)
+            var ordered = events.Where(e => e.TimeCreated != default).OrderBy(e => e.TimeCreated).ToList();
+            if (ordered.Count > 0)
             {
-                var key = $"{e.TimeCreated:O}|{e.EventId}|{e.Source}";
-                if (!seen.Add(key)) continue;
-                _db.Events.Add(new AgentEvent
+                var minT = ordered.First().TimeCreated;
+                var maxT = ordered.Last().TimeCreated;
+                var existing = await _db.Events
+                    .Where(e => e.ServerId == server.Id && e.TimeCreated >= minT && e.TimeCreated <= maxT)
+                    .Select(e => new { e.TimeCreated, e.EventId, e.Source })
+                    .ToListAsync();
+                var seen = new HashSet<string>(existing.Select(x => $"{x.TimeCreated:O}|{x.EventId}|{x.Source}"));
+                foreach (var e in ordered)
                 {
-                    ServerId = server.Id,
-                    ReceivedAt = DateTimeOffset.UtcNow,
-                    TimeCreated = e.TimeCreated,
-                    LogName = e.LogName ?? "",
-                    Source = e.Source ?? "",
-                    Level = e.Level ?? "",
-                    EventId = e.EventId,
-                    Message = e.Message ?? ""
-                });
+                    var key = $"{e.TimeCreated:O}|{e.EventId}|{e.Source}";
+                    if (!seen.Add(key)) continue;
+                    _db.Events.Add(new AgentEvent
+                    {
+                        ServerId = server.Id,
+                        ReceivedAt = DateTimeOffset.UtcNow,
+                        TimeCreated = e.TimeCreated,
+                        LogName = e.LogName ?? "",
+                        Source = e.Source ?? "",
+                        Level = e.Level ?? "",
+                        EventId = e.EventId,
+                        Message = e.Message ?? ""
+                    });
+                }
             }
         }
 
         await _db.SaveChangesAsync();
 
-        // Оповещение при переходе в проблемное состояние
-        var settings = await _db.Settings.FirstOrDefaultAsync();
-        if (settings is not null && report.OverallOutcome >= JobOutcome.Warning && prevOutcome < JobOutcome.Warning)
+        // Оповещение при переходе папок в проблемное состояние (архивация — отдельно от Windows-ошибок).
+        if (settings is not null && overall >= JobOutcome.Warning && prevOutcome < JobOutcome.Warning)
         {
-            var failing = report.Jobs.Where(j => j.Outcome >= JobOutcome.Warning)
-                .Select(j => $"• {j.Name}: {j.Message}").ToList();
-            var avail = report.ServerAvailable ? "" : $"\nСервер БД недоступен: {report.AvailabilityMessage}";
+            var problems = report.Folders.Where(f => f.Outcome >= JobOutcome.Warning)
+                .Select(f => $"• {f.Name}: {f.Message}").ToList();
             await _alerts.SendAsync(settings,
-                $"YPMon: проблема на {server.Client?.Name} / {server.Name}",
-                $"Машина: {report.MachineName}{avail}\n" + string.Join("\n", failing));
+                $"YPMon: проблема с бэкапами — {server.Client?.Name} / {server.Name}",
+                $"Машина: {report.MachineName}\n" + string.Join("\n", problems));
         }
 
-        return new ReportAckDto
+        return Ack(server, "OK");
+    }
+
+    private static JobOutcome EvaluateFolder(FolderStatusDto f, int staleDays)
+    {
+        if (!f.Accessible) return JobOutcome.Error;
+        if (f.FileCount == 0) return JobOutcome.Error;
+        if (staleDays > 0 && f.LastBackupAt is { } last &&
+            (DateTimeOffset.UtcNow - last).TotalDays > staleDays)
+            return JobOutcome.Error;
+        return JobOutcome.Ok;
+    }
+
+    private static ReportAckDto Ack(MonitoredServer s, string msg) => new()
+    {
+        Accepted = true,
+        Message = msg,
+        ClientName = s.Client?.Name,
+        ServerName = s.Name
+    };
+}
+
+/// <summary>Правила игнорирования ошибок Windows (код события или подстрока источника).</summary>
+public sealed class IgnoreRules
+{
+    private readonly HashSet<int> _eventIds = new();
+    private readonly List<string> _sources = new();
+
+    public static IgnoreRules Parse(string? text)
+    {
+        var r = new IgnoreRules();
+        if (string.IsNullOrWhiteSpace(text)) return r;
+        foreach (var raw in text.Split(new[] { '\n', '\r', ',', ';' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
         {
-            Accepted = true,
-            Message = "OK",
-            ClientName = server.Client?.Name,
-            ServerName = server.Name
-        };
+            if (int.TryParse(raw, out var id)) r._eventIds.Add(id);
+            else r._sources.Add(raw);
+        }
+        return r;
+    }
+
+    public bool IsIgnored(EventLogEntryDto e)
+    {
+        if (_eventIds.Contains(e.EventId)) return true;
+        foreach (var s in _sources)
+            if (!string.IsNullOrEmpty(e.Source) && e.Source.Contains(s, StringComparison.OrdinalIgnoreCase))
+                return true;
+        return false;
     }
 }

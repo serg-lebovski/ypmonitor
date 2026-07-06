@@ -9,17 +9,16 @@ namespace Ypmon.Agent;
 
 internal static class Program
 {
-    // Системный мьютекс: гарантирует, что задания выполняет только один экземпляр
-    // (служба ИЛИ открытое окно), без дублирования бэкапов и отчётов.
+    // Системный мьютекс: задания выполняет только один экземпляр (служба ИЛИ открытое окно).
     private const string MutexName = @"Global\YpmonAgentWorker";
 
-    /// <summary>Запущены ли мы как служба Windows (используется самообновлением).</summary>
+    /// <summary>Запущены ли мы как служба Windows.</summary>
     public static bool IsServiceMode { get; private set; }
 
     [STAThread]
     private static void Main(string[] args)
     {
-        // Режим провижининга из установщика: записать адрес сервера/ключ/имя службы в config.json и выйти.
+        // Режим провижининга из установщика: записать адрес сервера/ключ/имя службы и выйти.
         if (args.Contains("--provision"))
         {
             ProvisionFromArgs(args);
@@ -32,15 +31,11 @@ internal static class Program
 
         if (isService || forceConsole)
         {
-            // Фоновый режим (служба Windows): выполняем задания и шлём отчёты, окна нет.
             using var serviceMutex = TryAcquire(out _);
             BuildHost(args).Run();
             return;
         }
 
-        // Интерактивный режим (двойной клик): окно настроек.
-        // Если рабочий экземпляр (служба) ещё не запущен — поднимаем фоновые задания,
-        // чтобы агент функционировал, пока открыто окно. Иначе только правим настройки.
         using var mutex = TryAcquire(out var acquired);
         IHost? host = null;
         if (acquired)
@@ -60,10 +55,7 @@ internal static class Program
         }
     }
 
-    /// <summary>
-    /// Записывает в config.json параметры, переданные установщиком (--server, --apikey, --service).
-    /// Существующий конфиг (задания и пр.) сохраняется — меняются только указанные поля.
-    /// </summary>
+    /// <summary>Записывает в config.json параметры установщика; существующий конфиг сохраняется.</summary>
     private static void ProvisionFromArgs(string[] args)
     {
         try
@@ -78,13 +70,9 @@ internal static class Program
             if (!string.IsNullOrWhiteSpace(service)) cfg.ServiceName = service!.Trim();
             store.Save(cfg);
         }
-        catch
-        {
-            // Молча: установщик всё равно продолжит, настройки можно ввести в окне агента.
-        }
+        catch { }
     }
 
-    /// <summary>Значение аргумента "--name value" (без учёта регистра имени).</summary>
     private static string? GetArg(string[] args, string name)
     {
         for (var i = 0; i < args.Length - 1; i++)
@@ -104,8 +92,6 @@ internal static class Program
         }
         catch
         {
-            // Нет прав на глобальный объект — не запускаем фоновую работу здесь,
-            // чтобы не дублировать задания службы. Окно остаётся доступным для настройки.
             acquired = false;
             return null;
         }
@@ -118,10 +104,9 @@ internal static class Program
             .ConfigureServices(services =>
             {
                 services.AddSingleton<ConfigStore>();
-                services.AddSingleton<BackupRunner>();
+                services.AddSingleton<FolderMonitorService>();
                 services.AddSingleton<EventLogReaderService>();
                 services.AddSingleton<Reporter>();
-                services.AddHostedService(sp => sp.GetRequiredService<BackupRunner>());
                 services.AddHostedService(sp => sp.GetRequiredService<Reporter>());
                 services.AddHostedService<UpdateService>();
             })

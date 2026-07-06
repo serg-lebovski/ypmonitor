@@ -5,9 +5,9 @@ using Ypmon.Shared;
 namespace Ypmon.Agent.Services;
 
 /// <summary>
-/// Читает журнал событий Windows (System, Application и т.п.) и собирает новые ошибки/предупреждения
-/// с прошлого отчёта. Только чтение. Отметка прогресса — RecordId по каждому журналу (в eventlog-state.json),
-/// чтобы не отправлять одно и то же повторно.
+/// Читает журнал событий Windows и собирает новые ошибки/предупреждения с прошлого отчёта.
+/// Только чтение. Прогресс — по RecordId каждого журнала (eventlog-state.json).
+/// Какие ошибки игнорировать — решает сервер.
 /// </summary>
 [SupportedOSPlatform("windows")]
 public class EventLogReaderService
@@ -25,12 +25,10 @@ public class EventLogReaderService
 
         var watermarks = _store.LoadEventLogState();
         var logs = (el.Logs is { Count: > 0 } ? el.Logs : new List<string> { "System", "Application" })
-            .Select(l => l.Trim()).Where(l => l.Length > 0)
-            .Distinct(StringComparer.OrdinalIgnoreCase);
+            .Select(l => l.Trim()).Where(l => l.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase);
 
         var maxPerLog = Math.Max(1, el.MaxEntriesPerReport);
         var levelFilter = el.IncludeWarnings ? "(Level=1 or Level=2 or Level=3)" : "(Level=1 or Level=2)";
-        var exclude = new HashSet<string>(el.ExcludeSources ?? new(), StringComparer.OrdinalIgnoreCase);
 
         foreach (var logName in logs)
         {
@@ -60,10 +58,7 @@ public class EventLogReaderService
                     {
                         var rid = rec.RecordId ?? 0;
                         if (rid > maxSeen) maxSeen = rid;
-                        if (taken >= maxPerLog) continue; // дочитываем ради корректной отметки, но не копим
-
-                        var src = rec.ProviderName ?? "";
-                        if (exclude.Contains(src)) continue;
+                        if (taken >= maxPerLog) continue;
 
                         string msg;
                         try { msg = rec.FormatDescription() ?? ""; } catch { msg = ""; }
@@ -78,7 +73,7 @@ public class EventLogReaderService
                         result.Add(new EventLogEntryDto
                         {
                             LogName = logName,
-                            Source = src,
+                            Source = rec.ProviderName ?? "",
                             Level = LevelName(rec.Level),
                             EventId = rec.Id,
                             TimeCreated = time,
@@ -92,7 +87,7 @@ public class EventLogReaderService
             }
             catch
             {
-                // Журнал недоступен или нет прав на чтение — пропускаем, не роняя отчёт.
+                // Журнал недоступен/нет прав — пропускаем, не роняя отчёт.
             }
         }
 
@@ -100,7 +95,7 @@ public class EventLogReaderService
         return result.OrderByDescending(e => e.TimeCreated).ToList();
     }
 
-    /// <summary>Предпросмотр последних записей без сдвига отметки прочитанного (для кнопки в окне).</summary>
+    /// <summary>Предпросмотр последних записей без сдвига отметки (для кнопки в окне).</summary>
     public List<EventLogEntryDto> PreviewRecent(AgentConfig cfg, int count)
     {
         var result = new List<EventLogEntryDto>();
@@ -110,7 +105,6 @@ public class EventLogReaderService
         var logs = (el.Logs is { Count: > 0 } ? el.Logs : new List<string> { "System", "Application" })
             .Select(l => l.Trim()).Where(l => l.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase);
         var levelFilter = el.IncludeWarnings ? "(Level=1 or Level=2 or Level=3)" : "(Level=1 or Level=2)";
-        var exclude = new HashSet<string>(el.ExcludeSources ?? new(), StringComparer.OrdinalIgnoreCase);
         var ms = Math.Max(1, el.LookbackHoursOnFirstRun) * 3600L * 1000L;
 
         foreach (var logName in logs)
@@ -125,15 +119,13 @@ public class EventLogReaderService
                 {
                     using (rec)
                     {
-                        var src = rec.ProviderName ?? "";
-                        if (exclude.Contains(src)) continue;
                         string msg;
                         try { msg = rec.FormatDescription() ?? ""; } catch { msg = ""; }
                         if (string.IsNullOrWhiteSpace(msg)) msg = $"(событие {rec.Id})";
                         result.Add(new EventLogEntryDto
                         {
                             LogName = logName,
-                            Source = src,
+                            Source = rec.ProviderName ?? "",
                             Level = LevelName(rec.Level),
                             EventId = rec.Id,
                             TimeCreated = rec.TimeCreated is { } dt ? new DateTimeOffset(dt.ToUniversalTime(), TimeSpan.Zero) : DateTimeOffset.UtcNow,
