@@ -117,10 +117,11 @@
                 <summary>🚫 Обход блокировки телеграмма</summary>
                 <div class="acc-body">
                     <form method="post" asp-page-handler="SaveWireGuard" enctype="multipart/form-data">
-                        <h4 style="font-size:16px">WireGuard <span class="muted" style="font-size:12px">(рабочий способ для бота)</span></h4>
+                        <h4 style="font-size:16px">WireGuard / AmneziaWG <span class="muted" style="font-size:12px">(рабочий способ для бота)</span></h4>
                         <div class="muted mb-2" style="font-size:13px">
-                            Загрузите конфиг WireGuard (.conf) — бот ходит в Telegram через userspace-туннель (SOCKS5) без прав root. Статус:
-                            <strong style="color:@(Model.WireGuardRunning ? "var(--ok)" : "var(--unknown)")">@(Model.WireGuardRunning ? "туннель поднят" : "выключен")</strong>.
+                            Загрузите конфиг WireGuard или AmneziaWG (.conf из Amnezia VPN) — бот ходит в Telegram через
+                            userspace-туннель (SOCKS5) без прав root. Параметры AmneziaWG (Jc, S1, H1…) распознаются автоматически.
+                            Статус: <strong style="color:@(Model.WireGuardRunning ? "var(--ok)" : "var(--unknown)")">@Model.WireGuardStatus</strong>.
                         </div>
                         <div class="form-check mb-2">
                             <input class="form-check-input" type="checkbox" name="wgEnabled" value="true" id="wge" @(s.WireGuardEnabled ? "checked" : "") />

@@ -25,6 +25,7 @@ public class SettingsModel : PageModel
     }
 
     public bool WireGuardRunning { get; set; }
+    public string WireGuardStatus { get; set; } = "";
 
     public ServerSettings Settings { get; set; } = new();
     public List<AppUser> Users { get; set; } = new();
@@ -78,6 +79,7 @@ public class SettingsModel : PageModel
             UpdateChangelog = _upd.ReadChangelog();
         }
         WireGuardRunning = _wg.IsRunning;
+        WireGuardStatus = _wg.LastStatus;
     }
 
     public async Task<IActionResult> OnPostCheckUpdateAsync()
@@ -147,9 +149,7 @@ public class SettingsModel : PageModel
         await _db.SaveChangesAsync();
         _wg.Apply(s.WireGuardEnabled, s.WireGuardConfig);
         await Load();
-        Message = s.WireGuardEnabled
-            ? (_wg.IsRunning ? "WireGuard применён, туннель поднят." : "WireGuard включён, но туннель не поднялся (проверьте конфиг/бинарник).")
-            : "WireGuard выключен.";
+        Message = "WireGuard: " + _wg.LastStatus;
         IsError = s.WireGuardEnabled && !_wg.IsRunning;
         return Page();
     }
