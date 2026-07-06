@@ -57,7 +57,8 @@ public class DailyReportScheduler : BackgroundService
         var today = DateOnly.FromDateTime(omsk);
         var hour = Math.Clamp(s.DailyReportHourOmsk, 0, 23);
 
-        if (omsk.Hour >= hour && _lastSentOmsk < today)
+        // Отправляем только в течение заданного часа (иначе рестарт после 10:00 слал бы повтор).
+        if (omsk.Hour == hour && _lastSentOmsk < today)
         {
             _lastSentOmsk = today;
             var report = scope.ServiceProvider.GetRequiredService<TelegramReportService>();
