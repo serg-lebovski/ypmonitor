@@ -6,52 +6,34 @@
     var s = Model.Settings;
 }
 
+<style>
+    details.acc { margin-bottom: 12px; }
+    details.acc > summary {
+        cursor: pointer; list-style: none; font-weight: 600; font-size: 17px;
+        display: flex; align-items: center; gap: 8px; padding: 4px 0;
+    }
+    details.acc > summary::-webkit-details-marker { display: none; }
+    details.acc > summary::before { content: "▸"; color: var(--unknown); transition: transform .15s; }
+    details.acc[open] > summary::before { transform: rotate(90deg); }
+    details.acc > .acc-body { padding-top: 10px; }
+</style>
+
 <h1 class="page-title">Настройки</h1>
 
 @if (Model.Message is not null)
 {
-    <div class="alert-y @(Model.IsError ? "alert-err" : "alert-ok")">@Model.Message</div>
+    <div class="alert-y @(Model.IsError ? "alert-err" : "alert-ok")" style="white-space:pre-wrap">@Model.Message</div>
 }
 
 <div class="dash-grid">
     <div>
-        <div class="card-y">
-            <h3>Параметры сервера</h3>
-            <div class="muted mb-2" style="font-size:13px">Эти параметры задаются в файле <span class="code mono">appsettings.json</span> и применяются после перезапуска службы.</div>
-            <div class="kv"><span class="k">Порт веб-интерфейса</span><span class="v mono">@Model.HttpPort</span></div>
-            <div class="kv"><span class="k">Адрес</span><span class="v mono">@($"{Request.Scheme}://{Request.Host}")</span></div>
-            <div class="kv"><span class="k">База данных</span><span class="v mono">@Model.DbProvider</span></div>
-        </div>
-
-        <div class="card-y">
-            <h3>Установщик агента</h3>
-            @if (Model.AgentInstallerExists)
-            {
-                <div class="muted mb-2" style="font-size:13px">Скачайте и запустите установщик на компьютере, где нужен агент. Он ставит агента в <span class="code mono">C:\Program Files\ypmonitor</span> и регистрирует службу Windows.</div>
-                <div class="kv"><span class="k">Версия</span><span class="v mono">@(Model.AgentInstallerVersion ?? "—")</span></div>
-                <div class="kv"><span class="k">Размер</span><span class="v mono">@($"{Model.AgentInstallerSize / 1024.0 / 1024.0:0.0} МБ")</span></div>
-                <div class="kv"><span class="k">Обновлён</span><span class="v mono">@(Model.AgentInstallerDate?.ToString("yyyy-MM-dd HH:mm") ?? "—")</span></div>
-                <a class="btn btn-primary mt-2" href="/agent-installer" download>Скачать установщик агента</a>
-            }
-            else
-            {
-                <div class="alert-y alert-err">Установщик не загружен на сервер. Поместите <span class="code mono">YpmonAgent-Setup.exe</span> и <span class="code mono">version.txt</span> в папку <span class="code mono">agent-updates</span> рядом с сервером.</div>
-            }
-        </div>
-
-        @if (isAdmin)
+        @if (isAdmin && Model.UpdateConfigured)
         {
             var us = Model.UpdateStatus;
-            <div class="card-y">
-                <h3>Обновление сервера</h3>
-                @if (!Model.UpdateConfigured)
-                {
-                    <div class="muted" style="font-size:13px">Самообновление не настроено. На сервере выполните один раз:
-                        <span class="code mono">sudo bash deploy/install-updater.sh</span> — после этого обновление доступно кнопкой.</div>
-                }
-                else
-                {
-                    <div class="muted mb-2" style="font-size:13px">Обновление берётся из git-репозитория. Сначала «Проверить», затем «Установить» — сервер сам сделает <span class="code mono">git pull</span> и пересоберётся.</div>
+            <details class="card-y acc">
+                <summary>🔄 Обновление сервера</summary>
+                <div class="acc-body">
+                    <div class="muted mb-2" style="font-size:13px">Обновление берётся из git-репозитория. Сначала «Проверить», затем «Установить».</div>
                     <div class="kv"><span class="k">Текущая ревизия</span><span class="v mono">@(us?.CurrentShort ?? "—")</span></div>
                     <div class="kv"><span class="k">В репозитории</span><span class="v mono">@(us?.RemoteShort ?? "—")</span></div>
                     <div class="kv"><span class="k">Проверено</span><span class="v mono">@(us?.LastChecked?.ToLocalTime().ToString("yyyy-MM-dd HH:mm") ?? "—")</span></div>
@@ -80,7 +62,6 @@
                     {
                         <div class="muted mt-2" style="font-size:13px">Установлена актуальная версия.</div>
                     }
-
                     <div class="mt-2" style="display:flex;gap:8px;flex-wrap:wrap">
                         <form method="post" asp-page-handler="CheckUpdate">
                             <button class="btn btn-primary" type="submit">Проверить обновления</button>
@@ -93,179 +74,218 @@
                             </form>
                         }
                     </div>
-                }
-            </div>
+                </div>
+            </details>
         }
-
-        <div class="card-y">
-            <h3>Оповещения и обслуживание</h3>
-            <form method="post" asp-page-handler="SaveSettings">
-                <div class="row">
-                    <div class="col-md-6 mb-3"><label>Порог «офлайн», сек</label>
-                        <input class="form-control" name="OfflineThresholdSeconds" type="number" value="@s.OfflineThresholdSeconds" @(isAdmin ? "" : "disabled") /></div>
-                    <div class="col-md-6 mb-3"><label>Хранить историю, дней</label>
-                        <input class="form-control" name="ReportRetentionDays" type="number" value="@s.ReportRetentionDays" @(isAdmin ? "" : "disabled") /></div>
-                </div>
-                <div class="mb-3"><label>Порог по умолчанию: нет новых бэкапов N дней → тревога</label>
-                    <input class="form-control" name="DefaultBackupStaleDays" type="number" min="0" value="@s.DefaultBackupStaleDays" @(isAdmin ? "" : "disabled") />
-                    <div class="muted" style="font-size:12px">Применяется к серверам, где не задан свой порог.</div></div>
-                <div class="mb-3"><label>Игнорировать ошибки Windows (по одному правилу в строке: код события или источник)</label>
-                    <textarea class="form-control mono" name="WindowsErrorIgnore" rows="3" placeholder="например:&#10;10016&#10;DistributedCOM" @(isAdmin ? "" : "disabled")>@s.WindowsErrorIgnore</textarea>
-                    <div class="muted" style="font-size:12px">Совпавшие события не сохраняются и не участвуют в оповещениях.</div></div>
-                <div class="form-check mb-3">
-                    <input class="form-check-input" type="checkbox" name="AlertsEnabled" value="true" id="ae" @(s.AlertsEnabled ? "checked" : "") @(isAdmin ? "" : "disabled") />
-                    <label class="form-check-label" for="ae">Включить оповещения при проблемах</label>
-                </div>
-
-                <h4 style="font-size:16px">Telegram</h4>
-                <div class="form-check mb-2">
-                    <input class="form-check-input" type="checkbox" name="TelegramEnabled" value="true" id="te" @(s.TelegramEnabled ? "checked" : "") @(isAdmin ? "" : "disabled") />
-                    <label class="form-check-label" for="te">Использовать Telegram</label>
-                </div>
-                <div class="mb-2"><label>Bot Token</label>
-                    <input class="form-control" name="TelegramBotToken" value="@s.TelegramBotToken" @(isAdmin ? "" : "disabled") /></div>
-                <div class="mb-2"><label>ID группы (супергруппа с включёнными Темами, напр. -1001234567890)</label>
-                    <input class="form-control" name="TelegramChatId" value="@s.TelegramChatId" @(isAdmin ? "" : "disabled") /></div>
-                <div class="mb-2"><label>Публичный адрес сервера для ссылок (напр. http://10.10.20.25:8080)</label>
-                    <input class="form-control" name="PublicBaseUrl" value="@s.PublicBaseUrl" @(isAdmin ? "" : "disabled") /></div>
-                <div class="mb-2"><label>Прокси (http://host:port или socks5://host:port; пусто = без прокси)</label>
-                    <input class="form-control" name="TelegramProxyUrl" value="@s.TelegramProxyUrl" @(isAdmin ? "" : "disabled") /></div>
-                <div class="row">
-                    <div class="col-md-7 mb-2"><div class="form-check" style="margin-top:30px">
-                        <input class="form-check-input" type="checkbox" name="DailyReportEnabled" value="true" id="dre" @(s.DailyReportEnabled ? "checked" : "") @(isAdmin ? "" : "disabled") />
-                        <label class="form-check-label" for="dre">Ежедневный отчёт по архивации в темы клиентов</label>
-                    </div></div>
-                    <div class="col-md-5 mb-2"><label>Час отчёта (по Омску, UTC+6)</label>
-                        <input class="form-control" type="number" min="0" max="23" name="DailyReportHourOmsk" value="@s.DailyReportHourOmsk" @(isAdmin ? "" : "disabled") /></div>
-                </div>
-                @if (isAdmin)
-                {
-                    <div class="mb-3" style="display:flex;gap:8px;flex-wrap:wrap">
-                        <button class="btn btn-sm btn-primary" type="submit" asp-page-handler="DiscoverChats" formnovalidate>Определить chat_id</button>
-                        <button class="btn btn-sm btn-primary" type="submit" asp-page-handler="CreateTopics" formnovalidate>Создать темы клиентов</button>
-                        <button class="btn btn-sm btn-primary" type="submit" asp-page-handler="SendReportNow" formnovalidate>Отправить отчёт сейчас</button>
-                    </div>
-                }
-
-                <h4 style="font-size:16px">E-mail (SMTP)</h4>
-                <div class="form-check mb-2">
-                    <input class="form-check-input" type="checkbox" name="EmailEnabled" value="true" id="ee" @(s.EmailEnabled ? "checked" : "") @(isAdmin ? "" : "disabled") />
-                    <label class="form-check-label" for="ee">Использовать e-mail</label>
-                </div>
-                <div class="row">
-                    <div class="col-md-8 mb-2"><label>SMTP хост</label>
-                        <input class="form-control" name="SmtpHost" value="@s.SmtpHost" @(isAdmin ? "" : "disabled") /></div>
-                    <div class="col-md-4 mb-2"><label>Порт</label>
-                        <input class="form-control" name="SmtpPort" type="number" value="@s.SmtpPort" @(isAdmin ? "" : "disabled") /></div>
-                </div>
-                <div class="form-check mb-2">
-                    <input class="form-check-input" type="checkbox" name="SmtpUseSsl" value="true" id="ssl" @(s.SmtpUseSsl ? "checked" : "") @(isAdmin ? "" : "disabled") />
-                    <label class="form-check-label" for="ssl">SSL/TLS</label>
-                </div>
-                <div class="row">
-                    <div class="col-md-6 mb-2"><label>Логин SMTP</label>
-                        <input class="form-control" name="SmtpUser" value="@s.SmtpUser" @(isAdmin ? "" : "disabled") /></div>
-                    <div class="col-md-6 mb-2"><label>Пароль SMTP</label>
-                        <input class="form-control" type="password" name="SmtpPassword" value="@s.SmtpPassword" @(isAdmin ? "" : "disabled") /></div>
-                </div>
-                <div class="row">
-                    <div class="col-md-6 mb-2"><label>От кого</label>
-                        <input class="form-control" name="EmailFrom" value="@s.EmailFrom" @(isAdmin ? "" : "disabled") /></div>
-                    <div class="col-md-6 mb-3"><label>Кому (через запятую)</label>
-                        <input class="form-control" name="EmailTo" value="@s.EmailTo" @(isAdmin ? "" : "disabled") /></div>
-                </div>
-
-                @if (isAdmin)
-                {
-                    <button class="btn btn-primary" type="submit">Сохранить</button>
-                    <button class="btn btn-primary" type="submit" asp-page-handler="TestAlert" formnovalidate>Отправить тест</button>
-                }
-            </form>
-        </div>
 
         @if (isAdmin)
         {
-            <div class="card-y">
-                <h3>WireGuard для Telegram</h3>
-                <div class="muted mb-2" style="font-size:13px">
-                    Если Telegram недоступен напрямую — загрузите конфиг WireGuard (.conf). Бот будет ходить в Telegram
-                    через туннель (userspace, SOCKS5) без прав root. Статус:
-                    <strong style="color:@(Model.WireGuardRunning ? "var(--ok)" : "var(--unknown)")">@(Model.WireGuardRunning ? "туннель поднят" : "выключен")</strong>.
-                </div>
-                <form method="post" asp-page-handler="SaveWireGuard" enctype="multipart/form-data">
-                    <div class="form-check mb-2">
-                        <input class="form-check-input" type="checkbox" name="wgEnabled" value="true" id="wge" @(s.WireGuardEnabled ? "checked" : "") />
-                        <label class="form-check-label" for="wge">Использовать WireGuard для доступа бота к Telegram</label>
+            <details class="card-y acc" open>
+                <summary>🤖 Telegram-бот</summary>
+                <div class="acc-body">
+                    <form method="post" asp-page-handler="SaveTelegram">
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="checkbox" name="TelegramEnabled" value="true" id="te" @(s.TelegramEnabled ? "checked" : "") />
+                            <label class="form-check-label" for="te">Использовать Telegram</label>
+                        </div>
+                        <div class="mb-2"><label>Bot Token</label>
+                            <input class="form-control" name="TelegramBotToken" value="@s.TelegramBotToken" /></div>
+                        <div class="mb-2"><label>ID группы (супергруппа с включёнными Темами, напр. -1001234567890)</label>
+                            <input class="form-control" name="TelegramChatId" value="@s.TelegramChatId" /></div>
+                        <div class="mb-2"><label>Публичный адрес сервера для ссылок (напр. http://10.10.20.25:8080)</label>
+                            <input class="form-control" name="PublicBaseUrl" value="@s.PublicBaseUrl" /></div>
+                        <div class="mb-2"><label>Прокси <span class="muted">(необязательно; пусто = напрямую или через WireGuard)</span></label>
+                            <input class="form-control" name="TelegramProxyUrl" value="@s.TelegramProxyUrl" placeholder="socks5://host:port или http://host:port" /></div>
+                        <div class="row">
+                            <div class="col-md-7 mb-2"><div class="form-check" style="margin-top:30px">
+                                <input class="form-check-input" type="checkbox" name="DailyReportEnabled" value="true" id="dre" @(s.DailyReportEnabled ? "checked" : "") />
+                                <label class="form-check-label" for="dre">Ежедневный отчёт в темы клиентов</label>
+                            </div></div>
+                            <div class="col-md-5 mb-2"><label>Час отчёта (по Омску, UTC+6)</label>
+                                <input class="form-control" type="number" min="0" max="23" name="DailyReportHourOmsk" value="@s.DailyReportHourOmsk" /></div>
+                        </div>
+                        <button class="btn btn-primary" type="submit">💾 Сохранить настройки бота</button>
+                    </form>
+                    <div class="mt-2" style="display:flex;gap:8px;flex-wrap:wrap">
+                        <form method="post" asp-page-handler="DiscoverChats"><button class="btn btn-sm btn-primary" type="submit">Определить chat_id</button></form>
+                        <form method="post" asp-page-handler="CreateTopics"><button class="btn btn-sm btn-primary" type="submit">Создать темы клиентов</button></form>
+                        <form method="post" asp-page-handler="SendReportNow"><button class="btn btn-sm btn-primary" type="submit">Отправить отчёт сейчас</button></form>
                     </div>
-                    <div class="mb-2"><label>Файл конфигурации WireGuard (.conf)</label>
-                        <input class="form-control" type="file" name="wgFile" accept=".conf,text/plain" /></div>
-                    @if (!string.IsNullOrWhiteSpace(s.WireGuardConfig))
-                    {
-                        <div class="muted mb-2" style="font-size:12px">Конфиг загружен (@(s.WireGuardConfig!.Length) симв.). Загрузка нового файла заменит его.</div>
-                    }
-                    <button class="btn btn-primary" type="submit">Сохранить и применить</button>
-                </form>
-            </div>
+                    <div class="muted mt-2" style="font-size:12px">Кнопки действий используют уже сохранённые настройки — сначала сохраните.</div>
+                </div>
+            </details>
+
+            <details class="card-y acc">
+                <summary>🛡️ WireGuard для Telegram</summary>
+                <div class="acc-body">
+                    <div class="muted mb-2" style="font-size:13px">
+                        Если Telegram недоступен напрямую — загрузите конфиг WireGuard (.conf). Бот ходит в Telegram через
+                        userspace-туннель (SOCKS5) без прав root. Статус:
+                        <strong style="color:@(Model.WireGuardRunning ? "var(--ok)" : "var(--unknown)")">@(Model.WireGuardRunning ? "туннель поднят" : "выключен")</strong>.
+                    </div>
+                    <form method="post" asp-page-handler="SaveWireGuard" enctype="multipart/form-data">
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="checkbox" name="wgEnabled" value="true" id="wge" @(s.WireGuardEnabled ? "checked" : "") />
+                            <label class="form-check-label" for="wge">Использовать WireGuard для доступа бота к Telegram</label>
+                        </div>
+                        <div class="mb-2"><label>Файл конфигурации WireGuard (.conf)</label>
+                            <input class="form-control" type="file" name="wgFile" accept=".conf,text/plain" /></div>
+                        @if (!string.IsNullOrWhiteSpace(s.WireGuardConfig))
+                        {
+                            <div class="muted mb-2" style="font-size:12px">Конфиг загружен (@(s.WireGuardConfig!.Length) симв.). Новый файл заменит его.</div>
+                        }
+                        <button class="btn btn-primary" type="submit">Сохранить и применить</button>
+                    </form>
+                    <form method="post" asp-page-handler="CheckWireGuard" class="mt-2">
+                        <button class="btn btn-sm btn-primary" type="submit">Проверить (показать внешний IP)</button>
+                    </form>
+                </div>
+            </details>
+
+            <details class="card-y acc">
+                <summary>🔔 Оповещения и обслуживание</summary>
+                <div class="acc-body">
+                    <form method="post" asp-page-handler="SaveSettings">
+                        <div class="row">
+                            <div class="col-md-6 mb-3"><label>Порог «офлайн», сек</label>
+                                <input class="form-control" name="OfflineThresholdSeconds" type="number" value="@s.OfflineThresholdSeconds" /></div>
+                            <div class="col-md-6 mb-3"><label>Хранить историю, дней</label>
+                                <input class="form-control" name="ReportRetentionDays" type="number" value="@s.ReportRetentionDays" /></div>
+                        </div>
+                        <div class="mb-3"><label>Порог по умолчанию: нет новых бэкапов N дней → тревога</label>
+                            <input class="form-control" name="DefaultBackupStaleDays" type="number" min="0" value="@s.DefaultBackupStaleDays" />
+                            <div class="muted" style="font-size:12px">Применяется к серверам, где не задан свой порог.</div></div>
+                        <div class="mb-3"><label>Игнорировать ошибки Windows (по одному правилу в строке: код события или источник)</label>
+                            <textarea class="form-control mono" name="WindowsErrorIgnore" rows="3" placeholder="например:&#10;10016&#10;DistributedCOM">@s.WindowsErrorIgnore</textarea></div>
+                        <div class="form-check mb-3">
+                            <input class="form-check-input" type="checkbox" name="AlertsEnabled" value="true" id="ae" @(s.AlertsEnabled ? "checked" : "") />
+                            <label class="form-check-label" for="ae">Включить оповещения при проблемах</label>
+                        </div>
+
+                        <h4 style="font-size:16px">E-mail (SMTP)</h4>
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="checkbox" name="EmailEnabled" value="true" id="ee" @(s.EmailEnabled ? "checked" : "") />
+                            <label class="form-check-label" for="ee">Использовать e-mail</label>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-8 mb-2"><label>SMTP хост</label>
+                                <input class="form-control" name="SmtpHost" value="@s.SmtpHost" /></div>
+                            <div class="col-md-4 mb-2"><label>Порт</label>
+                                <input class="form-control" name="SmtpPort" type="number" value="@s.SmtpPort" /></div>
+                        </div>
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="checkbox" name="SmtpUseSsl" value="true" id="ssl" @(s.SmtpUseSsl ? "checked" : "") />
+                            <label class="form-check-label" for="ssl">SSL/TLS</label>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6 mb-2"><label>Логин SMTP</label>
+                                <input class="form-control" name="SmtpUser" value="@s.SmtpUser" /></div>
+                            <div class="col-md-6 mb-2"><label>Пароль SMTP</label>
+                                <input class="form-control" type="password" name="SmtpPassword" value="@s.SmtpPassword" /></div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6 mb-2"><label>От кого</label>
+                                <input class="form-control" name="EmailFrom" value="@s.EmailFrom" /></div>
+                            <div class="col-md-6 mb-3"><label>Кому (через запятую)</label>
+                                <input class="form-control" name="EmailTo" value="@s.EmailTo" /></div>
+                        </div>
+                        <button class="btn btn-primary" type="submit">Сохранить</button>
+                        <button class="btn btn-primary" type="submit" asp-page-handler="TestAlert" formnovalidate>Отправить тест</button>
+                    </form>
+                </div>
+            </details>
         }
+
+        <details class="card-y acc">
+            <summary>⬇️ Установщик агента</summary>
+            <div class="acc-body">
+                @if (Model.AgentInstallerExists)
+                {
+                    <div class="muted mb-2" style="font-size:13px">Установщик ставит агента в <span class="code mono">C:\Program Files\ypmonitor</span> и регистрирует службу.</div>
+                    <div class="kv"><span class="k">Версия</span><span class="v mono">@(Model.AgentInstallerVersion ?? "—")</span></div>
+                    <div class="kv"><span class="k">Размер</span><span class="v mono">@($"{Model.AgentInstallerSize / 1024.0 / 1024.0:0.0} МБ")</span></div>
+                    <div class="kv"><span class="k">Обновлён</span><span class="v mono">@(Model.AgentInstallerDate?.ToString("yyyy-MM-dd HH:mm") ?? "—")</span></div>
+                    <a class="btn btn-primary mt-2" href="/agent-installer" download>Скачать установщик агента</a>
+                }
+                else
+                {
+                    <div class="alert-y alert-err">Установщик не загружен на сервер.</div>
+                }
+            </div>
+        </details>
+
+        <details class="card-y acc">
+            <summary>🖥️ Параметры сервера</summary>
+            <div class="acc-body">
+                <div class="muted mb-2" style="font-size:13px">Задаются в <span class="code mono">appsettings.json</span> / переменных окружения.</div>
+                <div class="kv"><span class="k">Порт веб-интерфейса</span><span class="v mono">@Model.HttpPort</span></div>
+                <div class="kv"><span class="k">Адрес</span><span class="v mono">@($"{Request.Scheme}://{Request.Host}")</span></div>
+                <div class="kv"><span class="k">База данных</span><span class="v mono">@Model.DbProvider</span></div>
+            </div>
+        </details>
     </div>
 
     <div class="panel">
-        <div class="card-y">
-            <h3>Мой профиль</h3>
-            <form method="post" asp-page-handler="SaveProfile">
-                <div class="mb-2"><label>Отображаемое имя</label>
-                    <input class="form-control" name="displayName" value="@User.Identity?.Name" /></div>
-                <div class="mb-2"><label>Логин</label>
-                    <input class="form-control" name="username" value="@User.Identity?.Name" /></div>
-                <div class="mb-3"><label>Новый пароль (если меняете)</label>
-                    <input class="form-control" type="password" name="newPassword" placeholder="оставьте пустым" /></div>
-                <button class="btn btn-primary w-100" type="submit">Сохранить профиль</button>
-            </form>
-        </div>
+        <details class="card-y acc" open>
+            <summary>👤 Мой профиль</summary>
+            <div class="acc-body">
+                <form method="post" asp-page-handler="SaveProfile">
+                    <div class="mb-2"><label>Отображаемое имя</label>
+                        <input class="form-control" name="displayName" value="@User.Identity?.Name" /></div>
+                    <div class="mb-2"><label>Логин</label>
+                        <input class="form-control" name="username" value="@User.Identity?.Name" /></div>
+                    <div class="mb-3"><label>Новый пароль (если меняете)</label>
+                        <input class="form-control" type="password" name="newPassword" placeholder="оставьте пустым" /></div>
+                    <button class="btn btn-primary w-100" type="submit">Сохранить профиль</button>
+                </form>
+            </div>
+        </details>
 
         @if (isAdmin)
         {
-            <div class="card-y">
-                <h3>Пользователи</h3>
-                @foreach (var u in Model.Users)
-                {
-                    <div class="card-y" style="background:var(--card-2);padding:12px">
-                        <div style="display:flex;justify-content:space-between;align-items:center">
-                            <strong>@u.Username</strong>
-                            <form method="post" asp-page-handler="DeleteUser" asp-route-userId="@u.Id"
-                                  onsubmit="return confirm('Удалить пользователя?')">
-                                <button class="btn btn-sm btn-y-danger">Удалить</button>
+            <details class="card-y acc">
+                <summary>👥 Пользователи</summary>
+                <div class="acc-body">
+                    @foreach (var u in Model.Users)
+                    {
+                        <div class="card-y" style="background:var(--card-2);padding:12px">
+                            <div style="display:flex;justify-content:space-between;align-items:center">
+                                <strong>@u.Username</strong>
+                                <form method="post" asp-page-handler="DeleteUser" asp-route-userId="@u.Id"
+                                      onsubmit="return confirm('Удалить пользователя?')">
+                                    <button class="btn btn-sm btn-y-danger">Удалить</button>
+                                </form>
+                            </div>
+                            <form method="post" asp-page-handler="EditUser" asp-route-userId="@u.Id" class="mt-2">
+                                <div class="row">
+                                    <div class="col-md-6 mb-2"><label>Имя</label>
+                                        <input class="form-control" name="displayName" value="@u.DisplayName" /></div>
+                                    <div class="col-md-6 mb-2"><label>Роль</label>
+                                        <select class="form-select" name="role">
+                                            <option value="Viewer" selected="@(u.Role == UserRole.Viewer)">Наблюдатель</option>
+                                            <option value="Admin" selected="@(u.Role == UserRole.Admin)">Администратор</option>
+                                        </select></div>
+                                </div>
+                                <div class="mb-2"><label>Новый пароль (если меняете)</label>
+                                    <input class="form-control" type="password" name="newPassword" placeholder="оставьте пустым" /></div>
+                                <button class="btn btn-sm btn-primary" type="submit">Сохранить</button>
                             </form>
                         </div>
-                        <form method="post" asp-page-handler="EditUser" asp-route-userId="@u.Id" class="mt-2">
-                            <div class="row">
-                                <div class="col-md-6 mb-2"><label>Имя</label>
-                                    <input class="form-control" name="displayName" value="@u.DisplayName" /></div>
-                                <div class="col-md-6 mb-2"><label>Роль</label>
-                                    <select class="form-select" name="role">
-                                        <option value="Viewer" selected="@(u.Role == UserRole.Viewer)">Наблюдатель</option>
-                                        <option value="Admin" selected="@(u.Role == UserRole.Admin)">Администратор</option>
-                                    </select></div>
-                            </div>
-                            <div class="mb-2"><label>Новый пароль (если меняете)</label>
-                                <input class="form-control" type="password" name="newPassword" placeholder="оставьте пустым" /></div>
-                            <button class="btn btn-sm btn-primary" type="submit">Сохранить</button>
-                        </form>
-                    </div>
-                }
-                <hr style="border-color:var(--border)" />
-                <h4 style="font-size:15px">Новый пользователь</h4>
-                <form method="post" asp-page-handler="AddUser">
-                    <div class="mb-2"><input class="form-control" name="username" placeholder="Логин" /></div>
-                    <div class="mb-2"><input class="form-control" name="displayName" placeholder="Имя" /></div>
-                    <div class="mb-2"><input class="form-control" type="password" name="password" placeholder="Пароль" /></div>
-                    <div class="mb-2"><select class="form-select" name="role">
-                        <option value="Viewer">Наблюдатель</option>
-                        <option value="Admin">Администратор</option>
-                    </select></div>
-                    <button class="btn btn-primary w-100" type="submit">Добавить</button>
-                </form>
-            </div>
+                    }
+                    <hr style="border-color:var(--border)" />
+                    <h4 style="font-size:15px">Новый пользователь</h4>
+                    <form method="post" asp-page-handler="AddUser">
+                        <div class="mb-2"><input class="form-control" name="username" placeholder="Логин" /></div>
+                        <div class="mb-2"><input class="form-control" name="displayName" placeholder="Имя" /></div>
+                        <div class="mb-2"><input class="form-control" type="password" name="password" placeholder="Пароль" /></div>
+                        <div class="mb-2"><select class="form-select" name="role">
+                            <option value="Viewer">Наблюдатель</option>
+                            <option value="Admin">Администратор</option>
+                        </select></div>
+                        <button class="btn btn-primary w-100" type="submit">Добавить</button>
+                    </form>
+                </div>
+            </details>
         }
     </div>
 </div>

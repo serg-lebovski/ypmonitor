@@ -1,3 +1,4 @@
+using System.Net.Http;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -115,13 +116,7 @@ public class SettingsModel : PageModel
         s.DefaultBackupStaleDays = Math.Max(0, input.DefaultBackupStaleDays);
         s.WindowsErrorIgnore = input.WindowsErrorIgnore;
         s.AlertsEnabled = input.AlertsEnabled;
-        s.TelegramEnabled = input.TelegramEnabled;
-        s.TelegramBotToken = input.TelegramBotToken;
-        s.TelegramChatId = input.TelegramChatId;
-        s.TelegramProxyUrl = input.TelegramProxyUrl;
-        s.PublicBaseUrl = input.PublicBaseUrl;
-        s.DailyReportEnabled = input.DailyReportEnabled;
-        s.DailyReportHourOmsk = Math.Clamp(input.DailyReportHourOmsk, 0, 23);
+        // Настройки Telegram сохраняются отдельным обработчиком SaveTelegram — здесь их не трогаем.
         s.EmailEnabled = input.EmailEnabled;
         s.SmtpHost = input.SmtpHost;
         s.SmtpPort = input.SmtpPort;
@@ -155,6 +150,40 @@ public class SettingsModel : PageModel
             ? (_wg.IsRunning ? "WireGuard применён, туннель поднят." : "WireGuard включён, но туннель не поднялся (проверьте конфиг/бинарник).")
             : "WireGuard выключен.";
         IsError = s.WireGuardEnabled && !_wg.IsRunning;
+        return Page();
+    }
+
+    public async Task<IActionResult> OnPostSaveTelegramAsync(ServerSettings input)
+    {
+        if (!IsAdmin) return Forbid();
+        var s = await _db.Settings.FirstOrDefaultAsync() ?? new ServerSettings();
+        s.TelegramEnabled = input.TelegramEnabled;
+        s.TelegramBotToken = input.TelegramBotToken;
+        s.TelegramChatId = input.TelegramChatId;
+        s.PublicBaseUrl = input.PublicBaseUrl;
+        s.TelegramProxyUrl = input.TelegramProxyUrl;
+        s.DailyReportEnabled = input.DailyReportEnabled;
+        s.DailyReportHourOmsk = Math.Clamp(input.DailyReportHourOmsk, 0, 23);
+        if (s.Id == 0) _db.Settings.Add(s);
+        await _db.SaveChangesAsync();
+        await Load();
+        Message = "Настройки бота сохранены.";
+        return Page();
+    }
+
+    public async Task<IActionResult> OnPostCheckWireGuardAsync()
+    {
+        if (!IsAdmin) return Forbid();
+        await Load();
+        if (!_wg.IsRunning) { IsError = true; Message = "WireGuard не запущен. Загрузите конфиг, включите и примените."; return Page(); }
+        try
+        {
+            var handler = new HttpClientHandler { Proxy = new System.Net.WebProxy(_wg.SocksProxyUrl), UseProxy = true };
+            using var http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(20) };
+            var ip = (await http.GetStringAsync("https://api.ipify.org")).Trim();
+            Message = $"Внешний IP через WireGuard: {ip}";
+        }
+        catch (Exception ex) { IsError = true; Message = "Не удалось получить внешний IP через WireGuard: " + ex.Message; }
         return Page();
     }
 
