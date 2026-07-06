@@ -17,11 +17,14 @@ public class TelegramService
         _wg = wg; _log = log;
     }
 
-    /// <summary>Прокси для обращения к Telegram: WireGuard (если включён и поднят) либо ручной.</summary>
+    /// <summary>
+    /// Прокси для обращения к Telegram (HTTP Bot API): WireGuard (userspace SOCKS5), если поднят.
+    /// MTProto-прокси к HTTP Bot API неприменим и здесь не используется.
+    /// </summary>
     public string? ResolveProxy(ServerSettings s)
     {
         if (s.WireGuardEnabled && _wg.IsRunning) return _wg.SocksProxyUrl;
-        return string.IsNullOrWhiteSpace(s.TelegramProxyUrl) ? null : s.TelegramProxyUrl;
+        return null;
     }
 
     private HttpClient CreateClient(ServerSettings s)

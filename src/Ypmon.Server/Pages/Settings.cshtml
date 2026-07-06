@@ -94,8 +94,6 @@
                             <input class="form-control" name="TelegramChatId" value="@s.TelegramChatId" /></div>
                         <div class="mb-2"><label>Публичный адрес сервера для ссылок (напр. http://10.10.20.25:8080)</label>
                             <input class="form-control" name="PublicBaseUrl" value="@s.PublicBaseUrl" /></div>
-                        <div class="mb-2"><label>Прокси <span class="muted">(необязательно; пусто = напрямую или через WireGuard)</span></label>
-                            <input class="form-control" name="TelegramProxyUrl" value="@s.TelegramProxyUrl" placeholder="socks5://host:port или http://host:port" /></div>
                         <div class="row">
                             <div class="col-md-7 mb-2"><div class="form-check" style="margin-top:30px">
                                 <input class="form-check-input" type="checkbox" name="DailyReportEnabled" value="true" id="dre" @(s.DailyReportEnabled ? "checked" : "") />
@@ -116,14 +114,14 @@
             </details>
 
             <details class="card-y acc">
-                <summary>🛡️ WireGuard для Telegram</summary>
+                <summary>🚫 Обход блокировки телеграмма</summary>
                 <div class="acc-body">
-                    <div class="muted mb-2" style="font-size:13px">
-                        Если Telegram недоступен напрямую — загрузите конфиг WireGuard (.conf). Бот ходит в Telegram через
-                        userspace-туннель (SOCKS5) без прав root. Статус:
-                        <strong style="color:@(Model.WireGuardRunning ? "var(--ok)" : "var(--unknown)")">@(Model.WireGuardRunning ? "туннель поднят" : "выключен")</strong>.
-                    </div>
                     <form method="post" asp-page-handler="SaveWireGuard" enctype="multipart/form-data">
+                        <h4 style="font-size:16px">WireGuard <span class="muted" style="font-size:12px">(рабочий способ для бота)</span></h4>
+                        <div class="muted mb-2" style="font-size:13px">
+                            Загрузите конфиг WireGuard (.conf) — бот ходит в Telegram через userspace-туннель (SOCKS5) без прав root. Статус:
+                            <strong style="color:@(Model.WireGuardRunning ? "var(--ok)" : "var(--unknown)")">@(Model.WireGuardRunning ? "туннель поднят" : "выключен")</strong>.
+                        </div>
                         <div class="form-check mb-2">
                             <input class="form-check-input" type="checkbox" name="wgEnabled" value="true" id="wge" @(s.WireGuardEnabled ? "checked" : "") />
                             <label class="form-check-label" for="wge">Использовать WireGuard для доступа бота к Telegram</label>
@@ -134,10 +132,19 @@
                         {
                             <div class="muted mb-2" style="font-size:12px">Конфиг загружен (@(s.WireGuardConfig!.Length) симв.). Новый файл заменит его.</div>
                         }
+
+                        <h4 style="font-size:16px;margin-top:14px">MTProto-прокси</h4>
+                        <div class="muted mb-2" style="font-size:12px">
+                            Формат <span class="code mono">tg://proxy?server=...&port=...&secret=...</span> или <span class="code mono">server:port:secret</span>.
+                            Внимание: MTProto-прокси работает для клиентов Telegram, а бот использует HTTP Bot API —
+                            для обхода блокировки боту нужен WireGuard. Поле сохраняется, но к HTTP-боту не применяется.
+                        </div>
+                        <div class="mb-2"><input class="form-control" name="mtProxy" value="@s.TelegramMtProxy" placeholder="tg://proxy?server=...&port=...&secret=..." /></div>
+
                         <button class="btn btn-primary" type="submit">Сохранить и применить</button>
                     </form>
                     <form method="post" asp-page-handler="CheckWireGuard" class="mt-2">
-                        <button class="btn btn-sm btn-primary" type="submit">Проверить (показать внешний IP)</button>
+                        <button class="btn btn-sm btn-primary" type="submit">Проверить WireGuard (показать внешний IP)</button>
                     </form>
                 </div>
             </details>

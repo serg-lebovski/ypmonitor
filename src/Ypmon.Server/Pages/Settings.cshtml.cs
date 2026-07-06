@@ -132,7 +132,7 @@ public class SettingsModel : PageModel
         return Page();
     }
 
-    public async Task<IActionResult> OnPostSaveWireGuardAsync(IFormFile? wgFile, bool wgEnabled)
+    public async Task<IActionResult> OnPostSaveWireGuardAsync(IFormFile? wgFile, bool wgEnabled, string? mtProxy)
     {
         if (!IsAdmin) return Forbid();
         var s = await _db.Settings.FirstOrDefaultAsync() ?? new ServerSettings();
@@ -142,6 +142,7 @@ public class SettingsModel : PageModel
             s.WireGuardConfig = await reader.ReadToEndAsync();
         }
         s.WireGuardEnabled = wgEnabled;
+        s.TelegramMtProxy = mtProxy;
         if (s.Id == 0) _db.Settings.Add(s);
         await _db.SaveChangesAsync();
         _wg.Apply(s.WireGuardEnabled, s.WireGuardConfig);
@@ -161,7 +162,6 @@ public class SettingsModel : PageModel
         s.TelegramBotToken = input.TelegramBotToken;
         s.TelegramChatId = input.TelegramChatId;
         s.PublicBaseUrl = input.PublicBaseUrl;
-        s.TelegramProxyUrl = input.TelegramProxyUrl;
         s.DailyReportEnabled = input.DailyReportEnabled;
         s.DailyReportHourOmsk = Math.Clamp(input.DailyReportHourOmsk, 0, 23);
         if (s.Id == 0) _db.Settings.Add(s);
