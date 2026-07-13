@@ -23,8 +23,13 @@ public sealed class WireGuardProxyService : IDisposable
     private Process? _proc;
 
     public const int SocksPort = 25344;
-    public string SocksProxyUrl => $"socks5://127.0.0.1:{SocksPort}";
     public string LastStatus { get; private set; } = "выключен";
+
+    // Режим сайдкара: если задан YPMON_AWG_SOCKS (напр. "awg:1080"), туннель поднимает отдельный
+    // контейнер amneziawg-go (полноценный AmneziaWG), а сервер только пишет конфиг в общий том.
+    private readonly string? _sidecarSocks;
+    private readonly string _sidecarConfigPath;
+    private bool _sidecarActive;
 
     private static readonly string[] AmneziaKeys = { "Jc", "Jmin", "Jmax", "S1", "S2", "H1", "H2", "H3", "H4" };
 
@@ -33,11 +38,23 @@ public sealed class WireGuardProxyService : IDisposable
         _log = log;
         _dir = Path.Combine(env.ContentRootPath, "wg");
         _confPath = Path.Combine(_dir, "wireproxy.conf");
+        _sidecarSocks = Environment.GetEnvironmentVariable("YPMON_AWG_SOCKS");
+        _sidecarConfigPath = Environment.GetEnvironmentVariable("YPMON_AWG_CONFIG") ?? "/app/awg-out/awg0.conf";
     }
+
+    public bool SidecarMode => !string.IsNullOrWhiteSpace(_sidecarSocks);
+
+    public string SocksProxyUrl => SidecarMode
+        ? $"socks5://{_sidecarSocks}"
+        : $"socks5://127.0.0.1:{SocksPort}";
 
     public bool IsRunning
     {
-        get { lock (_lock) return _proc is { HasExited: false }; }
+        get
+        {
+            if (SidecarMode) return _sidecarActive;
+            lock (_lock) return _proc is { HasExited: false };
+        }
     }
 
     private string? FindBinary()
@@ -88,9 +105,56 @@ public sealed class WireGuardProxyService : IDisposable
         File.WriteAllText(_confPath, conf);
     }
 
+    /// <summary>В режиме сайдкара: пишем сырой AmneziaWG-конфиг в общий том, туннель поднимает контейнер awg.</summary>
+    private void ApplySidecar(bool enabled, string? wgConfig)
+    {
+        try
+        {
+            if (!enabled || string.IsNullOrWhiteSpace(wgConfig))
+            {
+                if (File.Exists(_sidecarConfigPath)) File.Delete(_sidecarConfigPath);
+                _sidecarActive = false;
+                LastStatus = "выключен";
+                return;
+            }
+            Directory.CreateDirectory(Path.GetDirectoryName(_sidecarConfigPath)!);
+            File.WriteAllText(_sidecarConfigPath, SanitizeForAwg(wgConfig));
+            _sidecarActive = true;
+            LastStatus = HasAmneziaParams(wgConfig)
+                ? "конфиг передан AmneziaWG-туннелю (нажмите «Проверить»)"
+                : "конфиг передан туннелю (нажмите «Проверить»)";
+        }
+        catch (Exception ex)
+        {
+            _sidecarActive = false;
+            LastStatus = "ошибка записи конфига для сайдкара: " + ex.Message;
+            _log.LogWarning(ex, "AmneziaWG сайдкар: запись конфига");
+        }
+    }
+
+    /// <summary>Готовит конфиг для awg-quick: убирает DNS (в контейнере не нужен), IPv6 и хвост [Socks5].</summary>
+    private static string SanitizeForAwg(string cfg)
+    {
+        var sb = new StringBuilder();
+        foreach (var raw in cfg.Replace("\r", "").Split('\n'))
+        {
+            var t = raw.TrimStart();
+            if (t.StartsWith("[Socks5]", StringComparison.OrdinalIgnoreCase)) break;
+            if (t.StartsWith("DNS", StringComparison.OrdinalIgnoreCase)) continue;
+            if (t.StartsWith("AllowedIPs", StringComparison.OrdinalIgnoreCase))
+            {
+                sb.Append("AllowedIPs = 0.0.0.0/0\n");
+                continue;
+            }
+            sb.Append(raw).Append('\n');
+        }
+        return sb.ToString();
+    }
+
     /// <summary>Применяет настройки: (пере)запускает или останавливает туннель.</summary>
     public void Apply(bool enabled, string? wgConfig)
     {
+        if (SidecarMode) { ApplySidecar(enabled, wgConfig); return; }
         lock (_lock)
         {
             Stop();

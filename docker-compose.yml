@@ -42,10 +42,26 @@ services:
       Server__AllowedIps: "${YPMON_ALLOWED_IPS:-}"
       Database__Provider: "postgres"
       Database__ConnectionString: "Host=postgres;Port=5432;Database=ypmon;Username=admin_yp;Password=${POSTGRES_PASSWORD}"
+      YPMON_AWG_SOCKS: "awg:1080"           # SOCKS5 сайдкара AmneziaWG (обход блокировки для Telegram-бота)
+      YPMON_AWG_CONFIG: "/app/awg-out/awg0.conf"
     volumes:
       - ypmon-updates:/app/agent-updates   # сюда кладите Ypmon.Agent.exe для автообновления агентов
       - ypmon-data:/app/data               # ключи DataProtection и sqlite (переживают пересборку)
+      - ypmon-awg:/app/awg-out             # сюда сервер пишет конфиг AmneziaWG для сайдкара
       - ./.update:/app/update              # канал самообновления сервера (запрос/статус для воркера ypmon-updater)
+
+  # AmneziaWG-туннель для Telegram-бота (обход DPI). Отдаёт SOCKS5 на awg:1080 внутри compose-сети.
+  awg:
+    build: ./installers/awg-sidecar
+    image: ypmon-awg:latest
+    container_name: ypmon-awg
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun
+    volumes:
+      - ypmon-awg:/config                  # общий том: сервер пишет awg0.conf, сайдкар его читает
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8081/api/ping"]
       interval: 30s
@@ -57,3 +73,4 @@ volumes:
   ypmon-pgdata:
   ypmon-updates:
   ypmon-data:
+  ypmon-awg:
