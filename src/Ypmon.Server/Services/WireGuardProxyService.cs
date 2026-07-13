@@ -139,20 +139,31 @@ public sealed class WireGuardProxyService : IDisposable
         try
         {
             WriteConf(wgConfig);
-            _proc = Process.Start(new ProcessStartInfo(bin, $"-c \"{_confPath}\"")
+            var errBuf = new StringBuilder();
+            var p = new Process
             {
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                CreateNoWindow = true
-            });
-            if (_proc is null) return false;
+                StartInfo = new ProcessStartInfo(bin, $"-c \"{_confPath}\"")
+                {
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    CreateNoWindow = true
+                }
+            };
+            // ВАЖНО: асинхронно вычитываем потоки. Иначе wireproxy (подробный DEBUG-вывод) забивает
+            // буфер OS-пайпа и БЛОКИРУЕТСЯ — туннель перестаёт передавать трафик («SOCKS failed to connect»).
+            p.OutputDataReceived += (_, _) => { };
+            p.ErrorDataReceived += (_, e) => { if (e.Data is not null && errBuf.Length < 4000) errBuf.AppendLine(e.Data); };
+            if (!p.Start()) { return false; }
+            _proc = p;
+            p.BeginOutputReadLine();
+            p.BeginErrorReadLine();
+
             // Даём процессу подняться; если сразу упал (напр. не понял конфиг) — считаем неудачей.
             Thread.Sleep(1500);
             if (_proc.HasExited)
             {
-                var err = SafeRead(_proc);
-                _log.LogWarning("Прокси-процесс завершился: {Err}", err);
+                _log.LogWarning("Прокси-процесс завершился: {Err}", errBuf.ToString());
                 _proc = null;
                 return false;
             }
@@ -165,12 +176,6 @@ public sealed class WireGuardProxyService : IDisposable
             _proc = null;
             return false;
         }
-    }
-
-    private static string SafeRead(Process p)
-    {
-        try { return (p.StandardError.ReadToEnd() + " " + p.StandardOutput.ReadToEnd()).Trim(); }
-        catch { return ""; }
     }
 
     private void Stop()
