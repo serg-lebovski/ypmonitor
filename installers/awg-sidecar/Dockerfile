@@ -3,7 +3,7 @@
 # Конфиг забирается из общего тома (/config/awg0.conf), который пишет сервер.
 
 # --- Сборка amneziawg-go и amneziawg-tools из исходников ---
-FROM golang:1.23-bookworm AS build
+FROM golang:1.25-bookworm AS build
 RUN apt-get update && apt-get install -y --no-install-recommends git make gcc libc6-dev bash \
  && rm -rf /var/lib/apt/lists/*
 WORKDIR /b
