@@ -1,10 +1,37 @@
+using System.Security.Claims;
 using System.Text.Json;
+using Ypmon.Server.Data;
 using Ypmon.Shared;
 
 namespace Ypmon.Server.Services;
 
+/// <summary>Права ролей. Admin — всё; Engineer — клиенты/серверы (без настроек сервера); Viewer — только просмотр.</summary>
+public static class RolePermissions
+{
+    /// <summary>Может добавлять/редактировать/удалять клиентов и серверы (Администратор или Инженер).</summary>
+    public static bool CanEdit(this ClaimsPrincipal u) => u.IsInRole("Admin") || u.IsInRole("Engineer");
+
+    /// <summary>Полный доступ, включая настройки сервера и пользователей.</summary>
+    public static bool CanAdmin(this ClaimsPrincipal u) => u.IsInRole("Admin");
+}
+
 public static class UiHelpers
 {
+    public static string RoleName(string? role) => role switch
+    {
+        "Admin" => "Администратор",
+        "Engineer" => "Инженер",
+        _ => "Мониторинг"
+    };
+
+    public static string RoleName(UserRole r) => r switch
+    {
+        UserRole.Admin => "Администратор",
+        UserRole.Engineer => "Инженер",
+        _ => "Мониторинг"
+    };
+
+
     /// <summary>Сводка по бэкапам из сохранённого отчёта: дата последней копии и суммарный объём.</summary>
     public static (DateTimeOffset? lastBackupAt, long sizeBytes) BackupSummary(string? reportJson)
     {

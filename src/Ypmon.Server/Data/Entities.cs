@@ -5,8 +5,12 @@ namespace Ypmon.Server.Data;
 /// <summary>Роль пользователя веб-интерфейса.</summary>
 public enum UserRole
 {
+    /// <summary>Мониторинг — только просмотр.</summary>
     Viewer = 0,
-    Admin = 1
+    /// <summary>Администратор — полный доступ, включая настройки сервера и пользователей.</summary>
+    Admin = 1,
+    /// <summary>Инженер — просмотр, добавление и редактирование клиентов/серверов. Без настроек сервера.</summary>
+    Engineer = 2
 }
 
 /// <summary>Учётная запись для входа в веб-интерфейс.</summary>

@@ -3,7 +3,7 @@
 @using Ypmon.Server.Services
 @{
     ViewData["Title"] = Model.Client?.Name ?? "Клиент";
-    var isAdmin = User.IsInRole("Admin");
+    var canEdit = User.CanEdit();
     var baseUrl = $"{Request.Scheme}://{Request.Host.Host}:{Ypmon.Server.Services.ServerPorts.ReportsPort}";
 }
 
@@ -71,7 +71,7 @@
                                     {
                                         <span class="muted" style="font-size:12px">Установщик агента не загружен на сервер.</span>
                                     }
-                                    @if (isAdmin)
+                                    @if (canEdit)
                                     {
                                         <form method="post" asp-page-handler="RegenKey" asp-route-id="@Model.Id" asp-route-serverId="@s.Id"
                                               onsubmit="return confirm('Перевыпустить ключ? Старый агент перестанет отправлять данные.')">
@@ -83,7 +83,7 @@
 
                             <div style="display:flex;gap:8px;margin-top:12px">
                                 <a class="btn btn-sm btn-primary" href="/Servers/Details?id=@s.Id">Открыть сервер</a>
-                                @if (isAdmin)
+                                @if (canEdit)
                                 {
                                     <form method="post" asp-page-handler="DeleteServer" asp-route-id="@Model.Id" asp-route-serverId="@s.Id"
                                           onsubmit="return confirm('Удалить сервер?')">
@@ -99,7 +99,7 @@
         </details>
     </div>
 
-    @if (isAdmin)
+    @if (canEdit)
     {
         <div class="panel">
             <details class="card-y acc" open>

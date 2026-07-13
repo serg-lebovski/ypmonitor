@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore;
 using Ypmon.Server.Data;
+using Ypmon.Server.Services;
 using Ypmon.Shared;
 
 namespace Ypmon.Server.Pages.Servers;
@@ -60,7 +61,7 @@ public class DetailsModel : PageModel
 
     public async Task<IActionResult> OnPostSaveAsync()
     {
-        if (!User.IsInRole("Admin")) return Forbid();
+        if (!User.CanEdit()) return Forbid();
         var s = await _db.Servers.FindAsync(Id);
         if (s is null) return NotFound();
         if (!string.IsNullOrWhiteSpace(Name)) s.Name = Name.Trim();
@@ -76,7 +77,7 @@ public class DetailsModel : PageModel
 
     public async Task<IActionResult> OnPostDeleteAsync()
     {
-        if (!User.IsInRole("Admin")) return Forbid();
+        if (!User.CanEdit()) return Forbid();
         var s = await _db.Servers.FindAsync(Id);
         if (s is not null)
         {
@@ -103,7 +104,7 @@ public class DetailsModel : PageModel
 
     public async Task<IActionResult> OnPostRegenKeyAsync()
     {
-        if (!User.IsInRole("Admin")) return Forbid();
+        if (!User.CanEdit()) return Forbid();
         var s = await _db.Servers.FindAsync(Id);
         if (s is not null)
         {

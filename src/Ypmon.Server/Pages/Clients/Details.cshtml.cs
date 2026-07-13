@@ -58,7 +58,7 @@ public class DetailsModel : PageModel
 
     public async Task<IActionResult> OnPostSaveClientAsync()
     {
-        if (!User.IsInRole("Admin")) return Forbid();
+        if (!User.CanEdit()) return Forbid();
         var c = await _db.Clients.FindAsync(Id);
         if (c is null) return NotFound();
         if (!string.IsNullOrWhiteSpace(ClientName)) c.Name = ClientName.Trim();
@@ -71,6 +71,7 @@ public class DetailsModel : PageModel
 
     public async Task<IActionResult> OnPostAddServerAsync()
     {
+        if (!User.CanEdit()) return Forbid();
         if (!string.IsNullOrWhiteSpace(ServerName))
         {
             _db.Servers.Add(new MonitoredServer
@@ -89,6 +90,7 @@ public class DetailsModel : PageModel
 
     public async Task<IActionResult> OnPostDeleteServerAsync(int serverId)
     {
+        if (!User.CanEdit()) return Forbid();
         var s = await _db.Servers.FindAsync(serverId);
         if (s is not null) { _db.Servers.Remove(s); await _db.SaveChangesAsync(); }
         return RedirectToPage(new { id = Id });
@@ -96,6 +98,7 @@ public class DetailsModel : PageModel
 
     public async Task<IActionResult> OnPostRegenKeyAsync(int serverId)
     {
+        if (!User.CanEdit()) return Forbid();
         var s = await _db.Servers.FindAsync(serverId);
         if (s is not null) { s.ApiKey = PasswordHasher.NewApiKey(); await _db.SaveChangesAsync(); }
         return RedirectToPage(new { id = Id });

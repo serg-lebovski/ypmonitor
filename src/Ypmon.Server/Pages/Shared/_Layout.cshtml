@@ -33,7 +33,7 @@
                     <span class="avatar">@(user.Length > 0 ? user[0].ToString().ToUpper() : "?")</span>
                     <span>
                         <div class="uname">@user</div>
-                        <div class="urole">@(role == "Admin" ? "Администратор" : "Наблюдатель")</div>
+                        <div class="urole">@Ypmon.Server.Services.UiHelpers.RoleName(role)</div>
                     </span>
                 </div>
                 <a class="logout" href="/Logout">Выйти</a>

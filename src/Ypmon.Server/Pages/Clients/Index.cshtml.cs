@@ -24,6 +24,7 @@ public class IndexModel : PageModel
 
     public async Task<IActionResult> OnPostAddAsync()
     {
+        if (!User.CanEdit()) return Forbid();
         if (!string.IsNullOrWhiteSpace(NewClientName))
         {
             var client = new Client { Name = NewClientName.Trim(), Description = NewClientDescription?.Trim() };
@@ -42,6 +43,7 @@ public class IndexModel : PageModel
 
     public async Task<IActionResult> OnPostDeleteAsync(int id)
     {
+        if (!User.CanEdit()) return Forbid();
         var c = await _db.Clients.FindAsync(id);
         if (c is not null) { _db.Clients.Remove(c); await _db.SaveChangesAsync(); }
         return RedirectToPage();

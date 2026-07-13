@@ -270,31 +270,40 @@
             <details class="card-y acc">
                 <summary>👥 Пользователи</summary>
                 <div class="acc-body">
+                    <div class="muted mb-2" style="font-size:12px">
+                        <strong>Администратор</strong> — полный доступ. <strong>Инженер</strong> — клиенты и серверы
+                        (просмотр, добавление, редактирование), без настроек сервера. <strong>Мониторинг</strong> — только просмотр.
+                    </div>
                     @foreach (var u in Model.Users)
                     {
-                        <div class="card-y" style="background:var(--card-2);padding:12px">
-                            <div style="display:flex;justify-content:space-between;align-items:center">
-                                <strong>@u.Username</strong>
-                                <form method="post" asp-page-handler="DeleteUser" asp-route-userId="@u.Id"
-                                      onsubmit="return confirm('Удалить пользователя?')">
-                                    <button class="btn btn-sm btn-y-danger">Удалить</button>
+                        <details class="card-y acc" style="background:var(--card-2)">
+                            <summary>
+                                <span style="flex:1">@u.Username</span>
+                                <span class="badge-status">@UiHelpers.RoleName(u.Role)</span>
+                            </summary>
+                            <div class="acc-body">
+                                <form method="post" asp-page-handler="EditUser" asp-route-userId="@u.Id">
+                                    <div class="row">
+                                        <div class="col-md-6 mb-2"><label>Имя</label>
+                                            <input class="form-control" name="displayName" value="@u.DisplayName" /></div>
+                                        <div class="col-md-6 mb-2"><label>Роль</label>
+                                            <select class="form-select" name="role">
+                                                <option value="Admin" selected="@(u.Role == UserRole.Admin)">Администратор</option>
+                                                <option value="Engineer" selected="@(u.Role == UserRole.Engineer)">Инженер</option>
+                                                <option value="Viewer" selected="@(u.Role == UserRole.Viewer)">Мониторинг</option>
+                                            </select></div>
+                                    </div>
+                                    <div class="mb-2"><label>Новый пароль (если меняете)</label>
+                                        <input class="form-control" type="password" name="newPassword" placeholder="оставьте пустым" /></div>
+                                    <div style="display:flex;gap:8px">
+                                        <button class="btn btn-sm btn-primary" type="submit">Сохранить</button>
+                                        <button class="btn btn-sm btn-y-danger" type="submit"
+                                                asp-page-handler="DeleteUser" asp-route-userId="@u.Id" formnovalidate
+                                                onclick="return confirm('Удалить пользователя?')">Удалить</button>
+                                    </div>
                                 </form>
                             </div>
-                            <form method="post" asp-page-handler="EditUser" asp-route-userId="@u.Id" class="mt-2">
-                                <div class="row">
-                                    <div class="col-md-6 mb-2"><label>Имя</label>
-                                        <input class="form-control" name="displayName" value="@u.DisplayName" /></div>
-                                    <div class="col-md-6 mb-2"><label>Роль</label>
-                                        <select class="form-select" name="role">
-                                            <option value="Viewer" selected="@(u.Role == UserRole.Viewer)">Наблюдатель</option>
-                                            <option value="Admin" selected="@(u.Role == UserRole.Admin)">Администратор</option>
-                                        </select></div>
-                                </div>
-                                <div class="mb-2"><label>Новый пароль (если меняете)</label>
-                                    <input class="form-control" type="password" name="newPassword" placeholder="оставьте пустым" /></div>
-                                <button class="btn btn-sm btn-primary" type="submit">Сохранить</button>
-                            </form>
-                        </div>
+                        </details>
                     }
                     <hr style="border-color:var(--border)" />
                     <h4 style="font-size:15px">Новый пользователь</h4>
@@ -303,8 +312,9 @@
                         <div class="mb-2"><input class="form-control" name="displayName" placeholder="Имя" /></div>
                         <div class="mb-2"><input class="form-control" type="password" name="password" placeholder="Пароль" /></div>
                         <div class="mb-2"><select class="form-select" name="role">
-                            <option value="Viewer">Наблюдатель</option>
                             <option value="Admin">Администратор</option>
+                            <option value="Engineer">Инженер</option>
+                            <option value="Viewer">Мониторинг</option>
                         </select></div>
                         <button class="btn btn-primary w-100" type="submit">Добавить</button>
                     </form>

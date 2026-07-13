@@ -274,6 +274,13 @@ public class SettingsModel : PageModel
         return Page();
     }
 
+    private static UserRole ParseRole(string? role) => role switch
+    {
+        "Admin" => UserRole.Admin,
+        "Engineer" => UserRole.Engineer,
+        _ => UserRole.Viewer
+    };
+
     public async Task<IActionResult> OnPostAddUserAsync(string username, string displayName, string password, string role)
     {
         if (!IsAdmin) return Forbid();
@@ -291,7 +298,7 @@ public class SettingsModel : PageModel
             Username = username.Trim(),
             DisplayName = string.IsNullOrWhiteSpace(displayName) ? username.Trim() : displayName.Trim(),
             PasswordHash = h, PasswordSalt = salt,
-            Role = role == "Admin" ? UserRole.Admin : UserRole.Viewer
+            Role = ParseRole(role)
         });
         await _db.SaveChangesAsync();
         await Load();
@@ -307,7 +314,7 @@ public class SettingsModel : PageModel
 
         if (!string.IsNullOrWhiteSpace(displayName)) u.DisplayName = displayName.Trim();
         // Нельзя снять с себя роль администратора, если других админов нет
-        var newRole = role == "Admin" ? UserRole.Admin : UserRole.Viewer;
+        var newRole = ParseRole(role);
         if (u.Id == CurrentUserId && newRole != UserRole.Admin &&
             !await _db.Users.AnyAsync(x => x.Id != u.Id && x.Role == UserRole.Admin))
         {

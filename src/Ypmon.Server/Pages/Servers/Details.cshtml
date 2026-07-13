@@ -3,7 +3,7 @@
 @using Ypmon.Server.Services
 @{
     ViewData["Title"] = Model.Server?.Name ?? "Сервер";
-    var isAdmin = User.IsInRole("Admin");
+    var canEdit = User.CanEdit();
     var s = Model.Server!;
     var offline = s.IsOffline(Model.OfflineThreshold);
     var baseUrl = $"{Request.Scheme}://{Request.Host.Host}:{Ypmon.Server.Services.ServerPorts.ReportsPort}";
@@ -169,7 +169,7 @@
                     <input class="form-control mono" readonly value="@s.ApiKey" id="key" />
                     <button type="button" class="btn btn-sm btn-primary" onclick="ypCopy('key', this)">Копировать</button>
                 </div>
-                @if (isAdmin)
+                @if (canEdit)
                 {
                     <form method="post" asp-page-handler="RegenKey" asp-route-id="@s.Id" class="mt-2"
                           onsubmit="return confirm('Перевыпустить ключ?')">
@@ -180,7 +180,7 @@
             </div>
         </details>
 
-        @if (isAdmin)
+        @if (canEdit)
         {
             <details class="card-y acc">
                 <summary>✏️ Редактировать сервер</summary>
