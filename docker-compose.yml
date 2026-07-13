@@ -63,11 +63,12 @@ services:
     volumes:
       - ypmon-awg:/config                  # общий том: сервер пишет awg0.conf, сайдкар его читает
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8081/api/ping"]
+      # Здоров, если поднят интерфейс туннеля awg0 и microsocks слушает :1080.
+      test: ["CMD-SHELL", "ip link show awg0 >/dev/null 2>&1 && ss -ltn 2>/dev/null | grep -q ':1080'"]
       interval: 30s
       timeout: 5s
       retries: 5
-      start_period: 20s
+      start_period: 30s
 
 volumes:
   ypmon-pgdata:

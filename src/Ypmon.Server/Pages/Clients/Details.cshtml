@@ -62,13 +62,23 @@
                                     <input class="form-control mono" readonly value="@s.ApiKey" id="key_@s.Id" />
                                     <button type="button" class="btn btn-sm btn-primary" onclick="ypCopy('key_@s.Id', this)">Копировать</button>
                                 </div>
-                                @if (isAdmin)
-                                {
-                                    <form method="post" asp-page-handler="RegenKey" asp-route-id="@Model.Id" asp-route-serverId="@s.Id" class="mt-2"
-                                          onsubmit="return confirm('Перевыпустить ключ? Старый агент перестанет отправлять данные.')">
-                                        <button class="btn btn-sm btn-y-danger">Перевыпустить ключ</button>
-                                    </form>
-                                }
+                                <div class="mt-2" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+                                    @if (Model.AgentInstallerExists)
+                                    {
+                                        <a class="btn btn-sm btn-primary" href="/agent-installer" download>⬇️ Скачать агента@(Model.AgentInstallerVersion is null ? "" : $" ({Model.AgentInstallerVersion})")</a>
+                                    }
+                                    else
+                                    {
+                                        <span class="muted" style="font-size:12px">Установщик агента не загружен на сервер.</span>
+                                    }
+                                    @if (isAdmin)
+                                    {
+                                        <form method="post" asp-page-handler="RegenKey" asp-route-id="@Model.Id" asp-route-serverId="@s.Id"
+                                              onsubmit="return confirm('Перевыпустить ключ? Старый агент перестанет отправлять данные.')">
+                                            <button class="btn btn-sm btn-y-danger">Перевыпустить ключ</button>
+                                        </form>
+                                    }
+                                </div>
                             </div>
 
                             <div style="display:flex;gap:8px;margin-top:12px">
@@ -109,8 +119,17 @@
                 <summary>➕ Подключить сервер</summary>
                 <div class="acc-body">
                     <div class="muted mb-3" style="font-size:13px">
-                        При добавлении сервера сгенерируется API-ключ. Укажите его и адрес этого сервера в настройках агента.
+                        При добавлении сервера сгенерируется API-ключ. Скачайте агента, установите на сервер клиента
+                        и укажите в нём этот API-ключ и адрес сервера.
                     </div>
+                    @if (Model.AgentInstallerExists)
+                    {
+                        <a class="btn btn-primary w-100 mb-3" href="/agent-installer" download>⬇️ Скачать установщик агента@(Model.AgentInstallerVersion is null ? "" : $" ({Model.AgentInstallerVersion})")</a>
+                    }
+                    else
+                    {
+                        <div class="alert-y alert-err mb-3" style="font-size:12px">Установщик агента не загружен на сервер.</div>
+                    }
                     <form method="post" asp-page-handler="AddServer" asp-route-id="@Model.Id">
                         <div class="mb-3"><label>Название сервера</label>
                             <input class="form-control" asp-for="ServerName" required /></div>

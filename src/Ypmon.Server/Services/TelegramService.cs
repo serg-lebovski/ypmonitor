@@ -18,8 +18,7 @@ public class TelegramService
     }
 
     /// <summary>
-    /// Прокси для обращения к Telegram (HTTP Bot API): WireGuard (userspace SOCKS5), если поднят.
-    /// MTProto-прокси к HTTP Bot API неприменим и здесь не используется.
+    /// Прокси для обращения к Telegram (HTTP Bot API): WireGuard/AmneziaWG (userspace SOCKS5), если поднят.
     /// </summary>
     public string? ResolveProxy(ServerSettings s)
     {

@@ -9,10 +9,15 @@ namespace Ypmon.Server.Pages.Clients;
 public class DetailsModel : PageModel
 {
     private readonly AppDbContext _db;
-    public DetailsModel(AppDbContext db) => _db = db;
+    private readonly IWebHostEnvironment _env;
+    public DetailsModel(AppDbContext db, IWebHostEnvironment env) { _db = db; _env = env; }
 
     public Client? Client { get; set; }
     public int OfflineThreshold { get; set; } = 300;
+
+    // Установщик агента (лежит в папке agent-updates рядом с сервером) — для кнопки «Скачать агента».
+    public bool AgentInstallerExists { get; set; }
+    public string? AgentInstallerVersion { get; set; }
 
     [BindProperty(SupportsGet = true)] public int Id { get; set; }
 
@@ -39,6 +44,16 @@ public class DetailsModel : PageModel
         Client = await _db.Clients.Include(c => c.Servers).FirstOrDefaultAsync(c => c.Id == Id);
         if (Client is not null)
             Client.Servers = Client.Servers.OrderBy(s => s.Name).ToList();
+
+        var updatesDir = Path.Combine(_env.ContentRootPath, "agent-updates");
+        var installer = Path.Combine(updatesDir, "YpmonAgent-Setup.exe");
+        var verFile = Path.Combine(updatesDir, "version.txt");
+        if (System.IO.File.Exists(installer))
+        {
+            AgentInstallerExists = true;
+            if (System.IO.File.Exists(verFile))
+                AgentInstallerVersion = (await System.IO.File.ReadAllTextAsync(verFile)).Trim();
+        }
     }
 
     public async Task<IActionResult> OnPostSaveClientAsync()

@@ -134,17 +134,21 @@ public class SettingsModel : PageModel
         return Page();
     }
 
-    public async Task<IActionResult> OnPostSaveWireGuardAsync(IFormFile? wgFile, bool wgEnabled, string? mtProxy)
+    public async Task<IActionResult> OnPostSaveWireGuardAsync(IFormFile? wgFile, bool wgEnabled, string? wgConfigText)
     {
         if (!IsAdmin) return Forbid();
         var s = await _db.Settings.FirstOrDefaultAsync() ?? new ServerSettings();
+        // Приоритет: загруженный файл → вставленный текст. Так проще заменить конфиг при смене VPN-сервера Amnezia.
         if (wgFile is { Length: > 0 })
         {
             using var reader = new StreamReader(wgFile.OpenReadStream());
             s.WireGuardConfig = await reader.ReadToEndAsync();
         }
+        else if (!string.IsNullOrWhiteSpace(wgConfigText))
+        {
+            s.WireGuardConfig = wgConfigText.Trim();
+        }
         s.WireGuardEnabled = wgEnabled;
-        s.TelegramMtProxy = mtProxy;
         if (s.Id == 0) _db.Settings.Add(s);
         await _db.SaveChangesAsync();
         _wg.Apply(s.WireGuardEnabled, s.WireGuardConfig);
@@ -201,66 +205,6 @@ public class SettingsModel : PageModel
         }
         catch (Exception ex) { IsError = true; Message = "Не удалось получить внешний IP через WireGuard: " + ex.Message; }
         return Page();
-    }
-
-    public async Task<IActionResult> OnPostCheckMtProxyAsync()
-    {
-        if (!IsAdmin) return Forbid();
-        await Load();
-        var raw = (await _db.Settings.FirstOrDefaultAsync())?.TelegramMtProxy;
-        if (string.IsNullOrWhiteSpace(raw)) { IsError = true; Message = "MTProto-прокси не задан. Введите адрес и сохраните."; return Page(); }
-
-        var (host, port, secret, err) = ParseMtProxy(raw!);
-        if (err is not null) { IsError = true; Message = "Не удалось разобрать MTProto-прокси: " + err; return Page(); }
-
-        try
-        {
-            using var tcp = new System.Net.Sockets.TcpClient();
-            var connect = tcp.ConnectAsync(host!, port);
-            var ok = await Task.WhenAny(connect, Task.Delay(5000)) == connect && !connect.IsFaulted && tcp.Connected;
-            IsError = !ok;
-            Message = ok
-                ? $"MTProto-прокси {host}:{port} доступен по TCP (secret {(secret?.Length ?? 0)} симв.).\n" +
-                  "Полноценная проверка протокола MTProto возможна только из клиента Telegram; для HTTP-бота обход блокировки — через WireGuard."
-                : $"MTProto-прокси {host}:{port} недоступен: нет TCP-соединения за 5 с.";
-        }
-        catch (Exception ex) { IsError = true; Message = $"MTProto-прокси {host}:{port}: ошибка соединения — {ex.Message}"; }
-        return Page();
-    }
-
-    private static (string? host, int port, string? secret, string? error) ParseMtProxy(string raw)
-    {
-        raw = raw.Trim();
-        try
-        {
-            if (raw.StartsWith("tg://", StringComparison.OrdinalIgnoreCase) ||
-                raw.StartsWith("http", StringComparison.OrdinalIgnoreCase) || raw.Contains("proxy?"))
-            {
-                var qIdx = raw.IndexOf('?');
-                if (qIdx < 0) return (null, 0, null, "нет параметров в ссылке");
-                string? server = null, secret = null; var port = 0;
-                foreach (var p in raw[(qIdx + 1)..].Split('&', StringSplitOptions.RemoveEmptyEntries))
-                {
-                    var kv = p.Split('=', 2);
-                    if (kv.Length != 2) continue;
-                    var val = Uri.UnescapeDataString(kv[1]);
-                    switch (kv[0].ToLowerInvariant())
-                    {
-                        case "server": server = val; break;
-                        case "port": int.TryParse(val, out port); break;
-                        case "secret": secret = val; break;
-                    }
-                }
-                if (string.IsNullOrWhiteSpace(server) || port <= 0) return (null, 0, null, "нет server или port");
-                return (server, port, secret, null);
-            }
-            // Формат server:port:secret
-            var parts = raw.Split(':');
-            if (parts.Length < 2) return (null, 0, null, "ожидается server:port:secret или tg://proxy?...");
-            if (!int.TryParse(parts[1], out var p2) || p2 <= 0) return (null, 0, null, "неверный порт");
-            return (parts[0], p2, parts.Length >= 3 ? parts[2] : null, null);
-        }
-        catch (Exception ex) { return (null, 0, null, ex.Message); }
     }
 
     public async Task<IActionResult> OnPostDiscoverChatsAsync()

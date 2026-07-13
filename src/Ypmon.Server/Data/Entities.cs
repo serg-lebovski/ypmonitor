@@ -149,9 +149,6 @@ public class ServerSettings
     /// <summary>Прокси для доступа к Telegram API (http://host:port или socks5://host:port). Пусто = без прокси.</summary>
     public string? TelegramProxyUrl { get; set; }
 
-    /// <summary>MTProto-прокси (tg://proxy?... или server:port:secret). Применимо к клиентскому протоколу, не к HTTP Bot API.</summary>
-    public string? TelegramMtProxy { get; set; }
-
     /// <summary>Публичный адрес сервера для ссылок в сообщениях (напр. http://10.10.20.25:8080).</summary>
     public string? PublicBaseUrl { get; set; }
 
