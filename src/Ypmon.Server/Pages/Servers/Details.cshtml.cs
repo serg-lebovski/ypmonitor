@@ -88,6 +88,19 @@ public class DetailsModel : PageModel
         return RedirectToPage("/Index");
     }
 
+    public async Task<IActionResult> OnPostRequestReportAsync()
+    {
+        var srv = await _db.Servers.FindAsync(Id);
+        if (srv is not null)
+        {
+            srv.ReportRequested = true;
+            await _db.SaveChangesAsync();
+        }
+        await Load();
+        Message = "Запрос отправлен. Агент пришлёт отчёт при следующей связи (обычно в течение 1–2 минут).";
+        return Page();
+    }
+
     public async Task<IActionResult> OnPostRegenKeyAsync()
     {
         if (!User.IsInRole("Admin")) return Forbid();

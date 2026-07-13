@@ -9,10 +9,13 @@ public class AgentConfig
     /// <summary>API-ключ сервера клиента (из веб-интерфейса сервера).</summary>
     public string ApiKey { get; set; } = "";
 
-    /// <summary>Интервал полного отчёта (папки, ошибки журнала), секунд.</summary>
-    public int ReportIntervalSeconds { get; set; } = 300;
+    /// <summary>Интервал полного отчёта (папки, ошибки журнала), секунд. По умолчанию 6 часов.</summary>
+    public int ReportIntervalSeconds { get; set; } = 21600;
 
-    /// <summary>Интервал лёгкого отчёта о связи (heartbeat), секунд.</summary>
+    /// <summary>
+    /// Интервал лёгкого отчёта о связи (heartbeat), секунд. Через heartbeat агент также узнаёт,
+    /// не запросил ли сервер внеплановый полный отчёт.
+    /// </summary>
     public int HeartbeatIntervalSeconds { get; set; } = 60;
 
     /// <summary>Имя службы Windows.</summary>

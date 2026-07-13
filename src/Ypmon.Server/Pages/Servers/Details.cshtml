@@ -10,13 +10,21 @@
     var (lastBackup, sizeBytes) = UiHelpers.BackupSummary(s.LastReportJson);
 }
 
-<div style="display:flex;justify-content:space-between;align-items:center">
-    <h1 class="page-title">🖥️ @s.Name</h1>
-    <div>
+<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+    <h1 class="page-title" style="margin-bottom:0">🖥️ @s.Name</h1>
+    <div style="display:flex;gap:8px;align-items:center">
+        <form method="post" asp-page-handler="RequestReport" asp-route-id="@s.Id">
+            <button class="btn btn-sm btn-primary" type="submit" title="Агент пришлёт свежий отчёт при следующей связи">🔄 Запросить отчёт</button>
+        </form>
         <a class="btn btn-sm btn-primary" href="/Clients/Details?id=@s.ClientId">← к клиенту @s.Client?.Name</a>
         <a class="btn btn-sm btn-primary" href="/">← дашборд</a>
     </div>
 </div>
+<div style="height:14px"></div>
+@if (s.ReportRequested)
+{
+    <div class="alert-y alert-ok">⏳ Запрошен свежий отчёт — ожидаем ответ агента.</div>
+}
 
 @if (Model.Message is not null)
 {
@@ -77,24 +85,36 @@
             </div>
         </details>
 
+        @{ var latest = Model.History.FirstOrDefault(); var prev = Model.History.Skip(1).ToList(); }
         <details class="card-y acc">
-            <summary>🕓 История отчётов</summary>
+            <summary>
+                🕓 Последний отчёт:
+                @if (latest is not null)
+                {
+                    <span class="mono" style="font-weight:400">@UiHelpers.DateTimeAbs(latest.ReceivedAt)</span>
+                    <span class="badge-status @UiHelpers.OutcomeCss(latest.Outcome)">@UiHelpers.OutcomeText(latest.Outcome)</span>
+                }
+                else
+                {
+                    <span class="muted" style="font-weight:400">пока нет отчётов</span>
+                }
+            </summary>
             <div class="acc-body">
-            @if (!Model.History.Any())
+            @if (prev.Count == 0)
             {
-                <div class="muted">Пока нет отчётов.</div>
+                <div class="muted">Предыдущих отчётов пока нет.</div>
             }
             else
             {
+                <div class="muted mb-2" style="font-size:13px">Предыдущие отчёты:</div>
                 <table class="tbl">
-                    <thead><tr><th>Время</th><th>Статус</th><th>БД</th><th>Копий</th></tr></thead>
+                    <thead><tr><th>Время</th><th>Статус</th><th>Файлов</th></tr></thead>
                     <tbody>
-                    @foreach (var r in Model.History)
+                    @foreach (var r in prev)
                     {
                         <tr>
                             <td>@UiHelpers.DateTimeAbs(r.ReceivedAt)</td>
                             <td><span class="badge-status @UiHelpers.OutcomeCss(r.Outcome)">@UiHelpers.OutcomeText(r.Outcome)</span></td>
-                            <td>@(r.ServerAvailable ? "ок" : "нет")</td>
                             <td>@r.BackupCount</td>
                         </tr>
                     }

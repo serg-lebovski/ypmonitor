@@ -59,6 +59,9 @@ public class MonitoredServer
     /// <summary>Порог тревоги: нет новых файлов в папках дольше N дней (0 = использовать глобальное значение).</summary>
     public int BackupStaleDays { get; set; } = 0;
 
+    /// <summary>Флаг: администратор запросил у агента полный отчёт (агент заберёт его при следующей связи).</summary>
+    public bool ReportRequested { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 
     // --- Кэш последнего состояния (для быстрого дашборда) ---

@@ -80,22 +80,33 @@ public class Reporter : BackgroundService
             catch (Exception ex) { _log.LogWarning(ex, "Не удалось прочитать журнал событий"); }
         }
 
-        var url = cfg.ServerUrl.TrimEnd('/') + "/api/report";
-        using var req = new HttpRequestMessage(HttpMethod.Post, url) { Content = JsonContent.Create(report) };
-        req.Headers.Add("X-Api-Key", cfg.ApiKey);
-
-        var resp = await Http.SendAsync(req);
-        ReportAckDto? ack = null;
-        try { ack = await resp.Content.ReadFromJsonAsync<ReportAckDto>(); } catch { }
+        var (ack, statusCode) = await PostAsync(cfg, report);
 
         if (!heartbeat)
             PersistSnapshot(
                 accepted: ack?.Accepted ?? false,
-                message: ack?.Message ?? $"HTTP {(int)resp.StatusCode}",
+                message: ack?.Message ?? $"HTTP {statusCode}",
                 error: null,
                 report: report,
                 clientName: ack?.ClientName,
                 serverName: ack?.ServerName);
+
+        // Сервер попросил внеплановый полный отчёт (кнопка в веб-интерфейсе) — шлём сразу.
+        if (heartbeat && ack?.ReportRequested == true)
+        {
+            _log.LogInformation("Сервер запросил отчёт — отправляем внеплановый полный отчёт.");
+            await ReportOnceAsync(cfg, heartbeat: false);
+        }
+    }
+
+    private async Task<(ReportAckDto? ack, int status)> PostAsync(AgentConfig cfg, AgentReportDto report)
+    {
+        var url = cfg.ServerUrl.TrimEnd('/') + "/api/report";
+        using var req = new HttpRequestMessage(HttpMethod.Post, url) { Content = JsonContent.Create(report) };
+        req.Headers.Add("X-Api-Key", cfg.ApiKey);
+        var resp = await Http.SendAsync(req);
+        try { return (await resp.Content.ReadFromJsonAsync<ReportAckDto>(), (int)resp.StatusCode); }
+        catch { return (null, (int)resp.StatusCode); }
     }
 
     private void PersistSnapshot(bool accepted, string? message, string? error,

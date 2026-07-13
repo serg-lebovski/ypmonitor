@@ -109,6 +109,7 @@ using (var scope = app.Services.CreateScope())
                     db.Database.ExecuteSqlRaw("ALTER TABLE \"Settings\" ADD COLUMN IF NOT EXISTS \"WireGuardConfig\" text;");
                     db.Database.ExecuteSqlRaw("ALTER TABLE \"Clients\" ADD COLUMN IF NOT EXISTS \"TelegramTopicId\" bigint;");
                     db.Database.ExecuteSqlRaw("ALTER TABLE \"Settings\" ADD COLUMN IF NOT EXISTS \"TelegramMtProxy\" text;");
+                    db.Database.ExecuteSqlRaw("ALTER TABLE \"Servers\" ADD COLUMN IF NOT EXISTS \"ReportRequested\" boolean NOT NULL DEFAULT false;");
                 }
                 else
                 {
@@ -123,6 +124,7 @@ using (var scope = app.Services.CreateScope())
                     try { db.Database.ExecuteSqlRaw("ALTER TABLE \"Settings\" ADD COLUMN \"WireGuardConfig\" TEXT;"); } catch { }
                     try { db.Database.ExecuteSqlRaw("ALTER TABLE \"Clients\" ADD COLUMN \"TelegramTopicId\" INTEGER;"); } catch { }
                     try { db.Database.ExecuteSqlRaw("ALTER TABLE \"Settings\" ADD COLUMN \"TelegramMtProxy\" TEXT;"); } catch { }
+                    try { db.Database.ExecuteSqlRaw("ALTER TABLE \"Servers\" ADD COLUMN \"ReportRequested\" INTEGER NOT NULL DEFAULT 0;"); } catch { }
                 }
             }
             catch (Exception ex) { logger.LogWarning("Обновление схемы: {Msg}", ex.Message); }

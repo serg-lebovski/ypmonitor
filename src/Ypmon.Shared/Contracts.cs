@@ -81,4 +81,10 @@ public class ReportAckDto
     public string? Message { get; set; }
     public string? ClientName { get; set; }
     public string? ServerName { get; set; }
+
+    /// <summary>
+    /// Сервер просит агента прислать полный отчёт сейчас (по кнопке в веб-интерфейсе).
+    /// Единственное «указание» — прислать статус; агент остаётся только исходящим и не слушает порты.
+    /// </summary>
+    public bool ReportRequested { get; set; }
 }
