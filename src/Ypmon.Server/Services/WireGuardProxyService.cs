@@ -141,6 +141,8 @@ public sealed class WireGuardProxyService : IDisposable
             var t = raw.TrimStart();
             if (t.StartsWith("[Socks5]", StringComparison.OrdinalIgnoreCase)) break;
             if (t.StartsWith("DNS", StringComparison.OrdinalIgnoreCase)) continue;
+            // Пустые параметры (напр. "I2 =", "S3 =") инструмент awg не принимает — убираем.
+            if (System.Text.RegularExpressions.Regex.IsMatch(t, @"^[A-Za-z][\w]*\s*=\s*$")) continue;
             if (t.StartsWith("AllowedIPs", StringComparison.OrdinalIgnoreCase))
             {
                 sb.Append("AllowedIPs = 0.0.0.0/0\n");
