@@ -6,8 +6,8 @@ using Ypmon.Shared;
 namespace Ypmon.Agent.Ui;
 
 /// <summary>
-/// Окно настройки агента. Агент устанавливает только исходящее соединение к серверу
-/// и не принимает команд. Настройка — только здесь, через config.json.
+/// Окно настройки агента с боковым меню (сайдбар) и областью контента.
+/// Агент устанавливает только исходящее соединение к серверу и не принимает команд.
 /// </summary>
 public class MainForm : Form
 {
@@ -16,11 +16,18 @@ public class MainForm : Form
     private readonly bool _workerRunningHere;
     private bool _loading;
 
+    // Навигация
+    private Panel _content = null!;
+    private readonly List<(Button btn, Control page)> _nav = new();
+    private Button? _activeBtn;
+    private static readonly Color NavActive = Color.FromArgb(210, 224, 245);
+    private static readonly Color NavBg = Color.FromArgb(244, 246, 249);
+
     // Подключение
     private TextBox _serverUrl = null!, _apiKey = null!;
     private NumericUpDown _reportSec = null!, _heartbeatSec = null!;
 
-    // Папки
+    // Задания архивации (папки)
     private DataGridView _folderGrid = null!;
     private Panel _folderPanel = null!, _folderEmpty = null!;
     private TextBox _folName = null!, _folPath = null!, _folUser = null!, _folPass = null!;
@@ -38,7 +45,7 @@ public class MainForm : Form
     private Label _svcStatus = null!;
     private CheckBox _autoUpdate = null!;
 
-    // Статус
+    // Отчёты
     private TextBox _statusBox = null!;
 
     public MainForm(bool workerRunningHere)
@@ -47,35 +54,86 @@ public class MainForm : Form
         _cfg = _store.Load();
 
         Text = "YPMonitor — Агент " + Reporter.Version;
-        Width = 760; Height = 640;
+        Width = 900; Height = 620;
         StartPosition = FormStartPosition.CenterScreen;
-        MinimumSize = new Size(680, 560);
+        MinimumSize = new Size(760, 560);
+        BackColor = Color.White;
 
-        var tabs = new TabControl { Dock = DockStyle.Fill };
-        tabs.TabPages.Add(BuildConnectionTab());
-        tabs.TabPages.Add(BuildFoldersTab());
-        tabs.TabPages.Add(BuildEventLogTab());
-        tabs.TabPages.Add(BuildStatusTab());
-        tabs.TabPages.Add(BuildServiceTab());
-        Controls.Add(tabs);
-
-        var bottom = new Panel { Dock = DockStyle.Bottom, Height = 44 };
-        var save = new Button { Text = "💾 Сохранить настройки", AutoSize = true, Left = 8, Top = 8 };
+        // Нижняя панель с кнопкой сохранения
+        var bottom = new Panel { Dock = DockStyle.Bottom, Height = 46, BackColor = NavBg };
+        var save = new Button { Text = "💾 Сохранить настройки", AutoSize = true, Left = 12, Top = 9 };
         save.Click += (_, _) => SaveAll(true);
         bottom.Controls.Add(save);
+
+        // Область контента (справа)
+        _content = new Panel { Dock = DockStyle.Fill, Padding = new Padding(6) };
+
+        // Сайдбар (слева)
+        var sidebar = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Left, Width = 240, BackColor = NavBg,
+            FlowDirection = FlowDirection.TopDown, WrapContents = false, Padding = new Padding(10, 12, 10, 12)
+        };
+
+        // Порядок добавления: Fill → Left → Bottom (для корректного докинга)
+        Controls.Add(_content);
+        Controls.Add(sidebar);
         Controls.Add(bottom);
 
+        AddNav(sidebar, "Настройки подключения к серверу", BuildConnectionPage());
+        AddNav(sidebar, "Задания архивации", BuildJobsPage());
+        AddNav(sidebar, "Информация об отчётах", BuildReportInfoPage());
+        AddNav(sidebar, "Настройка приложения", BuildAppSettingsPage());
+        AddNav(sidebar, "О приложении", BuildAboutPage());
+
         LoadToControls();
+        ShowPage(0);
+    }
+
+    // ================= Навигация =================
+    private void AddNav(FlowLayoutPanel sidebar, string text, Control page)
+    {
+        var btn = new Button
+        {
+            Text = text, Width = 214, Height = 46, Margin = new Padding(0, 0, 0, 6),
+            FlatStyle = FlatStyle.Flat, TextAlign = ContentAlignment.MiddleLeft,
+            Padding = new Padding(12, 0, 0, 0), BackColor = Color.White, UseVisualStyleBackColor = false,
+            Font = new Font(Font.FontFamily, 9.5f)
+        };
+        btn.FlatAppearance.BorderColor = Color.FromArgb(210, 214, 220);
+        btn.FlatAppearance.BorderSize = 1;
+        var idx = _nav.Count;
+        btn.Click += (_, _) => ShowPage(idx);
+        sidebar.Controls.Add(btn);
+
+        page.Dock = DockStyle.Fill;
+        page.Visible = false;
+        _content.Controls.Add(page);
+        _nav.Add((btn, page));
+    }
+
+    private void ShowPage(int index)
+    {
+        for (var i = 0; i < _nav.Count; i++)
+        {
+            var active = i == index;
+            _nav[i].page.Visible = active;
+            _nav[i].btn.BackColor = active ? NavActive : Color.White;
+            _nav[i].btn.Font = new Font(_nav[i].btn.Font, active ? FontStyle.Bold : FontStyle.Regular);
+            if (active) { _nav[i].page.BringToFront(); _activeBtn = _nav[i].btn; }
+        }
+        // Обновляем данные для страниц, которым это нужно
+        if (index == 2) RefreshStatus();
     }
 
     // ================= Подключение =================
-    private TabPage BuildConnectionTab()
+    private Control BuildConnectionPage()
     {
-        var page = new TabPage("Подключение");
         var t = NewTable();
+        AddTitle(t, "Настройки подключения к серверу");
         _serverUrl = AddText(t, "Адрес сервера YPMon (http://10.0.0.1:8081)");
         _apiKey = AddText(t, "API-ключ сервера");
-        _reportSec = AddNum(t, "Интервал отчёта о состоянии, секунд", 30, 86400);
+        _reportSec = AddNum(t, "Интервал отчёта о состоянии, секунд (по умолч. 21600 = 6 ч)", 30, 604800);
         _heartbeatSec = AddNum(t, "Интервал проверки связи, секунд", 15, 86400);
 
         var btnTest = new Button { Text = "🔌 Проверить соединение с сервером", AutoSize = true, Margin = new Padding(3, 6, 3, 3) };
@@ -91,37 +149,29 @@ public class MainForm : Form
         var note = new Label { AutoSize = true, ForeColor = Color.DimGray, MaximumSize = new Size(560, 0), Margin = new Padding(3, 10, 3, 3) };
         note.Text = "Безопасность: агент устанавливает только исходящее соединение к серверу и не принимает команд.";
         AddFull(t, note);
-
-        page.Controls.Add(t);
-        return page;
+        return t;
     }
 
-    // ================= Папки =================
-    private TabPage BuildFoldersTab()
+    // ================= Задания архивации =================
+    private Control BuildJobsPage()
     {
-        var page = new TabPage("Папки");
+        var page = new Panel { Dock = DockStyle.Fill };
 
         var host = new Panel { Dock = DockStyle.Fill };
         _folderPanel = BuildFolderPanel();
         _folderEmpty = new Panel { Dock = DockStyle.Fill };
-        _folderEmpty.Controls.Add(new Label { Text = "Выберите папку в списке или добавьте новую.", AutoSize = true, Left = 16, Top = 16, ForeColor = Color.DimGray });
+        _folderEmpty.Controls.Add(new Label { Text = "Выберите задание в списке или добавьте новое.", AutoSize = true, Left = 16, Top = 16, ForeColor = Color.DimGray });
         host.Controls.Add(_folderPanel);
         host.Controls.Add(_folderEmpty);
         _folderPanel.Visible = false;
 
         _folderGrid = new DataGridView
         {
-            Dock = DockStyle.Top,
-            Height = 180,
-            ReadOnly = true,
-            AllowUserToAddRows = false,
-            AllowUserToResizeRows = false,
-            RowHeadersVisible = false,
-            MultiSelect = false,
+            Dock = DockStyle.Top, Height = 170, ReadOnly = true, AllowUserToAddRows = false,
+            AllowUserToResizeRows = false, RowHeadersVisible = false, MultiSelect = false,
             SelectionMode = DataGridViewSelectionMode.FullRowSelect,
             AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
-            BackgroundColor = SystemColors.Window,
-            BorderStyle = BorderStyle.FixedSingle
+            BackgroundColor = SystemColors.Window, BorderStyle = BorderStyle.FixedSingle
         };
         _folderGrid.Columns.Add("name", "Название");
         _folderGrid.Columns.Add("path", "Папка");
@@ -131,12 +181,16 @@ public class MainForm : Form
         _folderGrid.Columns["enabled"]!.FillWeight = 12;
         _folderGrid.SelectionChanged += (_, _) => { if (!_refreshing) SelectFolder(_folderGrid.CurrentRow?.Index ?? -1); };
 
-        var toolbar = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 38, Padding = new Padding(4) };
+        var toolbar = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 60, Padding = new Padding(0, 4, 0, 4) };
+        var title = new Label { Text = "Задания архивации (наблюдаемые папки бэкапов)", Font = new Font(Font, FontStyle.Bold), AutoSize = true, Margin = new Padding(3, 4, 3, 8) };
+        toolbar.Controls.Add(title);
+        toolbar.SetFlowBreak(title, true);
         var add = new Button { Text = "+ Добавить папку", AutoSize = true };
         add.Click += (_, _) => AddFolder();
         var del = new Button { Text = "Удалить", AutoSize = true, ForeColor = Color.Firebrick };
         del.Click += (_, _) => DeleteFolder();
-        toolbar.Controls.AddRange(new Control[] { add, del });
+        toolbar.Controls.Add(add);
+        toolbar.Controls.Add(del);
 
         page.Controls.Add(host);
         page.Controls.Add(_folderGrid);
@@ -148,7 +202,7 @@ public class MainForm : Form
     {
         var p = new Panel { Dock = DockStyle.Fill };
         var t = NewTable();
-        var head = new Label { Text = "Наблюдаемая папка с бэкапами", Font = new Font(Font, FontStyle.Bold), AutoSize = true, Margin = new Padding(3, 3, 3, 6) };
+        var head = new Label { Text = "Параметры задания", Font = new Font(Font, FontStyle.Bold), AutoSize = true, Margin = new Padding(3, 3, 3, 6) };
         AddFull(t, head);
         _folName = AddText(t, "Название");
         _folEnabled = AddCheck(t, "Включено");
@@ -254,7 +308,7 @@ public class MainForm : Form
     private void FolderCheckAccess()
     {
         CommitFolder();
-        if (_curFolder is null) { Info("Выберите папку."); return; }
+        if (_curFolder is null) { Info("Выберите задание."); return; }
         var (ok, msg) = NetShare.CheckAccess(_folPath.Text.Trim(), _folUser.Text.Trim(), _folPass.Text);
         if (!ok) { Info("❌ " + msg); return; }
         var st = new FolderMonitorService().Check(_curFolder);
@@ -263,77 +317,25 @@ public class MainForm : Form
             : "❌ " + st.Message);
     }
 
-    // ================= Журнал Windows =================
-    private TabPage BuildEventLogTab()
+    // ================= Информация об отчётах =================
+    private Control BuildReportInfoPage()
     {
-        var page = new TabPage("Журнал Windows");
-        var t = NewTable();
-        _evtEnabled = AddCheck(t, "Читать журнал событий Windows и передавать ошибки серверу");
-        _evtLogs = AddText(t, "Журналы через запятую (System, Application)");
-        _evtWarnings = AddCheck(t, "Передавать и предупреждения (не только ошибки)");
-        _evtMax = AddNum(t, "Максимум записей за отчёт (на журнал)", 1, 1000);
-        _evtLookback = AddNum(t, "При первом запуске смотреть назад, часов", 1, 100000);
-
-        var btn = new Button { Text = "🔎 Показать последние ошибки журнала", AutoSize = true, Margin = new Padding(3, 4, 3, 4) };
-        btn.Click += (_, _) => EventLogPreview();
-        AddFull(t, btn);
-
-        var note = new Label { AutoSize = true, ForeColor = Color.DimGray, MaximumSize = new Size(560, 0), Margin = new Padding(3, 8, 3, 3) };
-        note.Text = "Агент собирает новые ошибки из журналов Windows и шлёт серверу. Только чтение. " +
-                    "Какие ошибки игнорировать — настраивается на сервере (Настройки).";
-        AddFull(t, note);
-        page.Controls.Add(t);
-        return page;
-    }
-
-    private void EventLogPreview()
-    {
-        if (!OperatingSystem.IsWindows()) { Info("Чтение журнала доступно только в Windows."); return; }
-        var logs = SplitCsv(_evtLogs.Text, "System", "Application");
-        try
-        {
-            var reader = new EventLogReaderService(_store);
-            var cfg = new AgentConfig
-            {
-                EventLog = new EventLogConfig
-                {
-                    Enabled = true, Logs = logs, IncludeWarnings = _evtWarnings.Checked,
-                    MaxEntriesPerReport = (int)_evtMax.Value, LookbackHoursOnFirstRun = (int)_evtLookback.Value
-                }
-            };
-            var list = reader.PreviewRecent(cfg, 20);
-            if (list.Count == 0) { Info("За выбранный период ошибок в журнале не найдено."); return; }
-            var sb = new System.Text.StringBuilder();
-            sb.AppendLine($"Найдено записей: {list.Count}. Последние:\n");
-            foreach (var e in list.Take(20))
-            {
-                var m = e.Message.Replace("\r", " ").Replace("\n", " ");
-                if (m.Length > 160) m = m[..160] + "…";
-                sb.AppendLine($"[{e.Level}] {e.TimeCreated.LocalDateTime:yyyy-MM-dd HH:mm} {e.LogName}/{e.Source} (ID {e.EventId})");
-                sb.AppendLine("   " + m);
-            }
-            Info(sb.ToString());
-        }
-        catch (Exception ex) { Info("Не удалось прочитать журнал: " + ex.Message); }
-    }
-
-    // ================= Статус =================
-    private TabPage BuildStatusTab()
-    {
-        var page = new TabPage("Статус");
+        var page = new Panel { Dock = DockStyle.Fill, Padding = new Padding(4) };
         _statusBox = new TextBox { Dock = DockStyle.Fill, Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical, Font = new Font("Consolas", 9) };
-        var top = new Panel { Dock = DockStyle.Top, Height = 38 };
-        var btn = new Button { Text = "⟳ Обновить", Left = 6, Top = 6, Width = 120 };
+        var top = new Panel { Dock = DockStyle.Top, Height = 40 };
+        var title = new Label { Text = "Информация об отчётах", Font = new Font(Font, FontStyle.Bold), AutoSize = true, Left = 4, Top = 4 };
+        var btn = new Button { Text = "⟳ Обновить", Left = 4, Top = 22, Width = 0, AutoSize = true };
         btn.Click += (_, _) => RefreshStatus();
+        top.Controls.Add(title);
         top.Controls.Add(btn);
         page.Controls.Add(_statusBox);
         page.Controls.Add(top);
-        page.Enter += (_, _) => RefreshStatus();
         return page;
     }
 
     private void RefreshStatus()
     {
+        if (_statusBox is null) return;
         var s = _store.LoadSnapshot();
         var sb = new System.Text.StringBuilder();
         sb.AppendLine("Версия агента: " + Reporter.Version);
@@ -365,17 +367,26 @@ public class MainForm : Form
         _statusBox.Text = sb.ToString();
     }
 
-    // ================= Служба =================
-    private TabPage BuildServiceTab()
+    // ================= Настройка приложения =================
+    private Control BuildAppSettingsPage()
     {
-        var page = new TabPage("Служба");
         var t = NewTable();
+        AddTitle(t, "Настройка приложения");
 
-        AddFull(t, new Label { Text = "Служба Windows", Font = new Font(Font, FontStyle.Bold), AutoSize = true, Margin = new Padding(3, 3, 3, 6) });
+        AddSection(t, "Журнал событий Windows");
+        _evtEnabled = AddCheck(t, "Читать журнал событий Windows и передавать ошибки серверу");
+        _evtLogs = AddText(t, "Журналы через запятую (System, Application)");
+        _evtWarnings = AddCheck(t, "Передавать и предупреждения (не только ошибки)");
+        _evtMax = AddNum(t, "Максимум записей за отчёт (на журнал)", 1, 1000);
+        _evtLookback = AddNum(t, "При первом запуске смотреть назад, часов", 1, 100000);
+        var btnEvt = new Button { Text = "🔎 Показать последние ошибки журнала", AutoSize = true, Margin = new Padding(3, 4, 3, 4) };
+        btnEvt.Click += (_, _) => EventLogPreview();
+        AddFull(t, btnEvt);
+
+        AddSection(t, "Служба Windows");
         _svcName = AddText(t, "Имя службы");
         _svcUser = AddText(t, "Учётная запись запуска (DOMAIN\\User, пусто = LocalSystem)");
         _svcPass = AddText(t, "Пароль учётной записи", true);
-
         var row = new FlowLayoutPanel { AutoSize = true, Margin = new Padding(0, 4, 0, 4) };
         var bInstall = new Button { Text = "Установить / переустановить", AutoSize = true };
         bInstall.Click += (_, _) => SvcInstall();
@@ -389,18 +400,46 @@ public class MainForm : Form
         bRefresh.Click += (_, _) => RefreshSvcStatus();
         row.Controls.AddRange(new Control[] { bInstall, bUninstall, bStart, bStop, bRefresh });
         AddFull(t, row);
-
         _svcStatus = new Label { AutoSize = true, Margin = new Padding(3, 6, 3, 3) };
         AddFull(t, _svcStatus);
 
-        AddFull(t, new Label { Text = "Обновления агента", Font = new Font(Font, FontStyle.Bold), AutoSize = true, Margin = new Padding(3, 8, 3, 6) });
+        AddSection(t, "Обновления агента");
         _autoUpdate = AddCheck(t, "Автоматически обновлять агента с сервера (раз в день)");
         var bUpd = new Button { Text = "🔄 Проверить обновления сейчас", AutoSize = true, Margin = new Padding(3, 4, 3, 4) };
         bUpd.Click += (_, _) => CheckUpdates();
         AddFull(t, bUpd);
+        return t;
+    }
 
-        page.Controls.Add(t);
-        return page;
+    private void EventLogPreview()
+    {
+        if (!OperatingSystem.IsWindows()) { Info("Чтение журнала доступно только в Windows."); return; }
+        var logs = SplitCsv(_evtLogs.Text, "System", "Application");
+        try
+        {
+            var reader = new EventLogReaderService(_store);
+            var cfg = new AgentConfig
+            {
+                EventLog = new EventLogConfig
+                {
+                    Enabled = true, Logs = logs, IncludeWarnings = _evtWarnings.Checked,
+                    MaxEntriesPerReport = (int)_evtMax.Value, LookbackHoursOnFirstRun = (int)_evtLookback.Value
+                }
+            };
+            var list = reader.PreviewRecent(cfg, 20);
+            if (list.Count == 0) { Info("За выбранный период ошибок в журнале не найдено."); return; }
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine($"Найдено записей: {list.Count}. Последние:\n");
+            foreach (var e in list.Take(20))
+            {
+                var m = e.Message.Replace("\r", " ").Replace("\n", " ");
+                if (m.Length > 160) m = m[..160] + "…";
+                sb.AppendLine($"[{e.Level}] {e.TimeCreated.LocalDateTime:yyyy-MM-dd HH:mm} {e.LogName}/{e.Source} (ID {e.EventId})");
+                sb.AppendLine("   " + m);
+            }
+            Info(sb.ToString());
+        }
+        catch (Exception ex) { Info("Не удалось прочитать журнал: " + ex.Message); }
     }
 
     private void RefreshSvcStatus()
@@ -465,6 +504,24 @@ public class MainForm : Form
         catch (Exception ex) { Info("Не удалось проверить/установить обновление: " + ex.Message); }
     }
 
+    // ================= О приложении =================
+    private Control BuildAboutPage()
+    {
+        var t = NewTable();
+        AddTitle(t, "О приложении");
+        var lbl = new Label { AutoSize = true, MaximumSize = new Size(600, 0), Margin = new Padding(3, 6, 3, 3), Font = new Font(Font.FontFamily, 9.5f) };
+        lbl.Text =
+            "YPMonitor — Агент\n" +
+            $"Версия: {Reporter.Version}\n\n" +
+            "Назначение: агент следит за папками с резервными копиями (количество файлов, объём, дата\n" +
+            "самого свежего) и собирает ошибки из журнала событий Windows, отправляя их на сервер YPMonitor.\n\n" +
+            "Безопасность: агент устанавливает только исходящее соединение к серверу, не слушает сетевые\n" +
+            "порты и не выполняет команд. Настройка возможна только из этого окна (файл config.json).\n\n" +
+            "Обновление: с сервера, вкладка «Настройка приложения» → «Проверить обновления».";
+        AddFull(t, lbl);
+        return t;
+    }
+
     // ================= Тест соединения =================
     private async void TestConnection()
     {
@@ -496,7 +553,7 @@ public class MainForm : Form
         _loading = true;
         _serverUrl.Text = _cfg.ServerUrl;
         _apiKey.Text = _cfg.ApiKey;
-        _reportSec.Value = Clamp(_cfg.ReportIntervalSeconds, 30, 86400);
+        _reportSec.Value = Clamp(_cfg.ReportIntervalSeconds, 30, 604800);
         _heartbeatSec.Value = Clamp(_cfg.HeartbeatIntervalSeconds, 15, 86400);
 
         var evt = _cfg.EventLog ?? new EventLogConfig();
@@ -548,11 +605,17 @@ public class MainForm : Form
     // ================= Хелперы UI =================
     private static TableLayoutPanel NewTable()
     {
-        var t = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, AutoScroll = true, Padding = new Padding(10) };
-        t.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 42));
-        t.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 58));
+        var t = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, AutoScroll = true, Padding = new Padding(12) };
+        t.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 44));
+        t.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 56));
         return t;
     }
+
+    private static void AddTitle(TableLayoutPanel t, string text)
+        => AddFull(t, new Label { Text = text, Font = new Font(t.Font.FontFamily, 13, FontStyle.Bold), AutoSize = true, Margin = new Padding(3, 3, 3, 10) });
+
+    private static void AddSection(TableLayoutPanel t, string text)
+        => AddFull(t, new Label { Text = text, Font = new Font(t.Font.FontFamily, 10.5f, FontStyle.Bold), AutoSize = true, Margin = new Padding(3, 14, 3, 6) });
 
     private static TextBox AddText(TableLayoutPanel t, string label, bool password = false)
     {
@@ -596,7 +659,7 @@ public class MainForm : Form
     private static NumericUpDown AddNum(TableLayoutPanel t, string label, int min, int max)
     {
         var lbl = new Label { Text = label, AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(3, 6, 3, 3) };
-        var num = new NumericUpDown { Minimum = min, Maximum = max, Dock = DockStyle.Left, Width = 120, Margin = new Padding(3, 3, 3, 3) };
+        var num = new NumericUpDown { Minimum = min, Maximum = max, Dock = DockStyle.Left, Width = 130, Margin = new Padding(3, 3, 3, 3) };
         var r = t.RowCount++;
         t.Controls.Add(lbl, 0, r);
         t.Controls.Add(num, 1, r);
