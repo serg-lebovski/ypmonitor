@@ -41,7 +41,7 @@ public class TelegramReportService
         if (s is null || !s.TelegramEnabled || string.IsNullOrWhiteSpace(s.TelegramBotToken) || string.IsNullOrWhiteSpace(s.TelegramChatId))
             return "Telegram не настроен (токен/группа) или выключен.";
 
-        var clients = await _db.Clients.Include(c => c.Servers).ThenInclude(sv => sv.Client).OrderBy(c => c.Name).ToListAsync();
+        var clients = await _db.Clients.Include(c => c.Servers).OrderBy(c => c.Name).ToListAsync();
         var date = OmskNow().ToString("yyyy-MM-dd");
         int sent = 0, problems = 0;
 

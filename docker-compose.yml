@@ -44,6 +44,7 @@ services:
       Database__ConnectionString: "Host=postgres;Port=5432;Database=ypmon;Username=admin_yp;Password=${POSTGRES_PASSWORD}"
     volumes:
       - ypmon-updates:/app/agent-updates   # сюда кладите Ypmon.Agent.exe для автообновления агентов
+      - ypmon-data:/app/data               # ключи DataProtection и sqlite (переживают пересборку)
       - ./.update:/app/update              # канал самообновления сервера (запрос/статус для воркера ypmon-updater)
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8081/api/ping"]
@@ -55,3 +56,4 @@ services:
 volumes:
   ypmon-pgdata:
   ypmon-updates:
+  ypmon-data:

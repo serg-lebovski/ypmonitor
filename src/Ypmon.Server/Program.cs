@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Ypmon.Server.Data;
 using Ypmon.Server.Services;
@@ -44,6 +45,12 @@ builder.Services.AddDbContext<AppDbContext>(opt =>
     else
         opt.UseSqlite(connString);
 });
+
+// Ключи DataProtection храним в data-томе, чтобы cookie-авторизация и antiforgery-токены
+// переживали пересборку контейнера (иначе после каждого обновления — разлогин и ошибки форм).
+builder.Services.AddDataProtection()
+    .PersistKeysToFileSystem(new DirectoryInfo(Path.Combine(dataDir, "keys")))
+    .SetApplicationName("Ypmon");
 
 builder.Services.AddHttpClient();
 builder.Services.AddScoped<AlertService>();
