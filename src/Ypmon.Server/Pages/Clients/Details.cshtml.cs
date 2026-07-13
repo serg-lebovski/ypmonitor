@@ -21,6 +21,11 @@ public class DetailsModel : PageModel
     [BindProperty] public string? IpAddress { get; set; }
     [BindProperty] public string? ServerDescription { get; set; }
 
+    // Редактирование клиента
+    [BindProperty] public string ClientName { get; set; } = "";
+    [BindProperty] public string? ClientDescription { get; set; }
+    public string? Message { get; set; }
+
     public async Task<IActionResult> OnGetAsync()
     {
         await Load();
@@ -34,6 +39,19 @@ public class DetailsModel : PageModel
         Client = await _db.Clients.Include(c => c.Servers).FirstOrDefaultAsync(c => c.Id == Id);
         if (Client is not null)
             Client.Servers = Client.Servers.OrderBy(s => s.Name).ToList();
+    }
+
+    public async Task<IActionResult> OnPostSaveClientAsync()
+    {
+        if (!User.IsInRole("Admin")) return Forbid();
+        var c = await _db.Clients.FindAsync(Id);
+        if (c is null) return NotFound();
+        if (!string.IsNullOrWhiteSpace(ClientName)) c.Name = ClientName.Trim();
+        c.Description = ClientDescription?.Trim();
+        await _db.SaveChangesAsync();
+        await Load();
+        Message = "Клиент сохранён";
+        return Page();
     }
 
     public async Task<IActionResult> OnPostAddServerAsync()

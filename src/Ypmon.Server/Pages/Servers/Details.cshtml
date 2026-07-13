@@ -47,8 +47,9 @@
             <div class="kv"><span class="k">Порог устаревания</span><span class="v">@(s.BackupStaleDays > 0 ? s.BackupStaleDays + " дн." : $"по умолчанию ({Model.DefaultBackupStaleDays} дн.)")</span></div>
         </div>
 
-        <div class="card-y">
-            <h3>Папки бэкапов (архивация)</h3>
+        <details class="card-y acc" open>
+            <summary>📁 Папки бэкапов (архивация)</summary>
+            <div class="acc-body">
             @if (Model.Report is null || !Model.Report.Folders.Any())
             {
                 <div class="muted">Агент ещё не прислал данные по папкам.</div>
@@ -73,10 +74,12 @@
                     </tbody>
                 </table>
             }
-        </div>
+            </div>
+        </details>
 
-        <div class="card-y">
-            <h3>История отчётов</h3>
+        <details class="card-y acc">
+            <summary>🕓 История отчётов</summary>
+            <div class="acc-body">
             @if (!Model.History.Any())
             {
                 <div class="muted">Пока нет отчётов.</div>
@@ -98,10 +101,12 @@
                     </tbody>
                 </table>
             }
-        </div>
+            </div>
+        </details>
 
-        <div class="card-y">
-            <h3>Ошибки журнала Windows</h3>
+        <details class="card-y acc">
+            <summary>⚠️ Ошибки журнала Windows</summary>
+            <div class="acc-body">
             @if (!Model.Events.Any())
             {
                 <div class="muted">Ошибок из журнала Windows пока нет.</div>
@@ -125,12 +130,14 @@
                     </tbody>
                 </table>
             }
-        </div>
+            </div>
+        </details>
     </div>
 
     <div class="panel">
-        <div class="card-y">
-            <h3>Данные подключения агента</h3>
+        <details class="card-y acc" open>
+            <summary>🔌 Данные подключения агента</summary>
+            <div class="acc-body">
             <div class="conn-box">
                 <div class="muted" style="font-size:12px;margin-bottom:4px">Адрес сервера</div>
                 <div class="copy-row">
@@ -150,12 +157,14 @@
                     </form>
                 }
             </div>
-        </div>
+            </div>
+        </details>
 
         @if (isAdmin)
         {
-            <div class="card-y">
-                <h3>Редактировать сервер</h3>
+            <details class="card-y acc">
+                <summary>✏️ Редактировать сервер</summary>
+                <div class="acc-body">
                 <form method="post" asp-page-handler="Save" asp-route-id="@s.Id">
                     <div class="mb-2"><label>Название</label><input class="form-control" asp-for="Name" /></div>
                     <div class="mb-2"><label>Физический адрес</label><input class="form-control" asp-for="PhysicalAddress" /></div>
@@ -169,7 +178,8 @@
                       onsubmit="return confirm('Удалить сервер?')">
                     <button class="btn btn-y-danger w-100" type="submit">Удалить сервер</button>
                 </form>
-            </div>
+                </div>
+            </details>
         }
     </div>
 </div>

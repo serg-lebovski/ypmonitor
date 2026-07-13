@@ -10,33 +10,29 @@
 <h1 class="page-title">🗂️ @Model.Client?.Name</h1>
 <div class="muted mb-3">@Model.Client?.Description &nbsp; <a href="/Clients">← к списку клиентов</a></div>
 
+@if (Model.Message is not null)
+{
+    <div class="alert-y alert-ok">@Model.Message</div>
+}
+
 <div class="dash-grid">
     <div>
-        <div class="card-y"><h3>Серверы клиента</h3>
-        @if (Model.Client is null || !Model.Client.Servers.Any())
-        {
-            <div class="muted">У клиента ещё нет серверов. Добавьте сервер и подключите к нему агента.</div>
-        }
-        else
-        {
-            foreach (var s in Model.Client.Servers)
+        <details class="card-y acc" open>
+            <summary>🖥️ Серверы клиента (@(Model.Client?.Servers.Count ?? 0))</summary>
+            <div class="acc-body">
+            @if (Model.Client is null || !Model.Client.Servers.Any())
             {
-                var offline = s.IsOffline(Model.OfflineThreshold);
-                <div class="card-y" style="background:var(--card-2)">
-                    <div style="display:flex;justify-content:space-between;align-items:flex-start">
-                        <div>
-                            <div class="s-name" style="font-size:16px">
-                                <span class="dot @UiHelpers.DotCss(offline ? JobOutcome.Unknown : s.LastOutcome)"></span>@s.Name
-                            </div>
-                            <div class="muted" style="font-size:13px">
-                                @(s.PhysicalAddress ?? "—") · IP: @(s.IpAddress ?? "—")
-                            </div>
-                            @if (!string.IsNullOrWhiteSpace(s.Description))
-                            {
-                                <div class="muted" style="font-size:13px">@s.Description</div>
-                            }
-                        </div>
-                        <div>
+                <div class="muted">У клиента ещё нет серверов. Добавьте сервер и подключите к нему агента.</div>
+            }
+            else
+            {
+                foreach (var s in Model.Client.Servers)
+                {
+                    var offline = s.IsOffline(Model.OfflineThreshold);
+                    <details class="card-y acc" style="background:var(--card-2)">
+                        <summary>
+                            <span class="dot @UiHelpers.DotCss(offline ? JobOutcome.Unknown : s.LastOutcome)"></span>
+                            <span style="flex:1">@s.Name</span>
                             @if (offline)
                             {
                                 <span class="badge-status st-offline">Офлайн</span>
@@ -45,68 +41,89 @@
                             {
                                 <span class="badge-status @UiHelpers.OutcomeCss(s.LastOutcome)">@UiHelpers.OutcomeText(s.LastOutcome)</span>
                             }
-                        </div>
-                    </div>
+                        </summary>
+                        <div class="acc-body">
+                            <div class="muted" style="font-size:13px">@(s.PhysicalAddress ?? "—") · IP: @(s.IpAddress ?? "—")</div>
+                            @if (!string.IsNullOrWhiteSpace(s.Description))
+                            {
+                                <div class="muted" style="font-size:13px">@s.Description</div>
+                            }
+                            <div class="kv"><span class="k">Последний отчёт</span><span class="v">@UiHelpers.Ago(s.LastSeenAt)</span></div>
+                            <div class="kv"><span class="k">Файлов в бэкапах</span><span class="v">@s.LastBackupCount</span></div>
 
-                    <div class="kv"><span class="k">Последний отчёт</span><span class="v">@UiHelpers.Ago(s.LastSeenAt)</span></div>
-                    <div class="kv"><span class="k">Файлов в бэкапах</span><span class="v">@s.LastBackupCount</span></div>
+                            <div class="conn-box mt-2">
+                                <div class="muted" style="font-size:12px;margin-bottom:4px">Адрес сервера (для агента)</div>
+                                <div class="copy-row">
+                                    <input class="form-control mono" readonly value="@baseUrl" id="url_@s.Id" />
+                                    <button type="button" class="btn btn-sm btn-primary" onclick="ypCopy('url_@s.Id', this)">Копировать</button>
+                                </div>
+                                <div class="muted" style="font-size:12px;margin:8px 0 4px">API-ключ</div>
+                                <div class="copy-row">
+                                    <input class="form-control mono" readonly value="@s.ApiKey" id="key_@s.Id" />
+                                    <button type="button" class="btn btn-sm btn-primary" onclick="ypCopy('key_@s.Id', this)">Копировать</button>
+                                </div>
+                                @if (isAdmin)
+                                {
+                                    <form method="post" asp-page-handler="RegenKey" asp-route-id="@Model.Id" asp-route-serverId="@s.Id" class="mt-2"
+                                          onsubmit="return confirm('Перевыпустить ключ? Старый агент перестанет отправлять данные.')">
+                                        <button class="btn btn-sm btn-y-danger">Перевыпустить ключ</button>
+                                    </form>
+                                }
+                            </div>
 
-                    <div class="conn-box mt-2">
-                        <div class="muted" style="font-size:12px;margin-bottom:4px">Адрес сервера (для агента)</div>
-                        <div class="copy-row">
-                            <input class="form-control mono" readonly value="@baseUrl" id="url_@s.Id" />
-                            <button type="button" class="btn btn-sm btn-primary" onclick="ypCopy('url_@s.Id', this)">Копировать</button>
+                            <div style="display:flex;gap:8px;margin-top:12px">
+                                <a class="btn btn-sm btn-primary" href="/Servers/Details?id=@s.Id">Открыть сервер</a>
+                                @if (isAdmin)
+                                {
+                                    <form method="post" asp-page-handler="DeleteServer" asp-route-id="@Model.Id" asp-route-serverId="@s.Id"
+                                          onsubmit="return confirm('Удалить сервер?')">
+                                        <button class="btn btn-sm btn-y-danger" type="submit">Удалить</button>
+                                    </form>
+                                }
+                            </div>
                         </div>
-                        <div class="muted" style="font-size:12px;margin:8px 0 4px">API-ключ</div>
-                        <div class="copy-row">
-                            <input class="form-control mono" readonly value="@s.ApiKey" id="key_@s.Id" />
-                            <button type="button" class="btn btn-sm btn-primary" onclick="ypCopy('key_@s.Id', this)">Копировать</button>
-                        </div>
-                        @if (isAdmin)
-                        {
-                            <form method="post" asp-page-handler="RegenKey" asp-route-id="@Model.Id" asp-route-serverId="@s.Id" class="mt-2"
-                                  onsubmit="return confirm('Перевыпустить ключ? Старый агент перестанет отправлять данные.')">
-                                <button class="btn btn-sm btn-y-danger">Перевыпустить ключ</button>
-                            </form>
-                        }
-                    </div>
-
-                    <div style="display:flex;gap:8px;margin-top:12px">
-                        <a class="btn btn-sm btn-primary" href="/Servers/Details?id=@s.Id">Открыть сервер</a>
-                        @if (isAdmin)
-                        {
-                            <form method="post" asp-page-handler="DeleteServer" asp-route-id="@Model.Id" asp-route-serverId="@s.Id"
-                                  onsubmit="return confirm('Удалить сервер?')">
-                                <button class="btn btn-sm btn-y-danger" type="submit">Удалить</button>
-                            </form>
-                        }
-                    </div>
-                </div>
+                    </details>
+                }
             }
-        }
-        </div>
+            </div>
+        </details>
     </div>
 
     @if (isAdmin)
     {
         <div class="panel">
-            <div class="card-y">
-                <h3>Подключить сервер</h3>
-                <div class="muted mb-3" style="font-size:13px">
-                    При добавлении сервера сгенерируется API-ключ. Укажите его и адрес этого сервера в настройках агента.
+            <details class="card-y acc" open>
+                <summary>✏️ Изменить клиента</summary>
+                <div class="acc-body">
+                    <form method="post" asp-page-handler="SaveClient" asp-route-id="@Model.Id">
+                        <div class="mb-2"><label>Название</label>
+                            <input class="form-control" name="ClientName" value="@Model.Client?.Name" required /></div>
+                        <div class="mb-3"><label>Описание</label>
+                            <textarea class="form-control" name="ClientDescription" rows="2">@Model.Client?.Description</textarea></div>
+                        <button class="btn btn-primary w-100" type="submit">Сохранить клиента</button>
+                    </form>
                 </div>
-                <form method="post" asp-page-handler="AddServer" asp-route-id="@Model.Id">
-                    <div class="mb-3"><label>Название сервера</label>
-                        <input class="form-control" asp-for="ServerName" required /></div>
-                    <div class="mb-3"><label>Физический адрес</label>
-                        <input class="form-control" asp-for="PhysicalAddress" placeholder="напр. ЦОД, стойка 5" /></div>
-                    <div class="mb-3"><label>Сетевой адрес / IP</label>
-                        <input class="form-control" asp-for="IpAddress" placeholder="напр. 10.0.0.12" /></div>
-                    <div class="mb-3"><label>Описание</label>
-                        <textarea class="form-control" asp-for="ServerDescription" rows="2"></textarea></div>
-                    <button class="btn btn-primary w-100" type="submit">Добавить сервер</button>
-                </form>
-            </div>
+            </details>
+
+            <details class="card-y acc">
+                <summary>➕ Подключить сервер</summary>
+                <div class="acc-body">
+                    <div class="muted mb-3" style="font-size:13px">
+                        При добавлении сервера сгенерируется API-ключ. Укажите его и адрес этого сервера в настройках агента.
+                    </div>
+                    <form method="post" asp-page-handler="AddServer" asp-route-id="@Model.Id">
+                        <div class="mb-3"><label>Название сервера</label>
+                            <input class="form-control" asp-for="ServerName" required /></div>
+                        <div class="mb-3"><label>Физический адрес</label>
+                            <input class="form-control" asp-for="PhysicalAddress" placeholder="напр. ЦОД, стойка 5" /></div>
+                        <div class="mb-3"><label>Сетевой адрес / IP</label>
+                            <input class="form-control" asp-for="IpAddress" placeholder="напр. 10.0.0.12" /></div>
+                        <div class="mb-3"><label>Описание</label>
+                            <textarea class="form-control" asp-for="ServerDescription" rows="2"></textarea></div>
+                        <button class="btn btn-primary w-100" type="submit">Добавить сервер</button>
+                    </form>
+                </div>
+            </details>
         </div>
     }
 </div>

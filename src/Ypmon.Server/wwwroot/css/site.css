@@ -79,6 +79,17 @@ a:hover { text-decoration: underline; }
 
 h1.page-title { font-size: 26px; font-weight: 700; margin-bottom: 18px; }
 
+/* --- Сворачиваемые секции (details/summary) --- */
+details.acc { margin-bottom: 12px; }
+details.acc > summary {
+    cursor: pointer; list-style: none; font-weight: 600; font-size: 17px;
+    display: flex; align-items: center; gap: 8px; padding: 4px 0;
+}
+details.acc > summary::-webkit-details-marker { display: none; }
+details.acc > summary::before { content: "\25B8"; color: var(--unknown); transition: transform .15s; }
+details.acc[open] > summary::before { transform: rotate(90deg); }
+details.acc > .acc-body { padding-top: 10px; }
+
 /* --- Статусы --- */
 .badge-status { padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; }
 .st-ok { background: rgba(40,199,111,.15); color: var(--ok); }
