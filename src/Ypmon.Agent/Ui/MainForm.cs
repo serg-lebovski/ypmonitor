@@ -30,10 +30,12 @@ public class MainForm : Form
     // Задания архивации (папки)
     private DataGridView _folderGrid = null!;
     private Panel _folderPanel = null!, _folderEmpty = null!;
+    private Label _folHeader = null!;
     private TextBox _folName = null!, _folPath = null!, _folUser = null!, _folPass = null!;
     private CheckBox _folEnabled = null!;
     private MonitoredFolder? _curFolder;
-    private bool _refreshing;
+    private int _editIndex = -2;      // -2 = ничего, -1 = новое задание, >=0 = редактирование существующего
+    private bool _refreshing, _suppressSelect;
 
     // Журнал Windows
     private CheckBox _evtEnabled = null!, _evtWarnings = null!;
@@ -202,8 +204,8 @@ public class MainForm : Form
     {
         var p = new Panel { Dock = DockStyle.Fill };
         var t = NewTable();
-        var head = new Label { Text = "Параметры задания", Font = new Font(Font, FontStyle.Bold), AutoSize = true, Margin = new Padding(3, 3, 3, 6) };
-        AddFull(t, head);
+        _folHeader = new Label { Text = "Параметры задания", Font = new Font(Font, FontStyle.Bold), AutoSize = true, Margin = new Padding(3, 3, 3, 6) };
+        AddFull(t, _folHeader);
         _folName = AddText(t, "Название");
         _folEnabled = AddCheck(t, "Включено");
         _folPath = AddBrowse(t, "Папка с бэкапами (можно сетевую \\\\сервер\\папка)");
@@ -212,48 +214,64 @@ public class MainForm : Form
         var btnAccess = new Button { Text = "🔐 Проверить доступ и содержимое", AutoSize = true, Margin = new Padding(3, 4, 3, 4) };
         btnAccess.Click += (_, _) => FolderCheckAccess();
         AddFull(t, btnAccess);
+
+        var buttons = new FlowLayoutPanel { AutoSize = true, Margin = new Padding(0, 8, 0, 4) };
+        var btnSave = new Button { Text = "💾 Сохранить задачу мониторинга", AutoSize = true, BackColor = Color.FromArgb(210, 224, 245) };
+        btnSave.Click += (_, _) => SaveFolderTask();
+        var btnCancel = new Button { Text = "Отмена", AutoSize = true };
+        btnCancel.Click += (_, _) => CancelFolderEdit();
+        buttons.Controls.AddRange(new Control[] { btnSave, btnCancel });
+        AddFull(t, buttons);
+
         var note = new Label { AutoSize = true, ForeColor = Color.DimGray, MaximumSize = new Size(540, 0), Margin = new Padding(3, 6, 3, 3) };
         note.Text = "Агент только читает: количество файлов (любого формата), объём и дату самого свежего. " +
+                    "Изменения применяются после «Сохранить задачу мониторинга». " +
                     "Порог «нет новых файлов N дней» и алерт настраиваются на сервере.";
         AddFull(t, note);
-
-        EventHandler h = (_, _) => { CommitFolder(); UpdateFolderRow(); };
-        foreach (var c in new Control[] { _folName, _folPath, _folUser, _folPass }) c.TextChanged += h;
-        _folEnabled.CheckedChanged += h;
 
         p.Controls.Add(t);
         return p;
     }
 
-    private void RefreshFolderList()
+    private void RefreshFolderList(int selectIndex = -1)
     {
-        var prev = _folderGrid.CurrentRow?.Index ?? -1;
         _refreshing = true;
         _folderGrid.Rows.Clear();
         foreach (var f in _cfg.Folders)
             _folderGrid.Rows.Add(f.Name, f.Path, f.Enabled ? "✓" : "—");
         _refreshing = false;
-        if (prev >= 0 && prev < _folderGrid.Rows.Count) SelectRow(prev);
+        if (selectIndex >= 0 && selectIndex < _folderGrid.Rows.Count)
+        {
+            _suppressSelect = true;
+            _folderGrid.ClearSelection();
+            _folderGrid.Rows[selectIndex].Selected = true;
+            _folderGrid.CurrentCell = _folderGrid.Rows[selectIndex].Cells[0];
+            _suppressSelect = false;
+        }
     }
 
-    private void SelectRow(int i)
-    {
-        if (i < 0 || i >= _folderGrid.Rows.Count) return;
-        _folderGrid.ClearSelection();
-        _folderGrid.Rows[i].Selected = true;
-        _folderGrid.CurrentCell = _folderGrid.Rows[i].Cells[0];
-    }
-
+    // Клик по строке списка — открываем существующее задание в режиме редактирования.
     private void SelectFolder(int idx)
     {
-        CommitFolder();
-        _curFolder = null;
-        if (idx < 0 || idx >= _cfg.Folders.Count) { ShowFolderPanel(false); return; }
-        _curFolder = _cfg.Folders[idx];
+        if (_suppressSelect) return;
+        if (idx < 0 || idx >= _cfg.Folders.Count) { ShowFolderPanel(false); _editIndex = -2; _curFolder = null; return; }
+        _editIndex = idx;
+        var src = _cfg.Folders[idx];
+        _curFolder = new MonitoredFolder
+        {
+            Name = src.Name, Enabled = src.Enabled, Path = src.Path,
+            NetworkUsername = src.NetworkUsername, NetworkPassword = src.NetworkPassword
+        };
+        PopulateForm(_curFolder, "✏️ Редактирование задания: " + src.Name);
+    }
+
+    private void PopulateForm(MonitoredFolder f, string header)
+    {
         _loading = true;
-        _folName.Text = _curFolder.Name; _folEnabled.Checked = _curFolder.Enabled;
-        _folPath.Text = _curFolder.Path;
-        _folUser.Text = _curFolder.NetworkUsername; _folPass.Text = _curFolder.NetworkPassword;
+        _folHeader.Text = header;
+        _folName.Text = f.Name; _folEnabled.Checked = f.Enabled;
+        _folPath.Text = f.Path;
+        _folUser.Text = f.NetworkUsername; _folPass.Text = f.NetworkPassword;
         _loading = false;
         ShowFolderPanel(true);
     }
@@ -265,53 +283,79 @@ public class MainForm : Form
         if (show) _folderPanel.BringToFront(); else _folderEmpty.BringToFront();
     }
 
-    private void CommitFolder()
-    {
-        if (_loading || _curFolder is null) return;
-        _curFolder.Name = _folName.Text; _curFolder.Enabled = _folEnabled.Checked;
-        _curFolder.Path = _folPath.Text;
-        _curFolder.NetworkUsername = _folUser.Text; _curFolder.NetworkPassword = _folPass.Text;
-    }
-
-    private void UpdateFolderRow()
-    {
-        if (_loading) return;
-        var idx = _folderGrid.CurrentRow?.Index ?? -1;
-        if (idx < 0 || idx >= _cfg.Folders.Count) return;
-        var row = _folderGrid.Rows[idx];
-        row.Cells["name"].Value = _cfg.Folders[idx].Name;
-        row.Cells["path"].Value = _cfg.Folders[idx].Path;
-        row.Cells["enabled"].Value = _cfg.Folders[idx].Enabled ? "✓" : "—";
-    }
-
+    // «Добавить папку» — новое, ещё не сохранённое задание.
     private void AddFolder()
     {
-        CommitFolder();
-        _cfg.Folders.Add(new MonitoredFolder { Name = "Бэкапы " + (_cfg.Folders.Count + 1) });
-        RefreshFolderList();
-        SelectRow(_cfg.Folders.Count - 1);
+        _suppressSelect = true;
+        _folderGrid.ClearSelection();
+        _suppressSelect = false;
+        _editIndex = -1;
+        _curFolder = new MonitoredFolder { Name = "Новое задание", Enabled = true };
+        PopulateForm(_curFolder, "➕ Новое задание мониторинга (не сохранено)");
+    }
+
+    // Явное сохранение текущего задания (нового или редактируемого).
+    private void SaveFolderTask()
+    {
+        if (_curFolder is null) { Info("Нажмите «Добавить папку» или выберите задание в списке."); return; }
+        var name = _folName.Text.Trim();
+        if (name.Length == 0) { Info("Укажите название задания."); return; }
+        _curFolder.Name = name;
+        _curFolder.Enabled = _folEnabled.Checked;
+        _curFolder.Path = _folPath.Text.Trim();
+        _curFolder.NetworkUsername = _folUser.Text.Trim();
+        _curFolder.NetworkPassword = _folPass.Text;
+
+        int sel;
+        if (_editIndex >= 0 && _editIndex < _cfg.Folders.Count)
+        {
+            _cfg.Folders[_editIndex] = _curFolder; sel = _editIndex;
+        }
+        else
+        {
+            _cfg.Folders.Add(_curFolder); sel = _cfg.Folders.Count - 1; _editIndex = sel;
+        }
+        _store.Save(_cfg);
+        RefreshFolderList(sel);
+        _folHeader.Text = "✏️ Редактирование задания: " + _curFolder.Name;
+        Info("Задача мониторинга сохранена.");
+    }
+
+    private void CancelFolderEdit()
+    {
+        _curFolder = null; _editIndex = -2;
+        _suppressSelect = true; _folderGrid.ClearSelection(); _suppressSelect = false;
+        ShowFolderPanel(false);
     }
 
     private void DeleteFolder()
     {
         var idx = _folderGrid.CurrentRow?.Index ?? -1;
-        if (idx < 0 || idx >= _cfg.Folders.Count) return;
-        _loading = true;
+        if (idx < 0 || idx >= _cfg.Folders.Count)
+        {
+            if (_editIndex >= 0 && _editIndex < _cfg.Folders.Count) idx = _editIndex;
+            else { Info("Выберите задание в списке."); return; }
+        }
+        if (MessageBox.Show(this, $"Удалить задание «{_cfg.Folders[idx].Name}»?", "Удаление",
+                MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
         _cfg.Folders.RemoveAt(idx);
-        _curFolder = null;
-        _loading = false;
+        _store.Save(_cfg);
+        _curFolder = null; _editIndex = -2;
         RefreshFolderList();
-        if (_cfg.Folders.Count > 0) SelectRow(Math.Min(idx, _cfg.Folders.Count - 1));
-        else ShowFolderPanel(false);
+        ShowFolderPanel(false);
     }
 
     private void FolderCheckAccess()
     {
-        CommitFolder();
-        if (_curFolder is null) { Info("Выберите задание."); return; }
-        var (ok, msg) = NetShare.CheckAccess(_folPath.Text.Trim(), _folUser.Text.Trim(), _folPass.Text);
+        var temp = new MonitoredFolder
+        {
+            Name = _folName.Text.Trim(), Enabled = true, Path = _folPath.Text.Trim(),
+            NetworkUsername = _folUser.Text.Trim(), NetworkPassword = _folPass.Text
+        };
+        if (string.IsNullOrWhiteSpace(temp.Path)) { Info("Укажите папку."); return; }
+        var (ok, msg) = NetShare.CheckAccess(temp.Path, temp.NetworkUsername, temp.NetworkPassword);
         if (!ok) { Info("❌ " + msg); return; }
-        var st = new FolderMonitorService().Check(_curFolder);
+        var st = new FolderMonitorService().Check(temp);
         Info(st.Accessible
             ? $"✅ Доступ есть.\n{st.Message}\nОбъём: {Bytes(st.TotalSizeBytes)}"
             : "❌ " + st.Message);
@@ -568,13 +612,12 @@ public class MainForm : Form
         _loading = false;
 
         RefreshFolderList();
-        if (_cfg.Folders.Count > 0) SelectRow(0); else ShowFolderPanel(false);
+        ShowFolderPanel(false);
         RefreshSvcStatus();
     }
 
     private void SaveAll(bool notify)
     {
-        CommitFolder();
         _cfg.ServerUrl = _serverUrl.Text.Trim();
         _cfg.ApiKey = _apiKey.Text.Trim();
         _cfg.ReportIntervalSeconds = (int)_reportSec.Value;
@@ -598,7 +641,6 @@ public class MainForm : Form
 
     protected override void OnFormClosing(FormClosingEventArgs e)
     {
-        CommitFolder();
         base.OnFormClosing(e);
     }
 

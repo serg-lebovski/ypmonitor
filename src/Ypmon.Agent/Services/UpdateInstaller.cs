@@ -59,17 +59,23 @@ public static class UpdateInstaller
     }
 
     /// <summary>
-    /// Запускает установщик. silent=true — без окон (для службы), иначе с индикатором прогресса.
-    /// Требует прав администратора (установщик запросит UAC). Вызывающий должен затем завершить процесс.
+    /// Запускает установщик.
+    /// silent=true — тихо, для авто-обновления из службы: служба уже запущена с правами администратора
+    /// (LocalSystem или админ-учётка), поэтому UseShellExecute=false — процесс наследует уже повышенный
+    /// токен без запроса UAC (в сессии службы интерактивный UAC невозможен, из-за чего обновление «зависало»).
+    /// silent=false — интерактивно из окна: UseShellExecute=true, чтобы показать запрос UAC пользователю.
     /// </summary>
     public static void RunInstaller(string installerPath, bool silent)
     {
         var args = silent
             ? "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /NOCANCEL"
             : "/SILENT /NORESTART";
-        Process.Start(new ProcessStartInfo(installerPath, args)
+        var psi = new ProcessStartInfo(installerPath, args)
         {
-            UseShellExecute = true   // нужно для запроса повышения прав (UAC)
-        });
+            UseShellExecute = !silent,   // служба уже elevated → без UAC; окно → через shell с UAC
+            CreateNoWindow = silent,
+            WindowStyle = silent ? ProcessWindowStyle.Hidden : ProcessWindowStyle.Normal
+        };
+        Process.Start(psi);
     }
 }
