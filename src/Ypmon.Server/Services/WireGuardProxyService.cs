@@ -94,7 +94,12 @@ public sealed class WireGuardProxyService : IDisposable
         lock (_lock)
         {
             Stop();
-            if (!enabled || string.IsNullOrWhiteSpace(wgConfig)) { LastStatus = "выключен"; return; }
+            if (!enabled || string.IsNullOrWhiteSpace(wgConfig))
+            {
+                try { if (File.Exists(_confPath)) File.Delete(_confPath); } catch { }
+                LastStatus = "выключен";
+                return;
+            }
 
             var bin = FindBinary();
             if (bin is null)

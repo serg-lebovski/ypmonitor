@@ -132,9 +132,18 @@
 
                         <button class="btn btn-primary" type="submit">Сохранить и применить</button>
                     </form>
-                    <form method="post" asp-page-handler="CheckWireGuard" class="mt-2">
-                        <button class="btn btn-sm btn-primary" type="submit">Проверить WireGuard (показать внешний IP)</button>
-                    </form>
+                    <div class="mt-2" style="display:flex;gap:8px;flex-wrap:wrap">
+                        <form method="post" asp-page-handler="CheckWireGuard">
+                            <button class="btn btn-sm btn-primary" type="submit">Проверить WireGuard (показать внешний IP)</button>
+                        </form>
+                        @if (!string.IsNullOrWhiteSpace(s.WireGuardConfig))
+                        {
+                            <form method="post" asp-page-handler="DeleteWireGuard"
+                                  onsubmit="return confirm('Удалить конфигурацию WireGuard и остановить туннель?')">
+                                <button class="btn btn-sm btn-y-danger" type="submit">Удалить туннель WireGuard</button>
+                            </form>
+                        }
+                    </div>
                 </div>
             </details>
 

@@ -154,6 +154,22 @@ public class SettingsModel : PageModel
         return Page();
     }
 
+    public async Task<IActionResult> OnPostDeleteWireGuardAsync()
+    {
+        if (!IsAdmin) return Forbid();
+        var s = await _db.Settings.FirstOrDefaultAsync();
+        if (s is not null)
+        {
+            s.WireGuardConfig = null;
+            s.WireGuardEnabled = false;
+            await _db.SaveChangesAsync();
+        }
+        _wg.Apply(false, null);   // остановить туннель и убрать конфиг
+        await Load();
+        Message = "Туннель WireGuard остановлен, конфигурация удалена.";
+        return Page();
+    }
+
     public async Task<IActionResult> OnPostSaveTelegramAsync(ServerSettings input)
     {
         if (!IsAdmin) return Forbid();
