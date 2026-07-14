@@ -43,7 +43,7 @@ public class MainForm : Form
     private NumericUpDown _evtMax = null!, _evtLookback = null!;
 
     // Служба
-    private TextBox _svcName = null!, _svcUser = null!, _svcPass = null!;
+    private TextBox _svcName = null!, _svcUser = null!, _svcPass = null!, _svcCmd = null!;
     private Label _svcStatus = null!;
     private CheckBox _autoUpdate = null!;
 
@@ -435,7 +435,7 @@ public class MainForm : Form
         var bInstall = new Button { Text = "Установить / переустановить", AutoSize = true };
         bInstall.Click += (_, _) => SvcInstall();
         var bUninstall = new Button { Text = "Удалить", AutoSize = true };
-        bUninstall.Click += (_, _) => SvcAction(() => ServiceManager.Uninstall(_svcName.Text.Trim()), "Удаление службы");
+        bUninstall.Click += (_, _) => SvcAction(() => ServiceManager.Uninstall(_svcName.Text.Trim()), "Удаление службы", adviseInstall: false);
         var bStart = new Button { Text = "Запустить", AutoSize = true };
         bStart.Click += (_, _) => SvcAction(() => ServiceManager.Start(_svcName.Text.Trim()), "Запуск службы");
         var bStop = new Button { Text = "Остановить", AutoSize = true };
@@ -446,6 +446,33 @@ public class MainForm : Form
         AddFull(t, row);
         _svcStatus = new Label { AutoSize = true, Margin = new Padding(3, 6, 3, 3) };
         AddFull(t, _svcStatus);
+
+        // Запасной путь: если установка из окна не проходит (политики, антивирус, UAC),
+        // эту команду можно выполнить вручную в cmd от имени администратора.
+        AddFull(t, new Label
+        {
+            Text = "Если установка из окна не срабатывает — скопируйте команду и выполните её\n" +
+                   "в командной строке, запущенной от имени администратора:",
+            AutoSize = true, ForeColor = Color.DimGray, Margin = new Padding(3, 10, 3, 3)
+        });
+        var cmdRow = new Panel { Dock = DockStyle.Fill, Height = 28, Margin = new Padding(3, 3, 3, 3) };
+        _svcCmd = new TextBox { Dock = DockStyle.Fill, ReadOnly = true, Font = new Font("Consolas", 8.5f) };
+        var bCopy = new Button { Text = "Копировать", Dock = DockStyle.Right, AutoSize = true };
+        bCopy.Click += (_, _) =>
+        {
+            if (!string.IsNullOrWhiteSpace(_svcCmd.Text)) Clipboard.SetText(_svcCmd.Text);
+            bCopy.Text = "Скопировано";
+            var tm = new System.Windows.Forms.Timer { Interval = 1500 };
+            tm.Tick += (s2, _) => { bCopy.Text = "Копировать"; tm.Stop(); tm.Dispose(); };
+            tm.Start();
+        };
+        cmdRow.Controls.Add(_svcCmd);
+        cmdRow.Controls.Add(bCopy);
+        AddFull(t, cmdRow);
+
+        _svcName.TextChanged += (_, _) => RefreshSvcCmd();
+        _svcUser.TextChanged += (_, _) => RefreshSvcCmd();
+        RefreshSvcCmd();
 
         AddSection(t, "Обновления агента");
         _autoUpdate = AddCheck(t, "Автоматически обновлять агента с сервера (раз в день)");
@@ -496,28 +523,88 @@ public class MainForm : Form
         _svcStatus.ForeColor = running ? Color.Green : (exists ? Color.DarkOrange : Color.DimGray);
     }
 
+    private void RefreshSvcCmd()
+    {
+        if (_svcCmd is null) return;
+        var name = _svcName.Text.Trim();
+        var user = string.IsNullOrWhiteSpace(_svcUser.Text) ? null : _svcUser.Text.Trim();
+        _svcCmd.Text = string.IsNullOrWhiteSpace(name) ? "" : ServiceManager.BuildInstallCommand(name, user);
+    }
+
     private void SvcInstall()
     {
         SaveAll(false);
         var name = _svcName.Text.Trim();
+
+        // Проверяем до установки: неверное имя — самая частая причина, по которой sc create молча падает,
+        // а последующий запуск выдаёт «1060: служба не существует».
+        if (ServiceManager.ValidateName(name) is { } nameError)
+        {
+            Info("Не могу установить службу.\n\n" + nameError);
+            return;
+        }
+        if (_svcPass.Text.Contains('"'))
+        {
+            Info("Не могу установить службу.\n\nПароль учётной записи содержит кавычку (\") — sc.exe такой пароль не примет. " +
+                 "Смените пароль учётной записи или установите службу под LocalSystem (оставьте поля учётной записи пустыми).");
+            return;
+        }
+
         var user = string.IsNullOrWhiteSpace(_svcUser.Text) ? null : _svcUser.Text.Trim();
-        var log = ServiceManager.Install(name, "YPMon Agent", user, _svcPass.Text);
+        var log = ServiceManager.Install(name, user, _svcPass.Text);
         RefreshSvcStatus();
-        var (_, running, _) = ServiceManager.Query(name);
+
+        var (exists, running, status) = ServiceManager.Query(name);
+        var hint = ServiceManager.Explain(log);
+
         if (running)
         {
-            Info("Служба установлена и запущена.\n\n" + log + "\n\nОкно закроется, чтобы не дублировать работу службы.");
+            Info($"Служба «{name}» установлена и запущена.\n\nОкно закроется, чтобы не дублировать работу службы.");
             Application.Exit();
+            return;
         }
-        else
-            Info("Результат установки:\n\n" + log + "\n\nЕсли служба не запустилась — проверьте учётную запись и право «Вход в качестве службы».");
+
+        if (!exists)
+        {
+            // Создать службу не удалось — объясняем причину и предлагаем ручной путь.
+            var msg = $"Служба «{name}» не создана.\n\n" +
+                      (hint.Length > 0 ? hint + "\n\n" : "") +
+                      "Что можно сделать:\n" +
+                      "• подтвердить запрос UAC (нужны права администратора);\n" +
+                      "• проверить, не блокирует ли установку антивирус или групповая политика;\n" +
+                      "• выполнить команду установки вручную — она есть в поле ниже, под кнопками " +
+                      "(скопируйте и запустите в командной строке от имени администратора).\n\n" +
+                      "Ответ sc.exe:\n" + log;
+            Info(msg);
+            return;
+        }
+
+        // Служба создана, но не стартовала — почти всегда права учётной записи.
+        Info($"Служба «{name}» создана, но не запустилась (статус: {status}).\n\n" +
+             (hint.Length > 0 ? hint + "\n\n" : "") +
+             "Чаще всего причина в учётной записи: неверный пароль либо нет права «Вход в качестве службы» " +
+             "(secpol.msc → Локальные политики → Назначение прав пользователя → Вход в качестве службы).\n\n" +
+             "Ответ sc.exe:\n" + log);
     }
 
-    private void SvcAction(Func<string> action, string title)
+    private void SvcAction(Func<string> action, string title, bool adviseInstall = true)
     {
+        var name = _svcName.Text.Trim();
+        // Не даём получить невнятное «1060» там, где причина очевидна заранее.
+        if (!ServiceManager.Query(name).exists)
+        {
+            RefreshSvcStatus();
+            Info($"{title}: служба «{name}» не установлена." + (adviseInstall
+                ? "\n\nСначала нажмите «Установить / переустановить». Если установка не проходит — " +
+                  "скопируйте команду из поля под кнопками и выполните её в командной строке от имени администратора."
+                : ""));
+            return;
+        }
+
         var log = action();
         RefreshSvcStatus();
-        Info(title + ":\n\n" + log);
+        var hint = ServiceManager.Explain(log);
+        Info(title + ":\n\n" + (hint.Length > 0 ? hint + "\n\n" : "") + log);
     }
 
     private async void CheckUpdates()
