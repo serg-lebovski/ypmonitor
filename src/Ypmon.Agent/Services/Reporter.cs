@@ -58,8 +58,37 @@ public class Reporter : BackgroundService
             AgentVersion = Version,
             ReportedAt = DateTimeOffset.UtcNow,
             IsHeartbeat = heartbeat,
-            Folders = heartbeat ? new() : _folders.Build(cfg)
+            Folders = heartbeat ? new() : _folders.Build(cfg),
+            // Диски передаём и в heartbeat: сбор дешёвый, а серверные пороги
+            // заполненности работают со свежими данными (раз в минуту, а не раз в 6 часов).
+            Disks = CollectDisks()
         };
+    }
+
+    /// <summary>Локальные (несъёмные) диски: буква, метка, объём, свободно.</summary>
+    public static List<DiskStatusDto> CollectDisks()
+    {
+        var list = new List<DiskStatusDto>();
+        try
+        {
+            foreach (var d in DriveInfo.GetDrives())
+            {
+                try
+                {
+                    if (d.DriveType != DriveType.Fixed || !d.IsReady) continue;
+                    list.Add(new DiskStatusDto
+                    {
+                        Name = d.Name.TrimEnd('\\', '/'),
+                        Label = string.IsNullOrWhiteSpace(d.VolumeLabel) ? null : d.VolumeLabel,
+                        TotalBytes = d.TotalSize,
+                        FreeBytes = d.TotalFreeSpace
+                    });
+                }
+                catch { /* отдельный диск может быть недоступен — пропускаем */ }
+            }
+        }
+        catch { }
+        return list;
     }
 
     private async Task ReportOnceAsync(AgentConfig cfg, bool heartbeat)

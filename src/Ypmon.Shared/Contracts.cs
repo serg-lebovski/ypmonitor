@@ -41,6 +41,22 @@ public class FolderStatusDto
     public JobOutcome Outcome { get; set; } = JobOutcome.Unknown;
 }
 
+/// <summary>Состояние локального диска на машине агента (только чтение DriveInfo).</summary>
+public class DiskStatusDto
+{
+    /// <summary>Буква диска, например "C:".</summary>
+    public string Name { get; set; } = "";
+
+    /// <summary>Метка тома (если задана).</summary>
+    public string? Label { get; set; }
+
+    public long TotalBytes { get; set; }
+    public long FreeBytes { get; set; }
+
+    /// <summary>Процент свободного места (0–100).</summary>
+    public double FreePercent => TotalBytes > 0 ? FreeBytes * 100.0 / TotalBytes : 0;
+}
+
 /// <summary>Ошибка/предупреждение из журнала событий Windows.</summary>
 public class EventLogEntryDto
 {
@@ -70,6 +86,10 @@ public class AgentReportDto
 
     /// <summary>Новые ошибки/предупреждения журнала Windows с прошлого отчёта.</summary>
     public List<EventLogEntryDto> EventLogErrors { get; set; } = new();
+
+    /// <summary>Локальные диски (буква, объём, свободно). Передаются и в heartbeat — данные дешёвые,
+    /// а серверные пороги заполненности работают со свежими цифрами.</summary>
+    public List<DiskStatusDto> Disks { get; set; } = new();
 }
 
 /// <summary>

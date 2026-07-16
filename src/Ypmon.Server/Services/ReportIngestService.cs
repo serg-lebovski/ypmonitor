@@ -25,11 +25,13 @@ public class ReportIngestService
         if (server is null)
             return new ReportAckDto { Accepted = false, Message = "Неизвестный API-ключ" };
 
-        // Heartbeat: только время связи. Возвращаем флаг «нужен отчёт», если админ его запросил.
+        // Heartbeat: время связи + свежие данные о дисках. Возвращаем флаг «нужен отчёт», если админ его запросил.
         if (report.IsHeartbeat)
         {
             server.LastSeenAt = DateTimeOffset.UtcNow;
             server.LastReportedAt = report.ReportedAt;
+            if (report.Disks.Count > 0)
+                server.LastDisksJson = JsonSerializer.Serialize(report.Disks);
             await _db.SaveChangesAsync();
             return Ack(server, "OK (heartbeat)", server.ReportRequested);
         }
@@ -76,6 +78,8 @@ public class ReportIngestService
         server.LastMachineName = report.MachineName;
         server.LastAgentVersion = report.AgentVersion;
         server.LastReportJson = JsonSerializer.Serialize(report);
+        if (report.Disks.Count > 0)
+            server.LastDisksJson = JsonSerializer.Serialize(report.Disks);
         server.ReportRequested = false; // полный отчёт получен — запрос выполнен
 
         // Сохраняем новые ошибки Windows (без дублей).

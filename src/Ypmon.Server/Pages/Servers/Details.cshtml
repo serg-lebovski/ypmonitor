@@ -85,6 +85,57 @@
             </div>
         </details>
 
+        <details class="card-y acc" open>
+            <summary>💽 Диски</summary>
+            <div class="acc-body">
+            @if (!Model.Disks.Any())
+            {
+                <div class="muted">Агент ещё не прислал данные о дисках (нужен агент версии 2.2+).</div>
+            }
+            else
+            {
+                <table class="tbl">
+                    <thead><tr><th>Диск</th><th>Объём</th><th>Занято</th><th>Свободно</th><th>Порог</th></tr></thead>
+                    <tbody>
+                    @foreach (var d in Model.Disks)
+                    {
+                        var usedPct = 100 - d.FreePercent;
+                        var hasTh = Model.DiskThresholds.TryGetValue(d.Name, out var th) && th > 0;
+                        var alarm = hasTh && d.FreePercent < th;
+                        <tr>
+                            <td><strong>@d.Name</strong>@(d.Label is null ? "" : $" ({d.Label})")</td>
+                            <td>@UiHelpers.Bytes(d.TotalBytes)</td>
+                            <td>
+                                <div style="display:flex;align-items:center;gap:8px">
+                                    <div style="flex:0 0 90px;height:8px;background:var(--card-2);border-radius:4px;overflow:hidden">
+                                        <div style="width:@usedPct.ToString("0", System.Globalization.CultureInfo.InvariantCulture)%;height:100%;background:@(alarm ? "var(--err)" : usedPct > 85 ? "var(--warn)" : "var(--ok)")"></div>
+                                    </div>
+                                    <span>@usedPct.ToString("0")%</span>
+                                </div>
+                            </td>
+                            <td>@UiHelpers.Bytes(d.FreeBytes) <span class="muted">(@d.FreePercent.ToString("0")%)</span></td>
+                            <td>
+                                @if (alarm)
+                                {
+                                    <span class="badge-status st-err">меньше @th% свободно</span>
+                                }
+                                else if (hasTh)
+                                {
+                                    <span class="muted">мин. @th% свободно</span>
+                                }
+                                else
+                                {
+                                    <span class="muted">—</span>
+                                }
+                            </td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            }
+            </div>
+        </details>
+
         @{ var latest = Model.History.FirstOrDefault(); var prev = Model.History.Skip(1).ToList(); }
         <details class="card-y acc">
             <summary>
@@ -182,6 +233,48 @@
 
         @if (canEdit)
         {
+            <details class="card-y acc">
+                <summary>📡 Мониторинг и оповещения</summary>
+                <div class="acc-body">
+                <div class="muted mb-2" style="font-size:12px">
+                    Уведомления приходят в Telegram-тему клиента при падении и при восстановлении.
+                </div>
+                <form method="post" asp-page-handler="SaveMonitoring" asp-route-id="@s.Id">
+                    <div class="form-check mb-2">
+                        <input class="form-check-input" type="checkbox" name="monitorOffline" value="true" id="mo" @(s.MonitorOfflineAlert ? "checked" : "") />
+                        <label class="form-check-label" for="mo">Следить за связью с агентом
+                            <div class="muted" style="font-size:12px">Агент молчит дольше порога «офлайн» → «пропала связь с сервером»</div></label>
+                    </div>
+                    <div class="form-check mb-2">
+                        <input class="form-check-input" type="checkbox" name="monitorPing" value="true" id="mp" @(s.MonitorPing ? "checked" : "") />
+                        <label class="form-check-label" for="mp">Пинговать IP-адрес (@(string.IsNullOrWhiteSpace(s.IpAddress) ? "не задан!" : s.IpAddress))
+                            <div class="muted" style="font-size:12px">IP не отвечает на ping → «на адресе пропал интернет»</div></label>
+                    </div>
+
+                    <div class="mb-2" style="margin-top:10px"><strong style="font-size:13px">Пороги по дискам</strong>
+                        <div class="muted" style="font-size:12px">Свободного места меньше N% → уведомление. 0 или пусто = выключено.</div></div>
+                    @if (!Model.Disks.Any())
+                    {
+                        <div class="muted mb-2" style="font-size:12px">Диски появятся после первого отчёта агента 2.2+.</div>
+                    }
+                    else
+                    {
+                        foreach (var d in Model.Disks)
+                        {
+                            var th = Model.DiskThresholds.TryGetValue(d.Name, out var v) ? v : 0;
+                            <div class="mb-2" style="display:flex;align-items:center;gap:8px">
+                                <span style="flex:0 0 110px">@d.Name @(d.Label is null ? "" : $"({d.Label})")</span>
+                                <input class="form-control" style="max-width:90px" type="number" min="0" max="99"
+                                       name="th_@d.Name" value="@(th > 0 ? th : 0)" />
+                                <span class="muted" style="font-size:12px">% свободно, мин.</span>
+                            </div>
+                        }
+                    }
+                    <button class="btn btn-primary w-100 mt-2" type="submit">Сохранить мониторинг</button>
+                </form>
+                </div>
+            </details>
+
             <details class="card-y acc">
                 <summary>✏️ Редактировать сервер</summary>
                 <div class="acc-body">

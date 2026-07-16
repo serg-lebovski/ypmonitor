@@ -66,6 +66,26 @@ public class MonitoredServer
     /// <summary>Флаг: администратор запросил у агента полный отчёт (агент заберёт его при следующей связи).</summary>
     public bool ReportRequested { get; set; }
 
+    // --- Мониторинг доступности и дисков (настраивается в карточке сервера) ---
+
+    /// <summary>Уведомлять в Telegram, когда агент перестаёт выходить на связь (пропала связь с сервером).</summary>
+    public bool MonitorOfflineAlert { get; set; }
+
+    /// <summary>Пинговать IP-адрес сервера: если ping пропал — на адресе пропал интернет.</summary>
+    public bool MonitorPing { get; set; }
+
+    /// <summary>Пороги по дискам: JSON-словарь {"C:": 10} — минимальный % свободного места (0/нет = выкл).</summary>
+    public string? DiskAlertsJson { get; set; }
+
+    /// <summary>Последние данные о дисках от агента (JSON List&lt;DiskStatusDto&gt;), обновляются и heartbeat'ом.</summary>
+    public string? LastDisksJson { get; set; }
+
+    // Текущие состояния тревог — чтобы уведомлять по переходам, а не спамить каждую минуту.
+    public bool AlertOfflineActive { get; set; }
+    public bool AlertPingActive { get; set; }
+    /// <summary>Диски, по которым тревога уже отправлена (JSON-массив имён).</summary>
+    public string? AlertDisksActiveJson { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 
     // --- Кэш последнего состояния (для быстрого дашборда) ---

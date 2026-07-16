@@ -390,6 +390,18 @@ public class MainForm : Form
         if (!string.IsNullOrWhiteSpace(s.LastError)) sb.AppendLine("Ошибка: " + s.LastError);
         sb.AppendLine();
 
+        // Диски показываем «вживую» (это текущее состояние машины, не снимок отчёта).
+        sb.AppendLine("=== Диски (сейчас) ===");
+        var disks = Reporter.CollectDisks();
+        if (disks.Count == 0) sb.AppendLine("(локальные диски не обнаружены)");
+        foreach (var d in disks)
+        {
+            var usedPct = 100 - d.FreePercent;
+            sb.AppendLine($"• {d.Name}{(d.Label is null ? "" : $" ({d.Label})")} — объём {Bytes(d.TotalBytes)}, " +
+                          $"занято {usedPct:0}% , свободно {Bytes(d.FreeBytes)} ({d.FreePercent:0}%)");
+        }
+        sb.AppendLine();
+
         if (s.LastReport is { } r)
         {
             sb.AppendLine("=== Папки ===");
