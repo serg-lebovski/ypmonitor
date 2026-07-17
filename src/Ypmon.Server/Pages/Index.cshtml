@@ -81,6 +81,13 @@
 </div>
 
 @* --- Список по клиентам --- *@
+@if (Model.Clients.Any())
+{
+    <div class="dash-toolbar">
+        <label class="dt-check"><input type="checkbox" id="onlyProblems" /> Только проблемные</label>
+        <input type="search" id="dashSearch" class="form-control dt-search" placeholder="Поиск по клиенту или серверу…" />
+    </div>
+}
 @if (!Model.Clients.Any())
 {
     <div class="card-y">
@@ -96,7 +103,7 @@ else
         var probCnt = servers.Count(x => !x.IsOffline(Model.OfflineThreshold) && x.LastOutcome >= JobOutcome.Warning);
         var shrinkCnt = servers.Count(x => x.BackupShrinkActive);
         var allOk = offCnt == 0 && probCnt == 0 && shrinkCnt == 0 && servers.Any();
-        <details class="card-y acc">
+        <details class="card-y acc" data-client data-problem="@((offCnt + probCnt + shrinkCnt) > 0 ? 1 : 0)" data-name="@client.Name.ToLowerInvariant()">
             <summary>
                 <span class="dot @(allOk ? "ok" : (offCnt + probCnt + shrinkCnt) > 0 ? "err" : "unknown")"></span>
                 🗂️ <strong>@client.Name</strong>
@@ -123,7 +130,9 @@ else
                         var offline = s.IsOffline(Model.OfflineThreshold);
                         var outcome = offline ? JobOutcome.Unknown : s.LastOutcome;
                         var (lastBackup, sizeBytes) = UiHelpers.BackupSummary(s.LastReportJson);
-                        <tr style="cursor:pointer" onclick="location.href='/Servers/Details?id=@s.Id&info=true'">
+                        var srvProblem = offline || s.LastOutcome >= JobOutcome.Warning || s.BackupShrinkActive;
+                        <tr style="cursor:pointer" data-server data-problem="@(srvProblem ? 1 : 0)" data-name="@((s.Name + " " + (s.LastMachineName ?? "")).ToLowerInvariant())"
+                            onclick="location.href='/Servers/Details?id=@s.Id&info=true'">
                             <td><span class="dot @UiHelpers.DotCss(outcome)"></span><strong>@s.Name</strong>
                                 <div class="muted" style="font-size:12px">@(s.LastMachineName ?? "")</div></td>
                             <td class="mono">@(s.IpAddress ?? "—")</td>
@@ -156,9 +165,45 @@ else
         // Время последнего обновления страницы.
         document.getElementById('upd-at').textContent = 'обновлено ' + new Date().toLocaleTimeString();
 
-        // Мягкое автообновление: раз в 60 с, только когда вкладка активна.
+        // Мягкое автообновление: раз в 60 с, только когда вкладка активна и нет активного поиска.
         setInterval(function () {
-            if (!document.hidden) location.reload();
+            var sr = document.getElementById('dashSearch');
+            var typing = sr && document.activeElement === sr;
+            if (!document.hidden && !typing) location.reload();
         }, 60000);
+
+        // Фильтр «только проблемные» + поиск по клиенту/серверу. Состояние — в localStorage.
+        (function () {
+            var cb = document.getElementById('onlyProblems');
+            var sr = document.getElementById('dashSearch');
+            if (!cb || !sr) return;
+            cb.checked = localStorage.getItem('yp_onlyProblems') === '1';
+            sr.value = sessionStorage.getItem('yp_dashSearch') || '';
+            function apply() {
+                var only = cb.checked;
+                var q = (sr.value || '').trim().toLowerCase();
+                localStorage.setItem('yp_onlyProblems', only ? '1' : '0');
+                sessionStorage.setItem('yp_dashSearch', sr.value || '');
+                document.querySelectorAll('details[data-client]').forEach(function (d) {
+                    var clientName = d.getAttribute('data-name') || '';
+                    var rows = d.querySelectorAll('tr[data-server]');
+                    var anyVisible = false;
+                    rows.forEach(function (tr) {
+                        var prob = tr.getAttribute('data-problem') === '1';
+                        var name = tr.getAttribute('data-name') || '';
+                        var show = (!only || prob) && (q === '' || name.indexOf(q) >= 0 || clientName.indexOf(q) >= 0);
+                        tr.style.display = show ? '' : 'none';
+                        if (show) anyVisible = true;
+                    });
+                    var clientMatch = q === '' || clientName.indexOf(q) >= 0;
+                    var showClient = rows.length ? anyVisible : (!only && clientMatch);
+                    d.style.display = showClient ? '' : 'none';
+                    if (showClient && (only || q !== '') && anyVisible) d.open = true;
+                });
+            }
+            cb.addEventListener('change', apply);
+            sr.addEventListener('input', apply);
+            apply();
+        })();
     </script>
 }

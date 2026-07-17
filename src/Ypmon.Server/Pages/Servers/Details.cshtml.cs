@@ -32,6 +32,11 @@ public class DetailsModel : PageModel
     public string? ExternalAddress { get; set; }
     public int ExternalPort { get; set; } = 8081;
 
+    /// <summary>Тренд объёма бэкапа по последним полным отчётам (хронологически).</summary>
+    public record TrendPoint(string Label, long Size);
+    public List<TrendPoint> BackupTrend { get; set; } = new();
+    public long BackupTrendMax { get; set; } = 1;
+
     // Диски с машины агента и пороги свободного места (для тревог)
     public List<DiskStatusDto> Disks { get; set; } = new();
     public Dictionary<string, int> DiskThresholds { get; set; } = new(StringComparer.OrdinalIgnoreCase);
@@ -74,6 +79,24 @@ public class DetailsModel : PageModel
         DiskThresholds = AvailabilityMonitor.ParseThresholds(Server.DiskAlertsJson);
         History = await _db.Reports.Where(r => r.ServerId == Id)
             .OrderByDescending(r => r.ReceivedAt).Take(15).ToListAsync();
+
+        // Тренд объёма бэкапа: последние 30 полных отчётов, объём = сумма доступных папок из payload.
+        var trendRows = await _db.Reports.Where(r => r.ServerId == Id)
+            .OrderByDescending(r => r.ReceivedAt).Take(20)
+            .Select(r => new { r.ReceivedAt, r.PayloadJson }).ToListAsync();
+        trendRows.Reverse();   // хронологический порядок
+        foreach (var r in trendRows)
+        {
+            long size = 0;
+            try
+            {
+                var rep = JsonSerializer.Deserialize<AgentReportDto>(r.PayloadJson);
+                if (rep is not null) size = rep.Folders.Where(f => f.Accessible).Sum(f => f.TotalSizeBytes);
+            }
+            catch { }
+            BackupTrend.Add(new TrendPoint(r.ReceivedAt.UtcDateTime.ToString("dd.MM HH:mm"), size));
+        }
+        if (BackupTrend.Count > 0) BackupTrendMax = Math.Max(1, BackupTrend.Max(p => p.Size));
         Events = await _db.Events.Where(e => e.ServerId == Id)
             .OrderByDescending(e => e.TimeCreated).Take(50).ToListAsync();
     }

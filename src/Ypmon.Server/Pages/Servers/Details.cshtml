@@ -128,6 +128,35 @@
         </details>
 
         <details class="card-y acc">
+            <summary>📈 Тренд объёма бэкапа</summary>
+            <div class="acc-body">
+            @if (Model.BackupTrend.Count < 2)
+            {
+                <div class="muted">Недостаточно данных для тренда — нужно ≥2 полных отчётов (heartbeat не в счёт).</div>
+            }
+            else
+            {
+                <div class="achart">
+                    @foreach (var p in Model.BackupTrend)
+                    {
+                        var h = p.Size > 0 ? Math.Max(2, (int)(p.Size * 150L / Model.BackupTrendMax)) : 0;
+                        <div class="acol" title="@p.Label — @UiHelpers.Bytes(p.Size)">
+                            <div class="astack">
+                                <div class="aseg" style="height:@(h)px;background:var(--accent);border-radius:4px 4px 0 0"></div>
+                            </div>
+                            <div class="alabel">@(p.Label.Length >= 5 ? p.Label[..5] : p.Label)</div>
+                        </div>
+                    }
+                </div>
+                <div class="muted" style="font-size:12px;margin-top:16px">
+                    По последним @Model.BackupTrend.Count полным отчётам. Максимум: @UiHelpers.Bytes(Model.BackupTrendMax) ·
+                    последний: @UiHelpers.Bytes(Model.BackupTrend[^1].Size).
+                </div>
+            }
+            </div>
+        </details>
+
+        <details class="card-y acc">
             <summary>💽 Диски</summary>
             <div class="acc-body">
             @if (!Model.Disks.Any())

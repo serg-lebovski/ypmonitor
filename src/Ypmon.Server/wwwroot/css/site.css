@@ -167,6 +167,11 @@ label { color: var(--muted); font-size: 13px; margin-bottom: 4px; }
 .copy-row input { flex: 1; min-width: 0; font-size: 13px; }
 .copy-row .btn { white-space: nowrap; }
 
+/* --- Тулбар дашборда (фильтр/поиск) --- */
+.dash-toolbar { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; margin: 4px 0 14px; }
+.dash-toolbar .dt-check { display: flex; align-items: center; gap: 6px; color: var(--text); font-size: 14px; cursor: pointer; margin: 0; }
+.dash-toolbar .dt-search { max-width: 320px; }
+
 /* --- Графики дашборда --- */
 .charts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
 @@media (max-width: 1000px) { .charts-grid { grid-template-columns: 1fr; } }
