@@ -126,9 +126,15 @@ using (var scope = app.Services.CreateScope())
                     db.Database.ExecuteSqlRaw("ALTER TABLE \"Servers\" ADD COLUMN IF NOT EXISTS \"AlertOfflineActive\" boolean NOT NULL DEFAULT false;");
                     db.Database.ExecuteSqlRaw("ALTER TABLE \"Servers\" ADD COLUMN IF NOT EXISTS \"AlertPingActive\" boolean NOT NULL DEFAULT false;");
                     db.Database.ExecuteSqlRaw("ALTER TABLE \"Servers\" ADD COLUMN IF NOT EXISTS \"AlertDisksActiveJson\" text;");
+                    db.Database.ExecuteSqlRaw("ALTER TABLE \"Servers\" ADD COLUMN IF NOT EXISTS \"ExternalIpAddress\" text;");
                     db.Database.ExecuteSqlRaw("ALTER TABLE \"Servers\" ADD COLUMN IF NOT EXISTS \"PingIntervalSeconds\" integer NOT NULL DEFAULT 60;");
                     db.Database.ExecuteSqlRaw("ALTER TABLE \"Servers\" ADD COLUMN IF NOT EXISTS \"LastHeartbeatIntervalSeconds\" integer NOT NULL DEFAULT 0;");
                     db.Database.ExecuteSqlRaw("ALTER TABLE \"Servers\" ADD COLUMN IF NOT EXISTS \"LastReportIntervalSeconds\" integer NOT NULL DEFAULT 0;");
+                    db.Database.ExecuteSqlRaw("ALTER TABLE \"Servers\" ADD COLUMN IF NOT EXISTS \"PrevBackupSizeBytes\" bigint NOT NULL DEFAULT 0;");
+                    db.Database.ExecuteSqlRaw("ALTER TABLE \"Servers\" ADD COLUMN IF NOT EXISTS \"BackupShrinkActive\" boolean NOT NULL DEFAULT false;");
+                    db.Database.ExecuteSqlRaw("ALTER TABLE \"Servers\" ADD COLUMN IF NOT EXISTS \"BackupShrinkFromBytes\" bigint NOT NULL DEFAULT 0;");
+                    db.Database.ExecuteSqlRaw("ALTER TABLE \"Servers\" ADD COLUMN IF NOT EXISTS \"BackupShrinkToBytes\" bigint NOT NULL DEFAULT 0;");
+                    db.Database.ExecuteSqlRaw("ALTER TABLE \"Servers\" ADD COLUMN IF NOT EXISTS \"BackupShrinkAt\" timestamptz;");
                     db.Database.ExecuteSqlRaw("ALTER TABLE \"Clients\" ADD COLUMN IF NOT EXISTS \"RouterAddress\" text;");
                     db.Database.ExecuteSqlRaw("ALTER TABLE \"Clients\" ADD COLUMN IF NOT EXISTS \"RouterPingIntervalSeconds\" integer NOT NULL DEFAULT 60;");
                     db.Database.ExecuteSqlRaw("ALTER TABLE \"Clients\" ADD COLUMN IF NOT EXISTS \"AlertRouterPingActive\" boolean NOT NULL DEFAULT false;");
@@ -156,9 +162,15 @@ using (var scope = app.Services.CreateScope())
                     try { db.Database.ExecuteSqlRaw("ALTER TABLE \"Servers\" ADD COLUMN \"AlertOfflineActive\" INTEGER NOT NULL DEFAULT 0;"); } catch { }
                     try { db.Database.ExecuteSqlRaw("ALTER TABLE \"Servers\" ADD COLUMN \"AlertPingActive\" INTEGER NOT NULL DEFAULT 0;"); } catch { }
                     try { db.Database.ExecuteSqlRaw("ALTER TABLE \"Servers\" ADD COLUMN \"AlertDisksActiveJson\" TEXT;"); } catch { }
+                    try { db.Database.ExecuteSqlRaw("ALTER TABLE \"Servers\" ADD COLUMN \"ExternalIpAddress\" TEXT;"); } catch { }
                     try { db.Database.ExecuteSqlRaw("ALTER TABLE \"Servers\" ADD COLUMN \"PingIntervalSeconds\" INTEGER NOT NULL DEFAULT 60;"); } catch { }
                     try { db.Database.ExecuteSqlRaw("ALTER TABLE \"Servers\" ADD COLUMN \"LastHeartbeatIntervalSeconds\" INTEGER NOT NULL DEFAULT 0;"); } catch { }
                     try { db.Database.ExecuteSqlRaw("ALTER TABLE \"Servers\" ADD COLUMN \"LastReportIntervalSeconds\" INTEGER NOT NULL DEFAULT 0;"); } catch { }
+                    try { db.Database.ExecuteSqlRaw("ALTER TABLE \"Servers\" ADD COLUMN \"PrevBackupSizeBytes\" INTEGER NOT NULL DEFAULT 0;"); } catch { }
+                    try { db.Database.ExecuteSqlRaw("ALTER TABLE \"Servers\" ADD COLUMN \"BackupShrinkActive\" INTEGER NOT NULL DEFAULT 0;"); } catch { }
+                    try { db.Database.ExecuteSqlRaw("ALTER TABLE \"Servers\" ADD COLUMN \"BackupShrinkFromBytes\" INTEGER NOT NULL DEFAULT 0;"); } catch { }
+                    try { db.Database.ExecuteSqlRaw("ALTER TABLE \"Servers\" ADD COLUMN \"BackupShrinkToBytes\" INTEGER NOT NULL DEFAULT 0;"); } catch { }
+                    try { db.Database.ExecuteSqlRaw("ALTER TABLE \"Servers\" ADD COLUMN \"BackupShrinkAt\" TEXT;"); } catch { }
                     try { db.Database.ExecuteSqlRaw("ALTER TABLE \"Clients\" ADD COLUMN \"RouterAddress\" TEXT;"); } catch { }
                     try { db.Database.ExecuteSqlRaw("ALTER TABLE \"Clients\" ADD COLUMN \"RouterPingIntervalSeconds\" INTEGER NOT NULL DEFAULT 60;"); } catch { }
                     try { db.Database.ExecuteSqlRaw("ALTER TABLE \"Clients\" ADD COLUMN \"AlertRouterPingActive\" INTEGER NOT NULL DEFAULT 0;"); } catch { }

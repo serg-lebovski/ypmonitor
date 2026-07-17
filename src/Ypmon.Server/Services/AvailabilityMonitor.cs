@@ -19,6 +19,9 @@ namespace Ypmon.Server.Services;
 /// </summary>
 public class AvailabilityMonitor : BackgroundService
 {
+    /// <summary>Порог свободного места на диске по умолчанию, % (если для диска не задан свой).</summary>
+    public const int DefaultDiskFreePercent = 15;
+
     private readonly IServiceProvider _sp;
     private readonly ILogger<AvailabilityMonitor> _log;
 
@@ -52,8 +55,9 @@ public class AvailabilityMonitor : BackgroundService
         var settings = await db.Settings.FirstOrDefaultAsync(ct);
         if (settings is null) return;
 
+        // Диски проверяем у всех, кто прислал их (порог по умолчанию 15% работает и без явной настройки).
         var servers = await db.Servers.Include(s => s.Client)
-            .Where(s => s.MonitorOfflineAlert || s.MonitorPing || s.DiskAlertsJson != null)
+            .Where(s => s.MonitorOfflineAlert || s.MonitorPing || s.DiskAlertsJson != null || s.LastDisksJson != null)
             .ToListAsync(ct);
 
         var dirty = false;
@@ -107,14 +111,15 @@ public class AvailabilityMonitor : BackgroundService
     private async Task<bool> CheckPingAsync(ServerSettings s, MonitoredServer srv, TelegramService tg, TelegramReportService topics)
     {
         var key = "s" + srv.Id;
-        if (!srv.MonitorPing || string.IsNullOrWhiteSpace(srv.IpAddress))
+        // Мониторинг доступности интернета привязан к ВНЕШНЕМУ IP сервера (роутеру).
+        if (!srv.MonitorPing || string.IsNullOrWhiteSpace(srv.ExternalIpAddress))
         {
             _pingFails.Remove(key);
             return false;
         }
         if (!Due(key, srv.PingIntervalSeconds)) return false;
 
-        var host = ExtractHost(srv.IpAddress!);
+        var host = ExtractHost(srv.ExternalIpAddress!);
         var ok = await PingHostAsync(host);
         if (ok) _pingFails.Remove(key);
         else _pingFails[key] = _pingFails.GetValueOrDefault(key) + 1;
@@ -200,8 +205,8 @@ public class AvailabilityMonitor : BackgroundService
 
     private async Task<bool> CheckDisksAsync(ServerSettings s, MonitoredServer srv, TelegramService tg, TelegramReportService topics)
     {
+        if (string.IsNullOrWhiteSpace(srv.LastDisksJson)) return false;
         var thresholds = ParseThresholds(srv.DiskAlertsJson);
-        if (thresholds.Count == 0 || string.IsNullOrWhiteSpace(srv.LastDisksJson)) return false;
 
         List<DiskStatusDto>? disks;
         try { disks = JsonSerializer.Deserialize<List<DiskStatusDto>>(srv.LastDisksJson!); }
@@ -214,7 +219,13 @@ public class AvailabilityMonitor : BackgroundService
 
         foreach (var d in disks)
         {
-            if (!thresholds.TryGetValue(d.Name, out var minFree) || minFree <= 0) continue;
+            // Порог: свой для диска, иначе — значение по умолчанию (15%). 0 = отключён.
+            var minFree = thresholds.TryGetValue(d.Name, out var t) ? t : DefaultDiskFreePercent;
+            if (minFree <= 0)
+            {
+                if (active.Remove(d.Name)) changed = true;   // отключили порог — снимаем тревогу молча
+                continue;
+            }
             var freePct = d.FreePercent;
 
             if (freePct < minFree && !active.Contains(d.Name))
@@ -239,7 +250,10 @@ public class AvailabilityMonitor : BackgroundService
         return changed;
     }
 
-    /// <summary>Пороги по дискам из JSON {"C:": 10}. Имена — без учёта регистра.</summary>
+    /// <summary>
+    /// Пороги по дискам из JSON {"C:": 10}. Имена — без учёта регистра. Значение 0 сохраняется —
+    /// это «порог отключён» (иначе диск подпадал бы под значение по умолчанию 15%).
+    /// </summary>
     public static Dictionary<string, int> ParseThresholds(string? json)
     {
         var result = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
@@ -249,7 +263,7 @@ public class AvailabilityMonitor : BackgroundService
             var raw = JsonSerializer.Deserialize<Dictionary<string, int>>(json!);
             if (raw is not null)
                 foreach (var (k, v) in raw)
-                    if (v > 0) result[k] = Math.Clamp(v, 1, 99);
+                    result[k] = Math.Clamp(v, 0, 99);
         }
         catch { }
         return result;

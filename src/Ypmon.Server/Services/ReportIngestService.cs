@@ -121,6 +121,29 @@ public class ReportIngestService
             }
         }
 
+        // Контроль резкого уменьшения объёма бэкапа (> 20% от прошлого) — только по доступным папкам,
+        // чтобы временная недоступность сетевой шары не поднимала ложную тревогу.
+        var currentSize = report.Folders.Where(f => f.Accessible).Sum(f => f.TotalSizeBytes);
+        var shrinkAlarm = false;
+        if (!server.BackupShrinkActive)
+        {
+            if (server.PrevBackupSizeBytes > 0 && currentSize > 0 &&
+                currentSize < server.PrevBackupSizeBytes * 0.8)
+            {
+                server.BackupShrinkActive = true;
+                server.BackupShrinkFromBytes = server.PrevBackupSizeBytes;
+                server.BackupShrinkToBytes = currentSize;
+                server.BackupShrinkAt = DateTimeOffset.UtcNow;
+                shrinkAlarm = true;
+                // Опорный объём НЕ обновляем — держим до подтверждения администратором.
+            }
+            else if (currentSize > 0)
+            {
+                server.PrevBackupSizeBytes = currentSize;   // нормальный ход — двигаем опорную точку
+            }
+        }
+        // Если тревога уже активна — опорный объём заморожен до подтверждения.
+
         await _db.SaveChangesAsync();
 
         // Оповещение при переходе папок в проблемное состояние (архивация — отдельно от Windows-ошибок).
@@ -131,6 +154,17 @@ public class ReportIngestService
             await _alerts.SendAsync(settings,
                 $"YPMon: проблема с бэкапами — {server.Client?.Name} / {server.Name}",
                 $"Машина: {report.MachineName}\n" + string.Join("\n", problems));
+        }
+
+        // Оповещение о резком уменьшении объёма бэкапа.
+        if (settings is not null && shrinkAlarm)
+        {
+            var pct = server.BackupShrinkFromBytes > 0
+                ? (1 - (double)server.BackupShrinkToBytes / server.BackupShrinkFromBytes) * 100 : 0;
+            await _alerts.SendAsync(settings,
+                $"YPMon: объём бэкапа резко уменьшился — {server.Client?.Name} / {server.Name}",
+                $"Было {UiHelpers.Bytes(server.BackupShrinkFromBytes)}, стало {UiHelpers.Bytes(server.BackupShrinkToBytes)} " +
+                $"(−{pct:0}%). Проверьте, всё ли верно. Если архив действительно стал меньше — подтвердите на странице сервера.");
         }
 
         return Ack(server, "OK");

@@ -24,6 +24,7 @@ public class DetailsModel : PageModel
     [BindProperty] public string ServerName { get; set; } = "";
     [BindProperty] public string? PhysicalAddress { get; set; }
     [BindProperty] public string? IpAddress { get; set; }
+    [BindProperty] public string? ExternalIpAddress { get; set; }
     [BindProperty] public string? ServerDescription { get; set; }
 
     // Редактирование клиента
@@ -92,6 +93,7 @@ public class DetailsModel : PageModel
                 Name = ServerName.Trim(),
                 PhysicalAddress = PhysicalAddress?.Trim(),
                 IpAddress = IpAddress?.Trim(),
+                ExternalIpAddress = string.IsNullOrWhiteSpace(ExternalIpAddress) ? null : ExternalIpAddress.Trim(),
                 Description = ServerDescription?.Trim(),
                 ApiKey = PasswordHasher.NewApiKey()
             });

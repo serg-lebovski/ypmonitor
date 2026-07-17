@@ -166,3 +166,9 @@ label { color: var(--muted); font-size: 13px; margin-bottom: 4px; }
 .copy-row { display: flex; gap: 8px; align-items: center; }
 .copy-row input { flex: 1; min-width: 0; font-size: 13px; }
 .copy-row .btn { white-space: nowrap; }
+
+/* Ячейки краткой сводки сервера (страница «Серверы») */
+.cells { display: flex; flex-wrap: wrap; gap: 10px; }
+.cell { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; flex: 1 1 130px; }
+.cell-l { color: var(--muted); font-size: 12px; margin-bottom: 2px; }
+.cell-v { font-size: 14px; }

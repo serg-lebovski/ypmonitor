@@ -16,6 +16,12 @@ public class DetailsModel : PageModel
 
     [BindProperty(SupportsGet = true)] public int Id { get; set; }
 
+    /// <summary>Режим «только информация» (переход с дашборда): прячем формы настройки.</summary>
+    [BindProperty(SupportsGet = true)] public bool Info { get; set; }
+
+    /// <summary>Порог свободного места на диске по умолчанию (для предзаполнения полей).</summary>
+    public int DiskDefaultPercent => AvailabilityMonitor.DefaultDiskFreePercent;
+
     public MonitoredServer? Server { get; set; }
     public AgentReportDto? Report { get; set; }
     public List<Report> History { get; set; } = new();
@@ -30,6 +36,7 @@ public class DetailsModel : PageModel
     [BindProperty] public string Name { get; set; } = "";
     [BindProperty] public string? PhysicalAddress { get; set; }
     [BindProperty] public string? IpAddress { get; set; }
+    [BindProperty] public string? ExternalIpAddress { get; set; }
     [BindProperty] public string? Description { get; set; }
     [BindProperty] public int BackupStaleDays { get; set; }
     public int DefaultBackupStaleDays { get; set; } = 1;
@@ -73,10 +80,12 @@ public class DetailsModel : PageModel
         if (!string.IsNullOrWhiteSpace(Name)) s.Name = Name.Trim();
         s.PhysicalAddress = PhysicalAddress?.Trim();
         s.IpAddress = IpAddress?.Trim();
+        s.ExternalIpAddress = string.IsNullOrWhiteSpace(ExternalIpAddress) ? null : ExternalIpAddress.Trim();
         s.Description = Description?.Trim();
         s.BackupStaleDays = Math.Max(0, BackupStaleDays);
         await _db.SaveChangesAsync();
         await Load();
+        FillEditFields();
         Message = "Сохранено";
         return Page();
     }
@@ -91,13 +100,14 @@ public class DetailsModel : PageModel
         s.MonitorPing = monitorPing;
         s.PingIntervalSeconds = Math.Clamp(pingH * 3600 + pingM * 60 + pingS, 10, 7 * 24 * 3600);
 
-        // Пороги по дискам: поля формы th_<имя диска>, значение — минимальный % свободного места (0/пусто = выкл).
+        // Пороги по дискам: поля формы th_<имя диска>, значение — минимальный % свободного места.
+        // Храним и 0 (явное «выключено»), иначе диск снова подпал бы под значение по умолчанию 15%.
         var dict = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         foreach (var key in Request.Form.Keys.Where(k => k.StartsWith("th_", StringComparison.Ordinal)))
         {
             var disk = key[3..];
-            if (int.TryParse(Request.Form[key], out var v) && v > 0)
-                dict[disk] = Math.Clamp(v, 1, 99);
+            if (int.TryParse(Request.Form[key], out var v))
+                dict[disk] = Math.Clamp(v, 0, 99);
         }
         s.DiskAlertsJson = dict.Count == 0 ? null : JsonSerializer.Serialize(dict);
 
@@ -130,8 +140,26 @@ public class DetailsModel : PageModel
         Name = Server.Name;
         PhysicalAddress = Server.PhysicalAddress;
         IpAddress = Server.IpAddress;
+        ExternalIpAddress = Server.ExternalIpAddress;
         Description = Server.Description;
         BackupStaleDays = Server.BackupStaleDays;
+    }
+
+    // Подтверждение «архив действительно стал меньше» — снимаем тревогу и принимаем новый объём за опорный.
+    public async Task<IActionResult> OnPostAckShrinkAsync()
+    {
+        if (!User.CanEdit()) return Forbid();
+        var s = await _db.Servers.FindAsync(Id);
+        if (s is not null)
+        {
+            s.BackupShrinkActive = false;
+            s.PrevBackupSizeBytes = s.BackupShrinkToBytes > 0 ? s.BackupShrinkToBytes : s.PrevBackupSizeBytes;
+            await _db.SaveChangesAsync();
+        }
+        await Load();
+        FillEditFields();
+        Message = "Принято: новый объём бэкапа считается корректным.";
+        return Page();
     }
 
     public async Task<IActionResult> OnPostDeleteAsync()

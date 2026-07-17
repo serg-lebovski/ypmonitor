@@ -159,8 +159,11 @@
                             <input class="form-control" asp-for="ServerName" required /></div>
                         <div class="mb-3"><label>Физический адрес</label>
                             <input class="form-control" asp-for="PhysicalAddress" placeholder="напр. ЦОД, стойка 5" /></div>
-                        <div class="mb-3"><label>Сетевой адрес / IP</label>
-                            <input class="form-control" asp-for="IpAddress" placeholder="напр. 10.0.0.12" /></div>
+                        <div class="mb-3"><label>Локальный IP сервера</label>
+                            <input class="form-control" asp-for="IpAddress" placeholder="напр. 192.168.0.12" /></div>
+                        <div class="mb-3"><label>Внешний IP сервера / роутера</label>
+                            <input class="form-control" asp-for="ExternalIpAddress" placeholder="напр. 203.0.113.5" />
+                            <div class="muted" style="font-size:12px">Мониторинг доступности интернета пингует именно этот адрес.</div></div>
                         <div class="mb-3"><label>Описание</label>
                             <textarea class="form-control" asp-for="ServerDescription" rows="2"></textarea></div>
                         <button class="btn btn-primary w-100" type="submit">Добавить сервер</button>

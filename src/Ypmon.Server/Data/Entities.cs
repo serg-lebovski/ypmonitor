@@ -67,8 +67,11 @@ public class MonitoredServer
     /// <summary>Физический адрес (где стоит).</summary>
     public string? PhysicalAddress { get; set; }
 
-    /// <summary>Сетевой адрес / IP.</summary>
+    /// <summary>Локальный IP сервера (в сети клиента).</summary>
     public string? IpAddress { get; set; }
+
+    /// <summary>Внешний IP сервера / роутера. Именно его пингует мониторинг доступности интернета.</summary>
+    public string? ExternalIpAddress { get; set; }
 
     public string? Description { get; set; }
 
@@ -128,6 +131,19 @@ public class MonitoredServer
 
     /// <summary>Полный последний отчёт (JSON AgentReportDto).</summary>
     public string? LastReportJson { get; set; }
+
+    // --- Контроль «усыхания» бэкапа: объём резко упал → возможно, что-то не так ---
+
+    /// <summary>Опорный объём бэкапов (для сравнения со следующим отчётом), байт.</summary>
+    public long PrevBackupSizeBytes { get; set; }
+
+    /// <summary>Активна тревога «объём бэкапа резко уменьшился» (ждёт подтверждения администратора).</summary>
+    public bool BackupShrinkActive { get; set; }
+
+    /// <summary>Объёмы до/после падения (для показа) и когда обнаружено.</summary>
+    public long BackupShrinkFromBytes { get; set; }
+    public long BackupShrinkToBytes { get; set; }
+    public DateTimeOffset? BackupShrinkAt { get; set; }
 
     public List<Report> Reports { get; set; } = new();
 

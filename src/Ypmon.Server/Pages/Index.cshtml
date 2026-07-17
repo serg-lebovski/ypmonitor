@@ -24,11 +24,23 @@ else
 {
     @foreach (var client in Model.Clients)
     {
-        <div class="card-y">
-            <div class="client-name">🗂️ <a href="/Clients/Details?id=@client.Id">@client.Name</a>
-                <span class="muted">— серверов: @client.Servers.Count</span>
-            </div>
-            @if (!client.Servers.Any())
+        var servers = client.Servers;
+        var offCnt = servers.Count(x => x.IsOffline(Model.OfflineThreshold));
+        var probCnt = servers.Count(x => !x.IsOffline(Model.OfflineThreshold) && x.LastOutcome >= JobOutcome.Warning);
+        var shrinkCnt = servers.Count(x => x.BackupShrinkActive);
+        var allOk = offCnt == 0 && probCnt == 0 && shrinkCnt == 0 && servers.Any();
+        <details class="card-y acc" open>
+            <summary>
+                <span class="dot @(allOk ? "ok" : (offCnt + probCnt + shrinkCnt) > 0 ? "err" : "unknown")"></span>
+                🗂️ <strong>@client.Name</strong>
+                <span class="muted" style="font-weight:400">— серверов: @servers.Count</span>
+                @if (probCnt > 0) { <span class="badge-status st-err">проблемы: @probCnt</span> }
+                @if (offCnt > 0) { <span class="badge-status st-offline">офлайн: @offCnt</span> }
+                @if (shrinkCnt > 0) { <span class="badge-status st-warn">⚠️ объём: @shrinkCnt</span> }
+                @if (allOk) { <span class="badge-status st-ok">всё ок</span> }
+            </summary>
+            <div class="acc-body">
+            @if (!servers.Any())
             {
                 <div class="muted">Нет серверов</div>
             }
@@ -39,12 +51,12 @@ else
                         <tr><th>Сервер</th><th>IP</th><th>Статус</th><th>Посл. бэкап</th><th>Объём</th><th>Посл. отчёт</th></tr>
                     </thead>
                     <tbody>
-                    @foreach (var s in client.Servers)
+                    @foreach (var s in servers)
                     {
                         var offline = s.IsOffline(Model.OfflineThreshold);
                         var outcome = offline ? JobOutcome.Unknown : s.LastOutcome;
                         var (lastBackup, sizeBytes) = UiHelpers.BackupSummary(s.LastReportJson);
-                        <tr style="cursor:pointer" onclick="location.href='/Servers/Details?id=@s.Id'">
+                        <tr style="cursor:pointer" onclick="location.href='/Servers/Details?id=@s.Id&info=true'">
                             <td><span class="dot @UiHelpers.DotCss(outcome)"></span><strong>@s.Name</strong>
                                 <div class="muted" style="font-size:12px">@(s.LastMachineName ?? "")</div></td>
                             <td class="mono">@(s.IpAddress ?? "—")</td>
@@ -57,6 +69,7 @@ else
                                 {
                                     <span class="badge-status @UiHelpers.OutcomeCss(s.LastOutcome)">@UiHelpers.OutcomeText(s.LastOutcome)</span>
                                 }
+                                @if (s.BackupShrinkActive) { <span class="badge-status st-warn">⚠️ объём</span> }
                             </td>
                             <td>@UiHelpers.DateTimeAbs(lastBackup)</td>
                             <td>@UiHelpers.Bytes(sizeBytes)</td>
@@ -66,7 +79,8 @@ else
                     </tbody>
                 </table>
             }
-        </div>
+            </div>
+        </details>
     }
 }
 

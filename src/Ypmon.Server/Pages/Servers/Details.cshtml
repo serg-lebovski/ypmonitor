@@ -13,19 +13,31 @@
 <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
     <h1 class="page-title" style="margin-bottom:0">🖥️ @s.Name</h1>
     <div style="display:flex;gap:8px;align-items:center">
-        @* [YPMON-REMOTE-CMD] кнопки-команды агенту — вырезать после релиза *@
-        <form method="post" asp-page-handler="RequestReport" asp-route-id="@s.Id">
-            <button class="btn btn-sm btn-primary" type="submit" title="Агент пришлёт свежий отчёт при следующей связи">🔄 Запросить отчёт</button>
-        </form>
-        @if (canEdit)
+        @if (Model.Info)
         {
-            <form method="post" asp-page-handler="RequestUpdate" asp-route-id="@s.Id"
-                  onsubmit="return confirm('Отправить агенту команду на принудительное обновление? Агент скачает установщик с этого сервера и перезапустит службу.')">
-                <button class="btn btn-sm btn-primary" type="submit" title="Агент проверит и установит обновление при следующей связи">⬆️ Обновить агента</button>
-            </form>
+            @* Переход с дашборда: только информация + кнопка перехода к настройке мониторинга *@
+            @if (canEdit)
+            {
+                <a class="btn btn-sm btn-primary" href="/Servers/Details?id=@s.Id">⚙️ Настроить мониторинг сервера</a>
+            }
+            <a class="btn btn-sm btn-primary" href="/">← дашборд</a>
         }
-        <a class="btn btn-sm btn-primary" href="/Clients/Details?id=@s.ClientId">← к клиенту @s.Client?.Name</a>
-        <a class="btn btn-sm btn-primary" href="/">← дашборд</a>
+        else
+        {
+            @* [YPMON-REMOTE-CMD] кнопки-команды агенту — вырезать после релиза *@
+            <form method="post" asp-page-handler="RequestReport" asp-route-id="@s.Id">
+                <button class="btn btn-sm btn-primary" type="submit" title="Агент пришлёт свежий отчёт при следующей связи">🔄 Запросить отчёт</button>
+            </form>
+            @if (canEdit)
+            {
+                <form method="post" asp-page-handler="RequestUpdate" asp-route-id="@s.Id"
+                      onsubmit="return confirm('Отправить агенту команду на принудительное обновление? Агент скачает установщик с этого сервера и перезапустит службу.')">
+                    <button class="btn btn-sm btn-primary" type="submit" title="Агент проверит и установит обновление при следующей связи">⬆️ Обновить агента</button>
+                </form>
+            }
+            <a class="btn btn-sm btn-primary" href="/Servers">☰ все серверы</a>
+            <a class="btn btn-sm btn-primary" href="/Clients/Details?id=@s.ClientId">← к клиенту @s.Client?.Name</a>
+        }
     </div>
 </div>
 <div style="height:14px"></div>
@@ -43,6 +55,20 @@
     <div class="alert-y alert-ok">@Model.Message</div>
 }
 
+@if (s.BackupShrinkActive)
+{
+    var dropPct = s.BackupShrinkFromBytes > 0 ? (1 - (double)s.BackupShrinkToBytes / s.BackupShrinkFromBytes) * 100 : 0;
+    <div class="alert-y alert-err" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+        <span>⚠️ Объём бэкапа резко уменьшился: было @UiHelpers.Bytes(s.BackupShrinkFromBytes), стало @UiHelpers.Bytes(s.BackupShrinkToBytes) (−@dropPct.ToString("0")%, @UiHelpers.Ago(s.BackupShrinkAt)). Проверьте, всё ли верно.</span>
+        @if (canEdit)
+        {
+            <form method="post" asp-page-handler="AckShrink" asp-route-id="@s.Id">
+                <button class="btn btn-sm btn-primary" type="submit">✔️ Архив действительно стал меньше</button>
+            </form>
+        }
+    </div>
+}
+
 <div class="dash-grid">
     <div>
         <div class="card-y">
@@ -58,7 +84,8 @@
             </div>
             <div class="kv"><span class="k">Клиент</span><span class="v">@s.Client?.Name</span></div>
             <div class="kv"><span class="k">Физ. адрес</span><span class="v">@(s.PhysicalAddress ?? "—")</span></div>
-            <div class="kv"><span class="k">IP / адрес</span><span class="v">@(s.IpAddress ?? "—")</span></div>
+            <div class="kv"><span class="k">Локальный IP</span><span class="v">@(s.IpAddress ?? "—")</span></div>
+            <div class="kv"><span class="k">Внешний IP (роутер)</span><span class="v">@(s.ExternalIpAddress ?? "—")</span></div>
             <div class="kv"><span class="k">Машина агента</span><span class="v">@(s.LastMachineName ?? "—")</span></div>
             <div class="kv"><span class="k">Версия агента</span><span class="v">@(s.LastAgentVersion ?? "—")</span></div>
             <div class="kv"><span class="k">Последний отчёт</span><span class="v">@UiHelpers.DateTimeAbs(s.LastSeenAt) <span class="muted">(@UiHelpers.Ago(s.LastSeenAt))</span></span></div>
@@ -113,7 +140,8 @@
                     @foreach (var d in Model.Disks)
                     {
                         var usedPct = 100 - d.FreePercent;
-                        var hasTh = Model.DiskThresholds.TryGetValue(d.Name, out var th) && th > 0;
+                        var th = Model.DiskThresholds.TryGetValue(d.Name, out var tv) ? tv : Model.DiskDefaultPercent;
+                        var hasTh = th > 0;
                         var alarm = hasTh && d.FreePercent < th;
                         <tr>
                             <td><strong>@d.Name</strong>@(d.Label is null ? "" : $" ({d.Label})")</td>
@@ -218,6 +246,8 @@
         </details>
     </div>
 
+    @if (!Model.Info)
+    {
     <div class="panel">
         <details class="card-y acc" open>
             <summary>🔌 Данные подключения агента</summary>
@@ -260,8 +290,8 @@
                     </div>
                     <div class="form-check mb-2">
                         <input class="form-check-input" type="checkbox" name="monitorPing" value="true" id="mp" @(s.MonitorPing ? "checked" : "") />
-                        <label class="form-check-label" for="mp">Пинговать IP-адрес (@(string.IsNullOrWhiteSpace(s.IpAddress) ? "не задан!" : s.IpAddress))
-                            <div class="muted" style="font-size:12px">IP не отвечает на ping → «на адресе пропал интернет»</div></label>
+                        <label class="form-check-label" for="mp">Пинговать внешний IP (@(string.IsNullOrWhiteSpace(s.ExternalIpAddress) ? "не задан!" : s.ExternalIpAddress))
+                            <div class="muted" style="font-size:12px">Внешний IP не отвечает на ping → «на адресе пропал интернет»</div></label>
                     </div>
                     @{ var pi = Math.Max(10, s.PingIntervalSeconds); }
                     <div class="mb-2" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
@@ -272,7 +302,7 @@
                     </div>
 
                     <div class="mb-2" style="margin-top:10px"><strong style="font-size:13px">Пороги по дискам</strong>
-                        <div class="muted" style="font-size:12px">Свободного места меньше N% → уведомление. 0 или пусто = выключено.</div></div>
+                        <div class="muted" style="font-size:12px">Свободного места меньше N% → уведомление. По умолчанию @Model.DiskDefaultPercent%. 0 = выключить для диска.</div></div>
                     @if (!Model.Disks.Any())
                     {
                         <div class="muted mb-2" style="font-size:12px">Диски появятся после первого отчёта агента 2.2+.</div>
@@ -281,11 +311,11 @@
                     {
                         foreach (var d in Model.Disks)
                         {
-                            var th = Model.DiskThresholds.TryGetValue(d.Name, out var v) ? v : 0;
+                            var th = Model.DiskThresholds.TryGetValue(d.Name, out var v) ? v : Model.DiskDefaultPercent;
                             <div class="mb-2" style="display:flex;align-items:center;gap:8px">
                                 <span style="flex:0 0 110px">@d.Name @(d.Label is null ? "" : $"({d.Label})")</span>
                                 <input class="form-control" style="max-width:90px" type="number" min="0" max="99"
-                                       name="th_@d.Name" value="@(th > 0 ? th : 0)" />
+                                       name="th_@d.Name" value="@th" />
                                 <span class="muted" style="font-size:12px">% свободно, мин.</span>
                             </div>
                         }
@@ -301,7 +331,8 @@
                 <form method="post" asp-page-handler="Save" asp-route-id="@s.Id">
                     <div class="mb-2"><label>Название</label><input class="form-control" asp-for="Name" /></div>
                     <div class="mb-2"><label>Физический адрес</label><input class="form-control" asp-for="PhysicalAddress" /></div>
-                    <div class="mb-2"><label>Сетевой адрес / IP</label><input class="form-control" asp-for="IpAddress" /></div>
+                    <div class="mb-2"><label>Локальный IP</label><input class="form-control" asp-for="IpAddress" /></div>
+                    <div class="mb-2"><label>Внешний IP (роутер) — для пинга</label><input class="form-control" asp-for="ExternalIpAddress" /></div>
                     <div class="mb-2"><label>Тревога, если нет новых файлов N дней (0 = по умолчанию @Model.DefaultBackupStaleDays)</label>
                         <input class="form-control" type="number" min="0" asp-for="BackupStaleDays" /></div>
                     <div class="mb-3"><label>Описание</label><textarea class="form-control" asp-for="Description" rows="2"></textarea></div>
@@ -315,6 +346,7 @@
             </details>
         }
     </div>
+    }
 </div>
 
 @section Scripts {
