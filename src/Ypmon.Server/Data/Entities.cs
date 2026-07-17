@@ -63,8 +63,13 @@ public class MonitoredServer
     /// <summary>Порог тревоги: нет новых файлов в папках дольше N дней (0 = использовать глобальное значение).</summary>
     public int BackupStaleDays { get; set; } = 0;
 
-    /// <summary>Флаг: администратор запросил у агента полный отчёт (агент заберёт его при следующей связи).</summary>
+    // [YPMON-REMOTE-CMD] Флаги-команды агенту (вырезать после релиза, см. RemoteCommandService).
+
+    /// <summary>[YPMON-REMOTE-CMD] Администратор запросил у агента полный отчёт (агент заберёт при следующей связи).</summary>
     public bool ReportRequested { get; set; }
+
+    /// <summary>[YPMON-REMOTE-CMD] Администратор запросил принудительное обновление агента (одноразовый флаг).</summary>
+    public bool UpdateRequested { get; set; }
 
     // --- Мониторинг доступности и дисков (настраивается в карточке сервера) ---
 

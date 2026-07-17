@@ -11,7 +11,8 @@ namespace Ypmon.Server.Pages.Servers;
 public class DetailsModel : PageModel
 {
     private readonly AppDbContext _db;
-    public DetailsModel(AppDbContext db) => _db = db;
+    private readonly RemoteCommandService _commands;   // [YPMON-REMOTE-CMD]
+    public DetailsModel(AppDbContext db, RemoteCommandService commands) { _db = db; _commands = commands; }
 
     [BindProperty(SupportsGet = true)] public int Id { get; set; }
 
@@ -146,17 +147,25 @@ public class DetailsModel : PageModel
         return RedirectToPage("/Index");
     }
 
+    // [YPMON-REMOTE-CMD] Кнопка «Запросить отчёт» — вырезать после релиза.
     public async Task<IActionResult> OnPostRequestReportAsync()
     {
-        var srv = await _db.Servers.FindAsync(Id);
-        if (srv is not null)
-        {
-            srv.ReportRequested = true;
-            await _db.SaveChangesAsync();
-        }
+        await _commands.RequestReportAsync(Id);
         await Load();
         FillEditFields();
         Message = "Запрос отправлен. Агент пришлёт отчёт при следующей связи (обычно в течение 1–2 минут).";
+        return Page();
+    }
+
+    // [YPMON-REMOTE-CMD] Кнопка «Обновить агента» (принудительное обновление) — вырезать после релиза.
+    public async Task<IActionResult> OnPostRequestUpdateAsync()
+    {
+        if (!User.CanEdit()) return Forbid();
+        await _commands.RequestUpdateAsync(Id);
+        await Load();
+        FillEditFields();
+        Message = "Команда на обновление отправлена. Агент проверит и установит обновление при следующей связи " +
+                  "(обычно в течение 1–2 минут); служба перезапустится сама.";
         return Page();
     }
 

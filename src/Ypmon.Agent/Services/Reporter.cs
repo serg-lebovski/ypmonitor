@@ -15,15 +15,17 @@ public class Reporter : BackgroundService
     private readonly ConfigStore _store;
     private readonly FolderMonitorService _folders;
     private readonly EventLogReaderService _events;
+    private readonly RemoteCommandHandler _commands;   // [YPMON-REMOTE-CMD] вырезать после релиза
     private readonly ILogger<Reporter> _log;
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(30) };
 
     public static readonly string Version =
         Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "1.0.0";
 
-    public Reporter(ConfigStore store, FolderMonitorService folders, EventLogReaderService events, ILogger<Reporter> log)
+    public Reporter(ConfigStore store, FolderMonitorService folders, EventLogReaderService events,
+        RemoteCommandHandler commands, ILogger<Reporter> log)
     {
-        _store = store; _folders = folders; _events = events; _log = log;
+        _store = store; _folders = folders; _events = events; _commands = commands; _log = log;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -120,12 +122,10 @@ public class Reporter : BackgroundService
                 clientName: ack?.ClientName,
                 serverName: ack?.ServerName);
 
-        // Сервер попросил внеплановый полный отчёт (кнопка в веб-интерфейсе) — шлём сразу.
-        if (heartbeat && ack?.ReportRequested == true)
-        {
-            _log.LogInformation("Сервер запросил отчёт — отправляем внеплановый полный отчёт.");
-            await ReportOnceAsync(cfg, heartbeat: false);
-        }
+        // [YPMON-REMOTE-CMD] Флаги-команды из ответа сервера (запрос отчёта, принудительное
+        // обновление) — обрабатываются отдельным классом, вырезать после релиза.
+        if (heartbeat && ack is not null)
+            await _commands.HandleAsync(cfg, ack, () => ReportOnceAsync(cfg, heartbeat: false));
     }
 
     private async Task<(ReportAckDto? ack, int status)> PostAsync(AgentConfig cfg, AgentReportDto report)

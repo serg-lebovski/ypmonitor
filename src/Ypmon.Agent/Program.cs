@@ -106,6 +106,7 @@ internal static class Program
                 services.AddSingleton<ConfigStore>();
                 services.AddSingleton<FolderMonitorService>();
                 services.AddSingleton<EventLogReaderService>();
+                services.AddSingleton<RemoteCommandHandler>();   // [YPMON-REMOTE-CMD] вырезать после релиза
                 services.AddSingleton<Reporter>();
                 services.AddHostedService(sp => sp.GetRequiredService<Reporter>());
                 services.AddHostedService<UpdateService>();

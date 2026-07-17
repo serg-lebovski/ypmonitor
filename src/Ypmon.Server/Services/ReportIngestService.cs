@@ -10,11 +10,12 @@ public class ReportIngestService
 {
     private readonly AppDbContext _db;
     private readonly AlertService _alerts;
+    private readonly RemoteCommandService _commands;   // [YPMON-REMOTE-CMD]
     private readonly ILogger<ReportIngestService> _log;
 
-    public ReportIngestService(AppDbContext db, AlertService alerts, ILogger<ReportIngestService> log)
+    public ReportIngestService(AppDbContext db, AlertService alerts, RemoteCommandService commands, ILogger<ReportIngestService> log)
     {
-        _db = db; _alerts = alerts; _log = log;
+        _db = db; _alerts = alerts; _commands = commands; _log = log;
     }
 
     public async Task<ReportAckDto> IngestAsync(string apiKey, AgentReportDto report)
@@ -25,15 +26,17 @@ public class ReportIngestService
         if (server is null)
             return new ReportAckDto { Accepted = false, Message = "Неизвестный API-ключ" };
 
-        // Heartbeat: время связи + свежие данные о дисках. Возвращаем флаг «нужен отчёт», если админ его запросил.
+        // Heartbeat: время связи + свежие данные о дисках.
         if (report.IsHeartbeat)
         {
             server.LastSeenAt = DateTimeOffset.UtcNow;
             server.LastReportedAt = report.ReportedAt;
             if (report.Disks.Count > 0)
                 server.LastDisksJson = JsonSerializer.Serialize(report.Disks);
+            var ack = Ack(server, "OK (heartbeat)");
+            _commands.FillAck(server, ack);   // [YPMON-REMOTE-CMD] флаги «нужен отчёт» / «обновись»
             await _db.SaveChangesAsync();
-            return Ack(server, "OK (heartbeat)", server.ReportRequested);
+            return ack;
         }
 
         var settings = await _db.Settings.FirstOrDefaultAsync();
@@ -80,7 +83,7 @@ public class ReportIngestService
         server.LastReportJson = JsonSerializer.Serialize(report);
         if (report.Disks.Count > 0)
             server.LastDisksJson = JsonSerializer.Serialize(report.Disks);
-        server.ReportRequested = false; // полный отчёт получен — запрос выполнен
+        _commands.MarkReportReceived(server);   // [YPMON-REMOTE-CMD] полный отчёт получен — запрос выполнен
 
         // Сохраняем новые ошибки Windows (без дублей).
         if (events.Count > 0)
@@ -139,13 +142,12 @@ public class ReportIngestService
         return JobOutcome.Ok;
     }
 
-    private static ReportAckDto Ack(MonitoredServer s, string msg, bool reportRequested = false) => new()
+    private static ReportAckDto Ack(MonitoredServer s, string msg) => new()
     {
         Accepted = true,
         Message = msg,
         ClientName = s.Client?.Name,
-        ServerName = s.Name,
-        ReportRequested = reportRequested
+        ServerName = s.Name
     };
 }
 

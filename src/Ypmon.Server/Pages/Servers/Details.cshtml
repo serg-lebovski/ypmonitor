@@ -13,9 +13,17 @@
 <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
     <h1 class="page-title" style="margin-bottom:0">🖥️ @s.Name</h1>
     <div style="display:flex;gap:8px;align-items:center">
+        @* [YPMON-REMOTE-CMD] кнопки-команды агенту — вырезать после релиза *@
         <form method="post" asp-page-handler="RequestReport" asp-route-id="@s.Id">
             <button class="btn btn-sm btn-primary" type="submit" title="Агент пришлёт свежий отчёт при следующей связи">🔄 Запросить отчёт</button>
         </form>
+        @if (canEdit)
+        {
+            <form method="post" asp-page-handler="RequestUpdate" asp-route-id="@s.Id"
+                  onsubmit="return confirm('Отправить агенту команду на принудительное обновление? Агент скачает установщик с этого сервера и перезапустит службу.')">
+                <button class="btn btn-sm btn-primary" type="submit" title="Агент проверит и установит обновление при следующей связи">⬆️ Обновить агента</button>
+            </form>
+        }
         <a class="btn btn-sm btn-primary" href="/Clients/Details?id=@s.ClientId">← к клиенту @s.Client?.Name</a>
         <a class="btn btn-sm btn-primary" href="/">← дашборд</a>
     </div>
@@ -24,6 +32,10 @@
 @if (s.ReportRequested)
 {
     <div class="alert-y alert-ok">⏳ Запрошен свежий отчёт — ожидаем ответ агента.</div>
+}
+@if (s.UpdateRequested)
+{
+    <div class="alert-y alert-ok">⏳ Отправлена команда на обновление агента — выполнится при следующей связи.</div>
 }
 
 @if (Model.Message is not null)
