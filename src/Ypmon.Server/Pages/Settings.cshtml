@@ -217,16 +217,6 @@
                             <input class="form-control" name="ArchiveReportEmailTo" value="@s.ArchiveReportEmailTo" placeholder="напр. admin@company.ru" />
                             <div class="muted" style="font-size:12px">Сюда дублируется сводный отчёт об архивации по всем клиентам (по расписанию и по кнопке «Разослать отчёт»).</div></div>
 
-                        <h4 style="font-size:16px">🗺️ Карта серверов (Яндекс.Карты)</h4>
-                        <div class="mb-3"><label>API-ключ Яндекс.Карт (JavaScript API)</label>
-                            <input class="form-control mono" name="YandexMapsApiKey" value="@s.YandexMapsApiKey" placeholder="напр. 12345678-90ab-cdef-1234-567890abcdef" />
-                            <div class="muted" style="font-size:12px">
-                                Нужен для карты серверов на дашборде. Получить бесплатно:
-                                <a href="https://developer.tech.yandex.ru/services/" target="_blank" rel="noopener">developer.tech.yandex.ru</a>
-                                → «Подключить API» → <strong>JavaScript API и HTTP Геокодер</strong>. Точки на карте берутся из поля
-                                <strong>«Физический адрес»</strong> в карточке каждого сервера (адрес геокодируется автоматически).
-                            </div></div>
-
                         <button class="btn btn-primary" type="submit">Сохранить</button>
                         <button class="btn btn-primary" type="submit" asp-page-handler="TestAlert" formnovalidate>Отправить тест</button>
                     </form>
@@ -255,10 +245,28 @@
         <details class="card-y acc">
             <summary>🖥️ Параметры сервера</summary>
             <div class="acc-body">
-                <div class="muted mb-2" style="font-size:13px">Задаются в <span class="code mono">appsettings.json</span> / переменных окружения.</div>
+                <div class="muted mb-2" style="font-size:13px">Порт и БД задаются в <span class="code mono">appsettings.json</span> / переменных окружения.</div>
                 <div class="kv"><span class="k">Порт веб-интерфейса</span><span class="v mono">@Model.HttpPort</span></div>
+                <div class="kv"><span class="k">Порт приёма отчётов (локально)</span><span class="v mono">@Ypmon.Server.Services.ServerPorts.ReportsPort</span></div>
                 <div class="kv"><span class="k">Адрес</span><span class="v mono">@($"{Request.Scheme}://{Request.Host}")</span></div>
                 <div class="kv"><span class="k">База данных</span><span class="v mono">@Model.DbProvider</span></div>
+
+                @if (isAdmin)
+                {
+                    <hr style="border-color:var(--border)" />
+                    <div class="mb-2"><strong style="font-size:14px">🌐 Внешний адрес сервера</strong>
+                        <div class="muted" style="font-size:12px">Под каким адресом сервер доступен снаружи — для удалённых агентов (не в одной сети с сервером). Локальным агентам он не нужен.</div></div>
+                    <form method="post" asp-page-handler="SaveServerAddress">
+                        <div class="row">
+                            <div class="col-md-8 mb-2"><label>Внешний IP / хост</label>
+                                <input class="form-control mono" name="externalAddress" value="@s.ExternalAddress" placeholder="напр. 203.0.113.5 или mon.company.ru" /></div>
+                            <div class="col-md-4 mb-2"><label>Внешний порт</label>
+                                <input class="form-control mono" type="number" min="1" max="65535" name="externalPort" value="@(s.ExternalPort > 0 ? s.ExternalPort : 8081)" /></div>
+                        </div>
+                        <div class="muted mb-2" style="font-size:12px">Порт по умолчанию 8081 (порт приёма отчётов). Укажите другой, только если снаружи он проброшен на иной порт.</div>
+                        <button class="btn btn-primary" type="submit">Сохранить внешний адрес</button>
+                    </form>
+                }
             </div>
         </details>
     </div>

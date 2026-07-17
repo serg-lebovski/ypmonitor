@@ -6,7 +6,8 @@
     var canEdit = User.CanEdit();
     var s = Model.Server!;
     var offline = s.IsOffline(Model.OfflineThreshold);
-    var baseUrl = $"{Request.Scheme}://{Request.Host.Host}:{Ypmon.Server.Services.ServerPorts.ReportsPort}";
+    var localUrl = $"{Request.Scheme}://{Request.Host.Host}:{Ypmon.Server.Services.ServerPorts.ReportsPort}";
+    var externalUrl = string.IsNullOrWhiteSpace(Model.ExternalAddress) ? null : $"http://{Model.ExternalAddress}:{Model.ExternalPort}";
     var (lastBackup, sizeBytes) = UiHelpers.BackupSummary(s.LastReportJson);
 }
 
@@ -250,15 +251,27 @@
     @if (!Model.Info)
     {
     <div class="panel">
-        <details class="card-y acc">
+        <details class="card-y acc" open>
             <summary>🔌 Данные подключения агента</summary>
             <div class="acc-body">
             <div class="conn-box">
-                <div class="muted" style="font-size:12px;margin-bottom:4px">Адрес сервера</div>
+                <div class="muted" style="font-size:12px;margin-bottom:4px">Адрес сервера — агент в одной сети с сервером (локально)</div>
                 <div class="copy-row">
-                    <input class="form-control mono" readonly value="@baseUrl" id="url" />
+                    <input class="form-control mono" readonly value="@localUrl" id="url" />
                     <button type="button" class="btn btn-sm btn-primary" onclick="ypCopy('url', this)">Копировать</button>
                 </div>
+                <div class="muted" style="font-size:12px;margin:8px 0 4px">Адрес сервера — удалённый агент (внешний адрес)</div>
+                @if (externalUrl is not null)
+                {
+                    <div class="copy-row">
+                        <input class="form-control mono" readonly value="@externalUrl" id="urlExt" />
+                        <button type="button" class="btn btn-sm btn-primary" onclick="ypCopy('urlExt', this)">Копировать</button>
+                    </div>
+                }
+                else
+                {
+                    <div class="muted" style="font-size:12px">Укажите внешний адрес в <a href="/Settings">Настройки → Параметры сервера</a>.</div>
+                }
                 <div class="muted" style="font-size:12px;margin:8px 0 4px">API-ключ</div>
                 <div class="copy-row">
                     <input class="form-control mono" readonly value="@s.ApiKey" id="key" />
@@ -331,8 +344,7 @@
                 <div class="acc-body">
                 <form method="post" asp-page-handler="Save" asp-route-id="@s.Id">
                     <div class="mb-2"><label>Название</label><input class="form-control" asp-for="Name" /></div>
-                    <div class="mb-2"><label>Физический адрес</label><input class="form-control" asp-for="PhysicalAddress" placeholder="город, улица, дом" />
-                        <div class="muted" style="font-size:12px">Используется для точки сервера на карте дашборда (геокодируется автоматически).</div></div>
+                    <div class="mb-2"><label>Физический адрес</label><input class="form-control" asp-for="PhysicalAddress" placeholder="напр. ЦОД, стойка 5" /></div>
                     <div class="mb-2"><label>Локальный IP</label><input class="form-control" asp-for="IpAddress" /></div>
                     <div class="mb-2"><label>Внешний IP (роутер) — для пинга</label><input class="form-control" asp-for="ExternalIpAddress" /></div>
                     <div class="mb-2"><label>Тревога, если нет новых файлов N дней (0 = по умолчанию @Model.DefaultBackupStaleDays)</label>

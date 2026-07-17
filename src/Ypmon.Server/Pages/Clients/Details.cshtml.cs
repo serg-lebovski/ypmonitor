@@ -15,6 +15,10 @@ public class DetailsModel : PageModel
     public Client? Client { get; set; }
     public int OfflineThreshold { get; set; } = 300;
 
+    /// <summary>Внешний адрес/порт сервера (для удалённых агентов) — из глобальных настроек.</summary>
+    public string? ExternalAddress { get; set; }
+    public int ExternalPort { get; set; } = 8081;
+
     // Установщик агента (лежит в папке agent-updates рядом с сервером) — для кнопки «Скачать агента».
     public bool AgentInstallerExists { get; set; }
     public string? AgentInstallerVersion { get; set; }
@@ -45,7 +49,10 @@ public class DetailsModel : PageModel
 
     private async Task Load()
     {
-        OfflineThreshold = (await _db.Settings.FirstOrDefaultAsync())?.OfflineThresholdSeconds ?? 300;
+        var settings = await _db.Settings.FirstOrDefaultAsync();
+        OfflineThreshold = settings?.OfflineThresholdSeconds ?? 300;
+        ExternalAddress = settings?.ExternalAddress;
+        ExternalPort = settings?.ExternalPort is > 0 and < 65536 ? settings.ExternalPort : 8081;
         Client = await _db.Clients.Include(c => c.Servers).FirstOrDefaultAsync(c => c.Id == Id);
         if (Client is not null)
             Client.Servers = Client.Servers.OrderBy(s => s.Name).ToList();

@@ -4,7 +4,8 @@
 @{
     ViewData["Title"] = Model.Client?.Name ?? "Клиент";
     var canEdit = User.CanEdit();
-    var baseUrl = $"{Request.Scheme}://{Request.Host.Host}:{Ypmon.Server.Services.ServerPorts.ReportsPort}";
+    var localUrl = $"{Request.Scheme}://{Request.Host.Host}:{Ypmon.Server.Services.ServerPorts.ReportsPort}";
+    var externalUrl = string.IsNullOrWhiteSpace(Model.ExternalAddress) ? null : $"http://{Model.ExternalAddress}:{Model.ExternalPort}";
 }
 
 <h1 class="page-title">🗂️ @Model.Client?.Name</h1>
@@ -71,11 +72,23 @@
                             <div class="kv"><span class="k">Файлов в бэкапах</span><span class="v">@s.LastBackupCount</span></div>
 
                             <div class="conn-box mt-2">
-                                <div class="muted" style="font-size:12px;margin-bottom:4px">Адрес сервера (для агента)</div>
+                                <div class="muted" style="font-size:12px;margin-bottom:4px">Адрес сервера — агент в одной сети (локально)</div>
                                 <div class="copy-row">
-                                    <input class="form-control mono" readonly value="@baseUrl" id="url_@s.Id" />
+                                    <input class="form-control mono" readonly value="@localUrl" id="url_@s.Id" />
                                     <button type="button" class="btn btn-sm btn-primary" onclick="ypCopy('url_@s.Id', this)">Копировать</button>
                                 </div>
+                                <div class="muted" style="font-size:12px;margin:8px 0 4px">Адрес сервера — удалённый агент (внешний)</div>
+                                @if (externalUrl is not null)
+                                {
+                                    <div class="copy-row">
+                                        <input class="form-control mono" readonly value="@externalUrl" id="urlExt_@s.Id" />
+                                        <button type="button" class="btn btn-sm btn-primary" onclick="ypCopy('urlExt_@s.Id', this)">Копировать</button>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <div class="muted" style="font-size:12px">Внешний адрес не задан (Настройки → Параметры сервера).</div>
+                                }
                                 <div class="muted" style="font-size:12px;margin:8px 0 4px">API-ключ</div>
                                 <div class="copy-row">
                                     <input class="form-control mono" readonly value="@s.ApiKey" id="key_@s.Id" />
@@ -153,7 +166,26 @@
                 <div class="acc-body">
                     <div class="muted mb-3" style="font-size:13px">
                         При добавлении сервера сгенерируется API-ключ. Скачайте агента, установите на сервер клиента
-                        и укажите в нём этот API-ключ и адрес сервера.
+                        и укажите в нём API-ключ (появится в карточке сервера) и один из адресов ниже.
+                    </div>
+                    <div class="conn-box mb-3">
+                        <div class="muted" style="font-size:12px;margin-bottom:4px">Адрес сервера — агент в одной сети (локально)</div>
+                        <div class="copy-row">
+                            <input class="form-control mono" readonly value="@localUrl" id="addUrlLocal" />
+                            <button type="button" class="btn btn-sm btn-primary" onclick="ypCopy('addUrlLocal', this)">Копировать</button>
+                        </div>
+                        <div class="muted" style="font-size:12px;margin:8px 0 4px">Адрес сервера — удалённый агент (внешний)</div>
+                        @if (externalUrl is not null)
+                        {
+                            <div class="copy-row">
+                                <input class="form-control mono" readonly value="@externalUrl" id="addUrlExt" />
+                                <button type="button" class="btn btn-sm btn-primary" onclick="ypCopy('addUrlExt', this)">Копировать</button>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="muted" style="font-size:12px">Внешний адрес не задан (Настройки → Параметры сервера).</div>
+                        }
                     </div>
                     @if (Model.AgentInstallerExists)
                     {

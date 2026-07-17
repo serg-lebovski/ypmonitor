@@ -128,11 +128,23 @@ public class SettingsModel : PageModel
         s.EmailFrom = input.EmailFrom;
         s.EmailTo = input.EmailTo;
         s.ArchiveReportEmailTo = input.ArchiveReportEmailTo;
-        s.YandexMapsApiKey = string.IsNullOrWhiteSpace(input.YandexMapsApiKey) ? null : input.YandexMapsApiKey.Trim();
         if (s.Id == 0) _db.Settings.Add(s);
         await _db.SaveChangesAsync();
         await Load();
         Message = "Настройки сохранены";
+        return Page();
+    }
+
+    public async Task<IActionResult> OnPostSaveServerAddressAsync(string? externalAddress, int externalPort)
+    {
+        if (!IsAdmin) return Forbid();
+        var s = await _db.Settings.FirstOrDefaultAsync() ?? new ServerSettings();
+        s.ExternalAddress = string.IsNullOrWhiteSpace(externalAddress) ? null : externalAddress.Trim();
+        s.ExternalPort = externalPort is > 0 and < 65536 ? externalPort : 8081;
+        if (s.Id == 0) _db.Settings.Add(s);
+        await _db.SaveChangesAsync();
+        await Load();
+        Message = "Внешний адрес сервера сохранён.";
         return Page();
     }
 

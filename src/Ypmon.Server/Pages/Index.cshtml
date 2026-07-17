@@ -3,7 +3,6 @@
 @using Ypmon.Server.Services
 @{
     ViewData["Title"] = "Дашборд";
-    var canEditMap = User.CanEdit();
 }
 
 <div style="display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:8px">
@@ -81,34 +80,6 @@
     </div>
 </div>
 
-@* --- Карта серверов --- *@
-@if (string.IsNullOrEmpty(Model.YandexApiKey))
-{
-    <div class="card-y">
-        <h3>🗺️ Серверы на карте</h3>
-        <div class="muted">
-            Чтобы включить карту, укажите API-ключ Яндекс.Карт в
-            <a href="/Settings">Настройках</a> → «Оповещения и обслуживание» → «Карта серверов».
-            Точки берутся из поля «Физический адрес» в карточках серверов.
-        </div>
-    </div>
-}
-else
-{
-    <div class="card-y">
-        <h3 style="margin-bottom:4px">🗺️ Серверы на карте</h3>
-        <div class="muted" style="font-size:12px;margin-bottom:12px">
-            Цвет точки = состояние сервера. Клик по точке открывает карточку сервера.
-            @if (!Model.MapPoints.Any())
-            {
-                <span>Пока нет серверов с заполненным «Физическим адресом» — добавьте адрес в карточке сервера.</span>
-            }
-        </div>
-        <div id="ymap" style="height:440px;border-radius:10px;overflow:hidden;background:var(--card-2)"></div>
-    </div>
-    @Html.AntiForgeryToken()
-}
-
 @* --- Список по клиентам --- *@
 @if (!Model.Clients.Any())
 {
@@ -185,96 +156,9 @@ else
         // Время последнего обновления страницы.
         document.getElementById('upd-at').textContent = 'обновлено ' + new Date().toLocaleTimeString();
 
-        // Мягкое автообновление: не перезагружаем страницу, пока пользователь работает с картой.
-        var mapHover = false;
+        // Мягкое автообновление: раз в 60 с, только когда вкладка активна.
         setInterval(function () {
-            if (!document.hidden && !mapHover) location.reload();
+            if (!document.hidden) location.reload();
         }, 60000);
     </script>
-
-    @if (!string.IsNullOrEmpty(Model.YandexApiKey))
-    {
-        <script>
-            window.__mapPoints = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.MapPoints));
-            window.__canEditMap = @(canEditMap ? "true" : "false");
-        </script>
-        <script src="https://api-maps.yandex.ru/2.1/?apikey=@Model.YandexApiKey&lang=ru_RU" type="text/javascript"></script>
-        <script>
-        (function () {
-            if (typeof ymaps === 'undefined') return;
-            var el = document.getElementById('ymap');
-            if (el) {
-                el.addEventListener('mouseenter', function () { mapHover = true; });
-                el.addEventListener('mouseleave', function () { mapHover = false; });
-            }
-            var pts = window.__mapPoints || [];
-            if (!pts.length) return;
-
-            function tokenHeader() {
-                var t = document.querySelector('input[name="__RequestVerificationToken"]');
-                return t ? t.value : '';
-            }
-            function cacheCoords(id, lat, lon, addr) {
-                if (!window.__canEditMap) return;
-                fetch('?handler=SetCoords', {
-                    method: 'POST',
-                    headers: { 'RequestVerificationToken': tokenHeader(), 'Content-Type': 'application/x-www-form-urlencoded' },
-                    body: new URLSearchParams({ id: id, lat: lat, lon: lon, addr: addr })
-                }).catch(function () {});
-            }
-
-            ymaps.ready(function () {
-                var map = new ymaps.Map('ymap', {
-                    center: [61.5, 90.0], zoom: 3,
-                    controls: ['zoomControl', 'fullscreenControl', 'geolocationControl']
-                });
-                var remaining = pts.length;
-
-                function place(p, coords) {
-                    var pm = new ymaps.Placemark(coords, {
-                        hintContent: p.Name + ' — ' + p.Status,
-                        balloonContentHeader: p.Name,
-                        balloonContentBody: p.Client + '<br>' + p.Address + '<br><b>' + p.Status + '</b>',
-                        balloonContentFooter: '<a href="/Servers/Details?id=' + p.Id + '&info=true">Открыть сервер →</a>'
-                    }, {
-                        preset: 'islands#circleDotIcon',
-                        iconColor: p.Color
-                    });
-                    // Клик по точке — сразу открываем карточку сервера.
-                    pm.events.add('click', function () {
-                        location.href = '/Servers/Details?id=' + p.Id + '&info=true';
-                    });
-                    map.geoObjects.add(pm);
-                }
-
-                function done() {
-                    remaining--;
-                    if (remaining <= 0) {
-                        try {
-                            var b = map.geoObjects.getBounds();
-                            if (b) map.setBounds(b, { checkZoomRange: true, zoomMargin: 40 });
-                        } catch (e) {}
-                    }
-                }
-
-                pts.forEach(function (p) {
-                    if (p.Lat != null && p.Lon != null) {
-                        place(p, [p.Lat, p.Lon]);
-                        done();
-                    } else {
-                        ymaps.geocode(p.Address, { results: 1 }).then(function (res) {
-                            var obj = res.geoObjects.get(0);
-                            if (obj) {
-                                var c = obj.geometry.getCoordinates();
-                                place(p, c);
-                                cacheCoords(p.Id, c[0], c[1], p.Address);
-                            }
-                            done();
-                        }, function () { done(); });
-                    }
-                });
-            });
-        })();
-        </script>
-    }
 }

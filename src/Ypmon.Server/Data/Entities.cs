@@ -72,19 +72,8 @@ public class MonitoredServer
 
     public string Name { get; set; } = "";
 
-    /// <summary>Физический адрес (где стоит). Используется для точки на Яндекс.Карте дашборда.</summary>
+    /// <summary>Физический адрес (где стоит).</summary>
     public string? PhysicalAddress { get; set; }
-
-    // --- Кэш геокодирования адреса для карты (чтобы не геокодировать заново при каждой загрузке) ---
-
-    /// <summary>Широта точки на карте (заполняется геокодером по PhysicalAddress).</summary>
-    public double? Latitude { get; set; }
-
-    /// <summary>Долгота точки на карте.</summary>
-    public double? Longitude { get; set; }
-
-    /// <summary>Адрес, который был геокодирован (для сброса кэша при смене PhysicalAddress).</summary>
-    public string? GeoAddress { get; set; }
 
     /// <summary>Локальный IP сервера (в сети клиента).</summary>
     public string? IpAddress { get; set; }
@@ -274,6 +263,11 @@ public class ServerSettings
     /// <summary>Основной адрес для отчётов об архивации (куда дублируется отчёт по всем клиентам).</summary>
     public string? ArchiveReportEmailTo { get; set; }
 
-    /// <summary>API-ключ Яндекс.Карт (JavaScript API) для карты серверов на дашборде. Пусто — карта не показывается.</summary>
-    public string? YandexMapsApiKey { get; set; }
+    // --- Внешний адрес сервера (под которым к нему подключаются удалённые агенты) ---
+
+    /// <summary>Внешний IP/хост, под которым доступен сервер снаружи (для удалённых агентов). Пусто — только локальный адрес.</summary>
+    public string? ExternalAddress { get; set; }
+
+    /// <summary>Внешний порт приёма отчётов (если отличается от порта приёма по умолчанию 8081).</summary>
+    public int ExternalPort { get; set; } = 8081;
 }

@@ -28,6 +28,10 @@ public class DetailsModel : PageModel
     public List<AgentEvent> Events { get; set; } = new();
     public int OfflineThreshold { get; set; } = 300;
 
+    /// <summary>Внешний адрес/порт сервера (для удалённых агентов) — из глобальных настроек.</summary>
+    public string? ExternalAddress { get; set; }
+    public int ExternalPort { get; set; } = 8081;
+
     // Диски с машины агента и пороги свободного места (для тревог)
     public List<DiskStatusDto> Disks { get; set; } = new();
     public Dictionary<string, int> DiskThresholds { get; set; } = new(StringComparer.OrdinalIgnoreCase);
@@ -55,6 +59,8 @@ public class DetailsModel : PageModel
         var settings = await _db.Settings.FirstOrDefaultAsync();
         OfflineThreshold = settings?.OfflineThresholdSeconds ?? 300;
         DefaultBackupStaleDays = settings?.DefaultBackupStaleDays ?? 1;
+        ExternalAddress = settings?.ExternalAddress;
+        ExternalPort = settings?.ExternalPort is > 0 and < 65536 ? settings.ExternalPort : 8081;
         Server = await _db.Servers.Include(s => s.Client).FirstOrDefaultAsync(s => s.Id == Id);
         if (Server is null) return;
         if (Server.LastReportJson is not null)

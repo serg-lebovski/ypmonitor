@@ -28,10 +28,6 @@ public class IndexModel : PageModel
     public List<DaySlice> ArchiveDays { get; set; } = new();
     public int ArchiveMaxPerDay { get; set; } = 1;
 
-    // Точки для Яндекс.Карты (серверы с заполненным физическим адресом).
-    public List<MapPoint> MapPoints { get; set; } = new();
-    public string? YandexApiKey { get; set; }
-
     public record DiskBar(int ServerId, string Server, string Client, string Disk, string? Label,
         double FillPercent, double FreePercent, int Threshold, string Sev);
 
@@ -40,14 +36,10 @@ public class IndexModel : PageModel
         public int Total => Ok + Warning + Error;
     }
 
-    public record MapPoint(int Id, string Name, string Client, string Address,
-        double? Lat, double? Lon, string Color, string Status);
-
     public async Task OnGetAsync()
     {
         var settings = await _db.Settings.FirstOrDefaultAsync();
         OfflineThreshold = settings?.OfflineThresholdSeconds ?? 300;
-        YandexApiKey = settings?.YandexMapsApiKey;
 
         Clients = await _db.Clients
             .Include(c => c.Servers)
@@ -67,7 +59,6 @@ public class IndexModel : PageModel
         }
 
         BuildDiskBars(allServers);
-        BuildMapPoints();
         await BuildArchiveDaysAsync();
     }
 
@@ -120,41 +111,4 @@ public class IndexModel : PageModel
         ArchiveMaxPerDay = max;
     }
 
-    private void BuildMapPoints()
-    {
-        foreach (var c in Clients)
-        foreach (var s in c.Servers)
-        {
-            if (string.IsNullOrWhiteSpace(s.PhysicalAddress)) continue;
-            var offline = s.IsOffline(OfflineThreshold);
-            string color, status;
-            if (offline) { color = "#7b8190"; status = "Офлайн"; }
-            else if (s.LastOutcome == JobOutcome.Error) { color = "#ea5455"; status = "Ошибка"; }
-            else if (s.LastOutcome == JobOutcome.Warning || s.BackupShrinkActive) { color = "#ff9f43"; status = s.BackupShrinkActive ? "Объём бэкапа упал" : "Предупреждение"; }
-            else if (s.LastOutcome == JobOutcome.Ok) { color = "#28c76f"; status = "В норме"; }
-            else { color = "#7b8190"; status = "Нет данных"; }
-
-            // Кэш координат актуален только если адрес не менялся с момента геокодирования.
-            var addr = s.PhysicalAddress!.Trim();
-            double? lat = s.GeoAddress == addr ? s.Latitude : null;
-            double? lon = s.GeoAddress == addr ? s.Longitude : null;
-            MapPoints.Add(new MapPoint(s.Id, s.Name, c.Name, addr, lat, lon, color, status));
-        }
-    }
-
-    /// <summary>Кэширование координат, полученных геокодером на клиенте (чтобы не геокодировать каждый раз).</summary>
-    public async Task<IActionResult> OnPostSetCoordsAsync(int id, double lat, double lon, string addr)
-    {
-        if (!User.CanEdit()) return new JsonResult(new { ok = false });
-        var s = await _db.Servers.FindAsync(id);
-        if (s is not null && !string.IsNullOrWhiteSpace(addr))
-        {
-            s.Latitude = lat;
-            s.Longitude = lon;
-            s.GeoAddress = addr.Trim();
-            await _db.SaveChangesAsync();
-            return new JsonResult(new { ok = true });
-        }
-        return new JsonResult(new { ok = false });
-    }
 }
