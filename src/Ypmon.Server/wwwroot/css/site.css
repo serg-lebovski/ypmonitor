@@ -167,6 +167,44 @@ label { color: var(--muted); font-size: 13px; margin-bottom: 4px; }
 .copy-row input { flex: 1; min-width: 0; font-size: 13px; }
 .copy-row .btn { white-space: nowrap; }
 
+/* --- Графики дашборда --- */
+.charts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+@@media (max-width: 1000px) { .charts-grid { grid-template-columns: 1fr; } }
+
+/* Общие цвета сегментов графиков */
+.sev-ok { color: var(--ok); }
+.sev-warn { color: var(--warn); }
+.sev-err { color: var(--err); }
+
+/* Полосы «место на дисках» */
+.dbar { margin-bottom: 12px; cursor: pointer; }
+.dbar:hover .dbar-name { color: var(--text); }
+.dbar-top { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; margin-bottom: 4px; }
+.dbar-name { color: var(--muted); }
+.dbar-val { font-weight: 600; white-space: nowrap; }
+.dbar-track { position: relative; height: 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.dbar-fill { height: 100%; border-radius: 8px 0 0 8px; transition: width .3s; }
+.dbar-fill.sev-ok { background: var(--ok); }
+.dbar-fill.sev-warn { background: var(--warn); }
+.dbar-fill.sev-err { background: var(--err); }
+.dbar-th { position: absolute; top: -2px; bottom: -2px; width: 2px; background: var(--text); opacity: .5; }
+
+/* Столбчатый график архивации */
+.achart { display: flex; align-items: flex-end; gap: 6px; height: 170px; padding-top: 4px; }
+.acol { flex: 1; display: flex; flex-direction: column; align-items: center; height: 100%; justify-content: flex-end; }
+.astack { display: flex; flex-direction: column; justify-content: flex-end; width: 100%; max-width: 26px; }
+.aseg { width: 100%; }
+.aseg.sev-ok { background: var(--ok); }
+.aseg.sev-warn { background: var(--warn); }
+.aseg.sev-err { background: var(--err); }
+.aseg:first-child { border-radius: 4px 4px 0 0; }
+.alabel { color: var(--muted); font-size: 10px; margin-top: 6px; transform: rotate(-45deg); white-space: nowrap; }
+.legend { display: flex; gap: 16px; margin-top: 18px; font-size: 12px; color: var(--muted); }
+.legend .lg { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: middle; }
+.legend .lg.sev-ok { background: var(--ok); }
+.legend .lg.sev-warn { background: var(--warn); }
+.legend .lg.sev-err { background: var(--err); }
+
 /* Ячейки краткой сводки сервера (страница «Серверы») */
 .cells { display: flex; flex-wrap: wrap; gap: 10px; }
 .cell { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; flex: 1 1 130px; }

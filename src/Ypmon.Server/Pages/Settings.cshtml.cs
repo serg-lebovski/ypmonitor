@@ -128,6 +128,7 @@ public class SettingsModel : PageModel
         s.EmailFrom = input.EmailFrom;
         s.EmailTo = input.EmailTo;
         s.ArchiveReportEmailTo = input.ArchiveReportEmailTo;
+        s.YandexMapsApiKey = string.IsNullOrWhiteSpace(input.YandexMapsApiKey) ? null : input.YandexMapsApiKey.Trim();
         if (s.Id == 0) _db.Settings.Add(s);
         await _db.SaveChangesAsync();
         await Load();

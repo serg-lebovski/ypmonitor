@@ -331,7 +331,8 @@
                 <div class="acc-body">
                 <form method="post" asp-page-handler="Save" asp-route-id="@s.Id">
                     <div class="mb-2"><label>Название</label><input class="form-control" asp-for="Name" /></div>
-                    <div class="mb-2"><label>Физический адрес</label><input class="form-control" asp-for="PhysicalAddress" /></div>
+                    <div class="mb-2"><label>Физический адрес</label><input class="form-control" asp-for="PhysicalAddress" placeholder="город, улица, дом" />
+                        <div class="muted" style="font-size:12px">Используется для точки сервера на карте дашборда (геокодируется автоматически).</div></div>
                     <div class="mb-2"><label>Локальный IP</label><input class="form-control" asp-for="IpAddress" /></div>
                     <div class="mb-2"><label>Внешний IP (роутер) — для пинга</label><input class="form-control" asp-for="ExternalIpAddress" /></div>
                     <div class="mb-2"><label>Тревога, если нет новых файлов N дней (0 = по умолчанию @Model.DefaultBackupStaleDays)</label>

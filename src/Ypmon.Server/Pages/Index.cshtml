@@ -3,17 +3,113 @@
 @using Ypmon.Server.Services
 @{
     ViewData["Title"] = "Дашборд";
+    var canEditMap = User.CanEdit();
 }
 
-<h1 class="page-title">Дашборд</h1>
+<div style="display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:8px">
+    <h1 class="page-title" style="margin-bottom:0">Дашборд</h1>
+    <span class="muted" id="upd-at" style="font-size:12px"></span>
+</div>
 
-<div class="metrics">
+<div class="metrics" style="margin-top:14px">
     <div class="metric"><div class="v">@Model.TotalServers</div><div class="l">Серверов всего</div></div>
     <div class="metric"><div class="v" style="color:var(--ok)">@Model.OkCount</div><div class="l">В норме</div></div>
     <div class="metric"><div class="v" style="color:var(--err)">@Model.ProblemCount</div><div class="l">С проблемами</div></div>
     <div class="metric"><div class="v" style="color:var(--unknown)">@Model.OfflineCount</div><div class="l">Офлайн</div></div>
 </div>
 
+@* --- Графики: место на дисках + работа архивации --- *@
+<div class="charts-grid">
+    <div class="card-y">
+        <h3 style="margin-bottom:4px">💽 Свободное место на дисках</h3>
+        <div class="muted" style="font-size:12px;margin-bottom:14px">Худшие по остатку места сверху. Красный — ниже порога, оранжевый — близко к порогу.</div>
+        @if (!Model.DiskBars.Any())
+        {
+            <div class="muted">Пока нет данных о дисках. Они появятся после отчётов агентов.</div>
+        }
+        else
+        {
+            foreach (var b in Model.DiskBars)
+            {
+                <div class="dbar" onclick="location.href='/Servers/Details?id=@b.ServerId&info=true'" title="Открыть сервер">
+                    <div class="dbar-top">
+                        <span class="dbar-name">@b.Client / <strong>@b.Server</strong> · @b.Disk@(string.IsNullOrWhiteSpace(b.Label) ? "" : $" ({b.Label})")</span>
+                        <span class="dbar-val sev-@b.Sev">@b.FreePercent.ToString("0")% свободно</span>
+                    </div>
+                    <div class="dbar-track">
+                        <div class="dbar-fill sev-@b.Sev" style="width:@b.FillPercent.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture)%"></div>
+                        @if (b.Threshold > 0)
+                        {
+                            <div class="dbar-th" style="left:@((100 - b.Threshold).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture))%" title="порог @b.Threshold% свободного"></div>
+                        }
+                    </div>
+                </div>
+            }
+        }
+    </div>
+
+    <div class="card-y">
+        <h3 style="margin-bottom:4px">📦 Работа архивации</h3>
+        <div class="muted" style="font-size:12px;margin-bottom:14px">Итоги полных отчётов по дням за 2 недели.</div>
+        <div class="achart">
+            @foreach (var d in Model.ArchiveDays)
+            {
+                <div class="acol" title="@d.Label — ок: @d.Ok, предупр.: @d.Warning, ошибок: @d.Error">
+                    <div class="astack">
+                        @if (d.Error > 0)
+                        {
+                            <div class="aseg sev-err" style="height:@(d.Error * 150 / Model.ArchiveMaxPerDay)px"></div>
+                        }
+                        @if (d.Warning > 0)
+                        {
+                            <div class="aseg sev-warn" style="height:@(d.Warning * 150 / Model.ArchiveMaxPerDay)px"></div>
+                        }
+                        @if (d.Ok > 0)
+                        {
+                            <div class="aseg sev-ok" style="height:@(d.Ok * 150 / Model.ArchiveMaxPerDay)px"></div>
+                        }
+                    </div>
+                    <div class="alabel">@d.Label</div>
+                </div>
+            }
+        </div>
+        <div class="legend">
+            <span><i class="lg sev-ok"></i> норма</span>
+            <span><i class="lg sev-warn"></i> предупреждение</span>
+            <span><i class="lg sev-err"></i> ошибка</span>
+        </div>
+    </div>
+</div>
+
+@* --- Карта серверов --- *@
+@if (string.IsNullOrEmpty(Model.YandexApiKey))
+{
+    <div class="card-y">
+        <h3>🗺️ Серверы на карте</h3>
+        <div class="muted">
+            Чтобы включить карту, укажите API-ключ Яндекс.Карт в
+            <a href="/Settings">Настройках</a> → «Оповещения и обслуживание» → «Карта серверов».
+            Точки берутся из поля «Физический адрес» в карточках серверов.
+        </div>
+    </div>
+}
+else
+{
+    <div class="card-y">
+        <h3 style="margin-bottom:4px">🗺️ Серверы на карте</h3>
+        <div class="muted" style="font-size:12px;margin-bottom:12px">
+            Цвет точки = состояние сервера. Клик по точке открывает карточку сервера.
+            @if (!Model.MapPoints.Any())
+            {
+                <span>Пока нет серверов с заполненным «Физическим адресом» — добавьте адрес в карточке сервера.</span>
+            }
+        </div>
+        <div id="ymap" style="height:440px;border-radius:10px;overflow:hidden;background:var(--card-2)"></div>
+    </div>
+    @Html.AntiForgeryToken()
+}
+
+@* --- Список по клиентам --- *@
 @if (!Model.Clients.Any())
 {
     <div class="card-y">
@@ -85,6 +181,100 @@ else
 }
 
 @section Scripts {
-    @* Дашборд обновляется в реальном времени: перезагрузка каждые 15 сек *@
-    <script>setTimeout(() => location.reload(), 15000);</script>
+    <script>
+        // Время последнего обновления страницы.
+        document.getElementById('upd-at').textContent = 'обновлено ' + new Date().toLocaleTimeString();
+
+        // Мягкое автообновление: не перезагружаем страницу, пока пользователь работает с картой.
+        var mapHover = false;
+        setInterval(function () {
+            if (!document.hidden && !mapHover) location.reload();
+        }, 60000);
+    </script>
+
+    @if (!string.IsNullOrEmpty(Model.YandexApiKey))
+    {
+        <script>
+            window.__mapPoints = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.MapPoints));
+            window.__canEditMap = @(canEditMap ? "true" : "false");
+        </script>
+        <script src="https://api-maps.yandex.ru/2.1/?apikey=@Model.YandexApiKey&lang=ru_RU" type="text/javascript"></script>
+        <script>
+        (function () {
+            if (typeof ymaps === 'undefined') return;
+            var el = document.getElementById('ymap');
+            if (el) {
+                el.addEventListener('mouseenter', function () { mapHover = true; });
+                el.addEventListener('mouseleave', function () { mapHover = false; });
+            }
+            var pts = window.__mapPoints || [];
+            if (!pts.length) return;
+
+            function tokenHeader() {
+                var t = document.querySelector('input[name="__RequestVerificationToken"]');
+                return t ? t.value : '';
+            }
+            function cacheCoords(id, lat, lon, addr) {
+                if (!window.__canEditMap) return;
+                fetch('?handler=SetCoords', {
+                    method: 'POST',
+                    headers: { 'RequestVerificationToken': tokenHeader(), 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: new URLSearchParams({ id: id, lat: lat, lon: lon, addr: addr })
+                }).catch(function () {});
+            }
+
+            ymaps.ready(function () {
+                var map = new ymaps.Map('ymap', {
+                    center: [61.5, 90.0], zoom: 3,
+                    controls: ['zoomControl', 'fullscreenControl', 'geolocationControl']
+                });
+                var remaining = pts.length;
+
+                function place(p, coords) {
+                    var pm = new ymaps.Placemark(coords, {
+                        hintContent: p.Name + ' — ' + p.Status,
+                        balloonContentHeader: p.Name,
+                        balloonContentBody: p.Client + '<br>' + p.Address + '<br><b>' + p.Status + '</b>',
+                        balloonContentFooter: '<a href="/Servers/Details?id=' + p.Id + '&info=true">Открыть сервер →</a>'
+                    }, {
+                        preset: 'islands#circleDotIcon',
+                        iconColor: p.Color
+                    });
+                    // Клик по точке — сразу открываем карточку сервера.
+                    pm.events.add('click', function () {
+                        location.href = '/Servers/Details?id=' + p.Id + '&info=true';
+                    });
+                    map.geoObjects.add(pm);
+                }
+
+                function done() {
+                    remaining--;
+                    if (remaining <= 0) {
+                        try {
+                            var b = map.geoObjects.getBounds();
+                            if (b) map.setBounds(b, { checkZoomRange: true, zoomMargin: 40 });
+                        } catch (e) {}
+                    }
+                }
+
+                pts.forEach(function (p) {
+                    if (p.Lat != null && p.Lon != null) {
+                        place(p, [p.Lat, p.Lon]);
+                        done();
+                    } else {
+                        ymaps.geocode(p.Address, { results: 1 }).then(function (res) {
+                            var obj = res.geoObjects.get(0);
+                            if (obj) {
+                                var c = obj.geometry.getCoordinates();
+                                place(p, c);
+                                cacheCoords(p.Id, c[0], c[1], p.Address);
+                            }
+                            done();
+                        }, function () { done(); });
+                    }
+                });
+            });
+        })();
+        </script>
+    }
 }

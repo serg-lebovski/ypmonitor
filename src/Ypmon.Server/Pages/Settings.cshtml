@@ -216,6 +216,17 @@
                         <div class="mb-3"><label>📦 Отчёт об архивации — куда отправлять (общий адрес, через запятую)</label>
                             <input class="form-control" name="ArchiveReportEmailTo" value="@s.ArchiveReportEmailTo" placeholder="напр. admin@company.ru" />
                             <div class="muted" style="font-size:12px">Сюда дублируется сводный отчёт об архивации по всем клиентам (по расписанию и по кнопке «Разослать отчёт»).</div></div>
+
+                        <h4 style="font-size:16px">🗺️ Карта серверов (Яндекс.Карты)</h4>
+                        <div class="mb-3"><label>API-ключ Яндекс.Карт (JavaScript API)</label>
+                            <input class="form-control mono" name="YandexMapsApiKey" value="@s.YandexMapsApiKey" placeholder="напр. 12345678-90ab-cdef-1234-567890abcdef" />
+                            <div class="muted" style="font-size:12px">
+                                Нужен для карты серверов на дашборде. Получить бесплатно:
+                                <a href="https://developer.tech.yandex.ru/services/" target="_blank" rel="noopener">developer.tech.yandex.ru</a>
+                                → «Подключить API» → <strong>JavaScript API и HTTP Геокодер</strong>. Точки на карте берутся из поля
+                                <strong>«Физический адрес»</strong> в карточке каждого сервера (адрес геокодируется автоматически).
+                            </div></div>
+
                         <button class="btn btn-primary" type="submit">Сохранить</button>
                         <button class="btn btn-primary" type="submit" asp-page-handler="TestAlert" formnovalidate>Отправить тест</button>
                     </form>
