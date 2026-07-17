@@ -254,6 +254,13 @@ public class AvailabilityMonitor : BackgroundService
 
     // --- Здоровье физических дисков (SMART) --------------------------------
 
+    /// <summary>Ранг здоровья для сравнения: чем больше — тем хуже. Unknown/нет данных = 0 (не считаем ухудшением).</summary>
+    private static int HealthRank(string? h) => h switch { "Warning" => 1, "Unhealthy" => 2, _ => 0 };
+    private static string HealthRu(string? h) => h switch
+    {
+        "Healthy" => "Здоров", "Warning" => "Предупреждение", "Unhealthy" => "Неисправен", _ => "нет данных"
+    };
+
     private async Task<bool> CheckDiskHealthAsync(ServerSettings s, MonitoredServer srv, TelegramService tg, TelegramReportService topics)
     {
         if (string.IsNullOrWhiteSpace(srv.LastPhysicalDisksJson)) return false;
@@ -262,23 +269,58 @@ public class AvailabilityMonitor : BackgroundService
         catch { return false; }
         if (disks is null || disks.Count == 0) return false;
 
-        var bad = disks.Where(d => d.Health is "Warning" or "Unhealthy").ToList();
-        var problem = bad.Count > 0;
-        if (problem == srv.AlertDiskHealthActive) return false;   // без перехода — не тревожим
+        // Прошлое известное здоровье по каждому накопителю (ключ — серийник, иначе имя).
+        Dictionary<string, string> prev;
+        try
+        {
+            prev = string.IsNullOrWhiteSpace(srv.DiskHealthStateJson)
+                ? new()
+                : JsonSerializer.Deserialize<Dictionary<string, string>>(srv.DiskHealthStateJson!) ?? new();
+        }
+        catch { prev = new(); }
 
-        srv.AlertDiskHealthActive = problem;
+        var next = new Dictionary<string, string>();
+        var worsened = new List<string>();   // накопители, у которых показатели ухудшились
+        var improved = new List<string>();
+
+        foreach (var d in disks)
+        {
+            var key = string.IsNullOrWhiteSpace(d.Serial) ? d.Name : d.Serial!;
+            if (string.IsNullOrWhiteSpace(key)) continue;
+            next[key] = d.Health;
+
+            var curRank = HealthRank(d.Health);
+            // Новый накопитель считаем «был здоров» — тогда первое же Warning/Unhealthy = ухудшение.
+            var prevHealth = prev.TryGetValue(key, out var ph) ? ph : "Healthy";
+            var prevRank = HealthRank(prevHealth);
+
+            if (curRank > prevRank)
+                worsened.Add($"{WebUtility.HtmlEncode(d.Name)}: {HealthRu(prevHealth)} → <b>{HealthRu(d.Health)}</b>"
+                    + (d.TemperatureC is int t ? $" ({t} °C)" : ""));
+            else if (curRank < prevRank)
+                improved.Add($"{WebUtility.HtmlEncode(d.Name)}: {HealthRu(prevHealth)} → {HealthRu(d.Health)}");
+        }
+
+        var stateChanged = !SameState(prev, next);
+        if (stateChanged) srv.DiskHealthStateJson = JsonSerializer.Serialize(next);
+        srv.AlertDiskHealthActive = disks.Any(d => HealthRank(d.Health) > 0);
+
         var name = WebUtility.HtmlEncode(srv.Name);
-        string text;
-        if (problem)
-        {
-            var det = string.Join(", ", bad.Select(d => $"{WebUtility.HtmlEncode(d.Name)}: {d.Health}"));
-            text = $"🧯🔴 <b>{name}</b> — проблема со здоровьем накопителя (SMART): {det}. Стоит проверить диск / бэкапы.";
-        }
-        else
-        {
-            text = $"🧯🟢 <b>{name}</b> — здоровье накопителей (SMART) снова в норме.";
-        }
-        await NotifyAsync(s, srv.Client, tg, topics, text);
+        if (worsened.Count > 0)
+            await NotifyAsync(s, srv.Client, tg, topics,
+                $"🩺🔴 <b>{name}</b> — ухудшились показатели SMART:\n{string.Join("\n", worsened.Select(x => "• " + x))}\nСтоит проверить накопитель и бэкапы.");
+        if (improved.Count > 0)
+            await NotifyAsync(s, srv.Client, tg, topics,
+                $"🩺🟢 <b>{name}</b> — здоровье накопителя улучшилось:\n{string.Join("\n", improved.Select(x => "• " + x))}");
+
+        return stateChanged;
+    }
+
+    private static bool SameState(Dictionary<string, string> a, Dictionary<string, string> b)
+    {
+        if (a.Count != b.Count) return false;
+        foreach (var (k, v) in b)
+            if (!a.TryGetValue(k, out var av) || av != v) return false;
         return true;
     }
 

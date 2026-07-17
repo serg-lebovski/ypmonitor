@@ -117,8 +117,12 @@ public class MonitoredServer
     /// <summary>Последнее здоровье физических накопителей (JSON List&lt;PhysicalDiskDto&gt;), из полного отчёта.</summary>
     public string? LastPhysicalDisksJson { get; set; }
 
-    /// <summary>Активна тревога «проблема со здоровьем диска (SMART)» — для уведомлений по переходам.</summary>
+    /// <summary>Активна тревога «проблема со здоровьем диска (SMART)» — есть хотя бы один Warning/Unhealthy.</summary>
     public bool AlertDiskHealthActive { get; set; }
+
+    /// <summary>Последнее известное здоровье каждого накопителя (JSON serial/name → Health) — для детекта
+    /// ухудшения показателей SMART (уведомляем, когда становится хуже).</summary>
+    public string? DiskHealthStateJson { get; set; }
 
     // Текущие состояния тревог — чтобы уведомлять по переходам, а не спамить каждую минуту.
     public bool AlertOfflineActive { get; set; }
