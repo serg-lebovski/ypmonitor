@@ -12,7 +12,8 @@ public class DetailsModel : PageModel
 {
     private readonly AppDbContext _db;
     private readonly RemoteCommandService _commands;   // [YPMON-REMOTE-CMD]
-    public DetailsModel(AppDbContext db, RemoteCommandService commands) { _db = db; _commands = commands; }
+    private readonly AuditService _audit;
+    public DetailsModel(AppDbContext db, RemoteCommandService commands, AuditService audit) { _db = db; _commands = commands; _audit = audit; }
 
     [BindProperty(SupportsGet = true)] public int Id { get; set; }
 
@@ -113,6 +114,7 @@ public class DetailsModel : PageModel
         s.Description = Description?.Trim();
         s.BackupStaleDays = Math.Max(0, BackupStaleDays);
         await _db.SaveChangesAsync();
+        await _audit.LogAsync(User, "Изменён сервер", s.Name);
         await Load();
         FillEditFields();
         Message = "Сохранено";
@@ -157,6 +159,7 @@ public class DetailsModel : PageModel
         if (!monitorPing) s.AlertPingActive = false;
 
         await _db.SaveChangesAsync();
+        await _audit.LogAsync(User, "Изменён мониторинг сервера", s.Name);
         await Load();
         FillEditFields();
         Message = "Настройки мониторинга сохранены";
@@ -184,6 +187,7 @@ public class DetailsModel : PageModel
             s.BackupShrinkActive = false;
             s.PrevBackupSizeBytes = s.BackupShrinkToBytes > 0 ? s.BackupShrinkToBytes : s.PrevBackupSizeBytes;
             await _db.SaveChangesAsync();
+            await _audit.LogAsync(User, "Подтверждено уменьшение объёма бэкапа", s.Name);
         }
         await Load();
         FillEditFields();
@@ -198,8 +202,10 @@ public class DetailsModel : PageModel
         if (s is not null)
         {
             var clientId = s.ClientId;
+            var name = s.Name;
             _db.Servers.Remove(s);
             await _db.SaveChangesAsync();
+            await _audit.LogAsync(User, "Удалён сервер", name);
             return RedirectToPage("/Clients/Details", new { id = clientId });
         }
         return RedirectToPage("/Index");
@@ -211,6 +217,7 @@ public class DetailsModel : PageModel
         await _commands.RequestReportAsync(Id);
         await Load();
         FillEditFields();
+        await _audit.LogAsync(User, "Запрошен отчёт у агента", Server?.Name);   // [YPMON-REMOTE-CMD]
         Message = "Запрос отправлен. Агент пришлёт отчёт при следующей связи (обычно в течение 1–2 минут).";
         return Page();
     }
@@ -222,6 +229,7 @@ public class DetailsModel : PageModel
         await _commands.RequestUpdateAsync(Id);
         await Load();
         FillEditFields();
+        await _audit.LogAsync(User, "Форс-обновление агента", Server?.Name);   // [YPMON-REMOTE-CMD]
         Message = "Команда на обновление отправлена. Агент проверит и установит обновление при следующей связи " +
                   "(обычно в течение 1–2 минут); служба перезапустится сама.";
         return Page();
@@ -235,6 +243,7 @@ public class DetailsModel : PageModel
         {
             s.ApiKey = Services.PasswordHasher.NewApiKey();
             await _db.SaveChangesAsync();
+            await _audit.LogAsync(User, "Перевыпущен API-ключ сервера", s.Name);
         }
         return RedirectToPage(new { id = Id });
     }

@@ -204,6 +204,22 @@ public class AgentEvent
     public string Message { get; set; } = "";
 }
 
+/// <summary>Запись журнала действий администратора (кто, когда, что сделал).</summary>
+public class AuditEntry
+{
+    public long Id { get; set; }
+    public DateTimeOffset At { get; set; } = DateTimeOffset.UtcNow;
+
+    /// <summary>Логин пользователя, выполнившего действие.</summary>
+    public string Username { get; set; } = "";
+
+    /// <summary>Короткое описание действия (напр. «Перевыпущен API-ключ»).</summary>
+    public string Action { get; set; } = "";
+
+    /// <summary>Дополнительные детали (объект действия, значения).</summary>
+    public string? Details { get; set; }
+}
+
 /// <summary>Глобальные настройки сервера (одна запись, key/value-подход не нужен).</summary>
 public class ServerSettings
 {

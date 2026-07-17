@@ -10,7 +10,8 @@ public class DetailsModel : PageModel
 {
     private readonly AppDbContext _db;
     private readonly IWebHostEnvironment _env;
-    public DetailsModel(AppDbContext db, IWebHostEnvironment env) { _db = db; _env = env; }
+    private readonly AuditService _audit;
+    public DetailsModel(AppDbContext db, IWebHostEnvironment env, AuditService audit) { _db = db; _env = env; _audit = audit; }
 
     public Client? Client { get; set; }
     public int OfflineThreshold { get; set; } = 300;
@@ -88,6 +89,7 @@ public class DetailsModel : PageModel
         c.ReportEmail = string.IsNullOrWhiteSpace(ReportEmail) ? null : ReportEmail.Trim();
         c.ReportTelegramChatId = string.IsNullOrWhiteSpace(ReportTelegramChatId) ? null : ReportTelegramChatId.Trim();
         await _db.SaveChangesAsync();
+        await _audit.LogAsync(User, "Изменён клиент", c.Name);
         await Load();
         Message = "Клиент сохранён";
         return Page();
@@ -109,6 +111,7 @@ public class DetailsModel : PageModel
                 ApiKey = PasswordHasher.NewApiKey()
             });
             await _db.SaveChangesAsync();
+            await _audit.LogAsync(User, "Добавлен сервер", ServerName.Trim());
         }
         return RedirectToPage(new { id = Id });
     }
@@ -117,7 +120,13 @@ public class DetailsModel : PageModel
     {
         if (!User.CanEdit()) return Forbid();
         var s = await _db.Servers.FindAsync(serverId);
-        if (s is not null) { _db.Servers.Remove(s); await _db.SaveChangesAsync(); }
+        if (s is not null)
+        {
+            var name = s.Name;
+            _db.Servers.Remove(s);
+            await _db.SaveChangesAsync();
+            await _audit.LogAsync(User, "Удалён сервер", name);
+        }
         return RedirectToPage(new { id = Id });
     }
 
@@ -125,7 +134,12 @@ public class DetailsModel : PageModel
     {
         if (!User.CanEdit()) return Forbid();
         var s = await _db.Servers.FindAsync(serverId);
-        if (s is not null) { s.ApiKey = PasswordHasher.NewApiKey(); await _db.SaveChangesAsync(); }
+        if (s is not null)
+        {
+            s.ApiKey = PasswordHasher.NewApiKey();
+            await _db.SaveChangesAsync();
+            await _audit.LogAsync(User, "Перевыпущен API-ключ сервера", s.Name);
+        }
         return RedirectToPage(new { id = Id });
     }
 }

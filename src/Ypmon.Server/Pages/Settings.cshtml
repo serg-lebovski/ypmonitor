@@ -222,6 +222,34 @@
                     </form>
                 </div>
             </details>
+
+            <details class="card-y acc">
+                <summary>🧾 Журнал действий</summary>
+                <div class="acc-body">
+                    <div class="muted mb-2" style="font-size:12px">Кто и когда менял настройки, пользователей, серверы и ключи.</div>
+                    @if (!Model.AuditLog.Any())
+                    {
+                        <div class="muted">Пока нет записей.</div>
+                    }
+                    else
+                    {
+                        <table class="tbl">
+                            <thead><tr><th>Когда (UTC)</th><th>Кто</th><th>Действие</th></tr></thead>
+                            <tbody>
+                            @foreach (var a in Model.AuditLog)
+                            {
+                                <tr>
+                                    <td class="mono" style="white-space:nowrap">@a.At.UtcDateTime.ToString("yyyy-MM-dd HH:mm")</td>
+                                    <td>@a.Username</td>
+                                    <td>@a.Action@(string.IsNullOrWhiteSpace(a.Details) ? "" : $" — {a.Details}")</td>
+                                </tr>
+                            }
+                            </tbody>
+                        </table>
+                        <div class="muted" style="font-size:12px;margin-top:8px">Показаны последние @Model.AuditLog.Count действий.</div>
+                    }
+                </div>
+            </details>
         }
 
         <details class="card-y acc">

@@ -18,10 +18,11 @@ public class SettingsModel : PageModel
     private readonly TelegramService _tg;
     private readonly TelegramReportService _report;
     private readonly WireGuardProxyService _wg;
+    private readonly AuditService _audit;
     public SettingsModel(AppDbContext db, IConfiguration cfg, AlertService alerts, IWebHostEnvironment env,
-        ServerUpdateService upd, TelegramService tg, TelegramReportService report, WireGuardProxyService wg)
+        ServerUpdateService upd, TelegramService tg, TelegramReportService report, WireGuardProxyService wg, AuditService audit)
     {
-        _db = db; _cfg = cfg; _alerts = alerts; _env = env; _upd = upd; _tg = tg; _report = report; _wg = wg;
+        _db = db; _cfg = cfg; _alerts = alerts; _env = env; _upd = upd; _tg = tg; _report = report; _wg = wg; _audit = audit;
     }
 
     public bool WireGuardRunning { get; set; }
@@ -29,6 +30,7 @@ public class SettingsModel : PageModel
 
     public ServerSettings Settings { get; set; } = new();
     public List<AppUser> Users { get; set; } = new();
+    public List<AuditEntry> AuditLog { get; set; } = new();
     public string? Message { get; set; }
     public bool IsError { get; set; }
 
@@ -56,6 +58,8 @@ public class SettingsModel : PageModel
     {
         Settings = await _db.Settings.FirstOrDefaultAsync() ?? new ServerSettings();
         Users = await _db.Users.OrderBy(u => u.Username).ToListAsync();
+        if (IsAdmin)
+            AuditLog = await _db.Audit.OrderByDescending(a => a.At).Take(200).ToListAsync();
         HttpPort = _cfg.GetValue<int?>("Server:HttpPort") ?? 8080;
         DbProvider = _cfg["Database:Provider"] ?? "sqlite";
 
@@ -103,6 +107,7 @@ public class SettingsModel : PageModel
         if (!IsAdmin) return Forbid();
         if (!_upd.Configured) { await Load(); IsError = true; Message = "Самообновление не настроено на сервере."; return Page(); }
         _upd.RequestApply();
+        await _audit.LogAsync(User, "Запущено обновление сервера (git pull + пересборка)");
         await Load();
         Message = "Обновление запущено. Сервер выполнит git pull и пересоберётся (≈1–3 мин), затем перезапустится. " +
                   "Через пару минут обновите страницу.";
@@ -130,6 +135,7 @@ public class SettingsModel : PageModel
         s.ArchiveReportEmailTo = input.ArchiveReportEmailTo;
         if (s.Id == 0) _db.Settings.Add(s);
         await _db.SaveChangesAsync();
+        await _audit.LogAsync(User, "Изменены настройки", "оповещения / SMTP / хранение истории");
         await Load();
         Message = "Настройки сохранены";
         return Page();
@@ -143,6 +149,7 @@ public class SettingsModel : PageModel
         s.ExternalPort = externalPort is > 0 and < 65536 ? externalPort : 8081;
         if (s.Id == 0) _db.Settings.Add(s);
         await _db.SaveChangesAsync();
+        await _audit.LogAsync(User, "Изменён внешний адрес сервера", $"{s.ExternalAddress}:{s.ExternalPort}");
         await Load();
         Message = "Внешний адрес сервера сохранён.";
         return Page();
@@ -166,6 +173,7 @@ public class SettingsModel : PageModel
         if (s.Id == 0) _db.Settings.Add(s);
         await _db.SaveChangesAsync();
         _wg.Apply(s.WireGuardEnabled, s.WireGuardConfig);
+        await _audit.LogAsync(User, "Обновлён конфиг обхода блокировки Telegram", s.WireGuardEnabled ? "включён" : "выключен");
         await Load();
         Message = "WireGuard: " + _wg.LastStatus;
         IsError = s.WireGuardEnabled && !_wg.IsRunning;
@@ -183,6 +191,7 @@ public class SettingsModel : PageModel
             await _db.SaveChangesAsync();
         }
         _wg.Apply(false, null);   // остановить туннель и убрать конфиг
+        await _audit.LogAsync(User, "Удалён конфиг обхода блокировки Telegram");
         await Load();
         Message = "Туннель WireGuard остановлен, конфигурация удалена.";
         return Page();
@@ -200,6 +209,7 @@ public class SettingsModel : PageModel
         s.DailyReportHourOmsk = Math.Clamp(input.DailyReportHourOmsk, 0, 23);
         if (s.Id == 0) _db.Settings.Add(s);
         await _db.SaveChangesAsync();
+        await _audit.LogAsync(User, "Изменены настройки Telegram-бота");
         await Load();
         Message = "Настройки бота сохранены.";
         return Page();
@@ -234,6 +244,7 @@ public class SettingsModel : PageModel
     {
         if (!IsAdmin) return Forbid();
         Message = await _report.SendReportAsync();
+        await _audit.LogAsync(User, "Ручная рассылка отчёта об архивации");
         await Load();
         return Page();
     }
@@ -315,6 +326,7 @@ public class SettingsModel : PageModel
             Role = ParseRole(role)
         });
         await _db.SaveChangesAsync();
+        await _audit.LogAsync(User, "Добавлен пользователь", $"{username.Trim()} — роль {UiHelpers.RoleName(ParseRole(role))}");
         await Load();
         Message = "Пользователь добавлен";
         return Page();
@@ -343,6 +355,8 @@ public class SettingsModel : PageModel
             u.PasswordHash = h; u.PasswordSalt = salt;
         }
         await _db.SaveChangesAsync();
+        await _audit.LogAsync(User, "Изменён пользователь", $"{u.Username} — роль {UiHelpers.RoleName(u.Role)}"
+            + (string.IsNullOrWhiteSpace(newPassword) ? "" : ", сменён пароль"));
         await Load();
         Message = "Пользователь обновлён";
         return Page();
@@ -354,7 +368,13 @@ public class SettingsModel : PageModel
         if (userId == CurrentUserId) { await Load(); IsError = true; Message = "Нельзя удалить самого себя"; return Page(); }
         if (await _db.Users.CountAsync() <= 1) { await Load(); IsError = true; Message = "Нельзя удалить последнего пользователя"; return Page(); }
         var u = await _db.Users.FindAsync(userId);
-        if (u is not null) { _db.Users.Remove(u); await _db.SaveChangesAsync(); }
+        if (u is not null)
+        {
+            var uname = u.Username;
+            _db.Users.Remove(u);
+            await _db.SaveChangesAsync();
+            await _audit.LogAsync(User, "Удалён пользователь", uname);
+        }
         await Load();
         Message = "Пользователь удалён";
         return Page();
