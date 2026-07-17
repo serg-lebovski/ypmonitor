@@ -32,10 +32,20 @@ function Publish($proj, $rid, $outName, $installerDir) {
     dotnet publish (Join-Path $root $proj) @common -r $rid -o $out
     if ($LASTEXITCODE -ne 0) { throw "Ошибка сборки $outName" }
 
-    # Копируем скрипты установки рядом с бинарником
+    # Копируем скрипты установки рядом с бинарником.
+    # ВАЖНО: не копируем исполняемые файлы/библиотеки из ассетов — иначе случайно оставленный там
+    # старый Ypmon.Agent.exe затрёт только что собранный (был баг: во всех установщиках оказывалась
+    # версия 1.0.0.0). Ассеты — это только скрипты установки и конфиги.
     $assets = Join-Path $root $installerDir
     if (Test-Path $assets) {
-        Copy-Item (Join-Path $assets '*') $out -Recurse -Force
+        Get-ChildItem $assets -Recurse -File |
+            Where-Object { $_.Extension -notin '.exe', '.dll' } |
+            ForEach-Object {
+                $rel = $_.FullName.Substring($assets.Length).TrimStart('\','/')
+                $dest = Join-Path $out $rel
+                New-Item -ItemType Directory -Force -Path (Split-Path $dest) | Out-Null
+                Copy-Item $_.FullName $dest -Force
+            }
     }
     # Чистим лишнее
     Get-ChildItem $out -Filter *.pdb -ErrorAction SilentlyContinue | Remove-Item -Force
