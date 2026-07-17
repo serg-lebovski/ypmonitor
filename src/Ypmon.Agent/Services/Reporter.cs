@@ -13,6 +13,7 @@ namespace Ypmon.Agent.Services;
 public class Reporter : BackgroundService
 {
     private readonly ConfigStore _store;
+    private readonly SpoolStore _spool;
     private readonly FolderMonitorService _folders;
     private readonly EventLogReaderService _events;
     private readonly RemoteCommandHandler _commands;   // [YPMON-REMOTE-CMD] вырезать после релиза
@@ -22,10 +23,10 @@ public class Reporter : BackgroundService
     public static readonly string Version =
         Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "1.0.0";
 
-    public Reporter(ConfigStore store, FolderMonitorService folders, EventLogReaderService events,
+    public Reporter(ConfigStore store, SpoolStore spool, FolderMonitorService folders, EventLogReaderService events,
         RemoteCommandHandler commands, ILogger<Reporter> log)
     {
-        _store = store; _folders = folders; _events = events; _commands = commands; _log = log;
+        _store = store; _spool = spool; _folders = folders; _events = events; _commands = commands; _log = log;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -64,10 +65,16 @@ public class Reporter : BackgroundService
             // Диски передаём и в heartbeat: сбор дешёвый, а серверные пороги
             // заполненности работают со свежими данными (раз в минуту, а не раз в 6 часов).
             Disks = CollectDisks(),
+            // Здоровье накопителей (SMART) — только в полном отчёте: сбор через WMI дороже.
+            PhysicalDisks = heartbeat ? new() : CollectPhysicalDisks(),
             HeartbeatIntervalSeconds = Math.Max(15, cfg.HeartbeatIntervalSeconds),
             ReportIntervalSeconds = Math.Max(60, cfg.ReportIntervalSeconds)
         };
     }
+
+    /// <summary>Здоровье физических накопителей (SMART) — только на Windows, best-effort.</summary>
+    private static List<PhysicalDiskDto> CollectPhysicalDisks()
+        => OperatingSystem.IsWindows() ? PhysicalDiskCollector.Collect() : new();
 
     /// <summary>Локальные (несъёмные) диски: буква, метка, объём, свободно.</summary>
     public static List<DiskStatusDto> CollectDisks()
@@ -106,28 +113,65 @@ public class Reporter : BackgroundService
             return;
         }
 
-        // Ошибки журнала собираем только для полного отчёта, перед отправкой.
-        if (!heartbeat && OperatingSystem.IsWindows())
+        if (heartbeat)
+        {
+            // Лёгкий отчёт о связи. При успехе — досылаем накопленную очередь полных отчётов.
+            var (hack, hstatus) = await PostAsync(cfg, report);
+            if (hstatus is >= 200 and < 300)
+            {
+                var flushed = await _spool.FlushAsync(r => TrySendAsync(cfg, r));
+                if (flushed > 0) _log.LogInformation("Досланы отложенные отчёты: {N}", flushed);
+            }
+            // [YPMON-REMOTE-CMD] Флаги-команды из ответа сервера — вырезать после релиза.
+            if (hack is not null)
+                await _commands.HandleAsync(cfg, hack, () => ReportOnceAsync(cfg, heartbeat: false));
+            return;
+        }
+
+        // Полный отчёт. Ошибки журнала собираем перед отправкой.
+        if (OperatingSystem.IsWindows())
         {
             try { report.EventLogErrors = _events.Collect(cfg); }
             catch (Exception ex) { _log.LogWarning(ex, "Не удалось прочитать журнал событий"); }
         }
 
-        var (ack, statusCode) = await PostAsync(cfg, report);
+        ReportAckDto? ack = null;
+        var sendOk = false;
+        try
+        {
+            var (a, statusCode) = await PostAsync(cfg, report);
+            ack = a;
+            sendOk = statusCode is >= 200 and < 300;
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "Полный отчёт не отправлен — откладываю в очередь");
+        }
 
-        if (!heartbeat)
-            PersistSnapshot(
-                accepted: ack?.Accepted ?? false,
-                message: ack?.Message ?? $"HTTP {statusCode}",
-                error: null,
-                report: report,
-                clientName: ack?.ClientName,
-                serverName: ack?.ServerName);
+        PersistSnapshot(
+            accepted: ack?.Accepted ?? false,
+            message: ack?.Message ?? (sendOk ? "отправлено" : "сервер недоступен — отчёт отложен в очередь"),
+            error: sendOk ? null : "сервер недоступен",
+            report: report,
+            clientName: ack?.ClientName,
+            serverName: ack?.ServerName);
 
-        // [YPMON-REMOTE-CMD] Флаги-команды из ответа сервера (запрос отчёта, принудительное
-        // обновление) — обрабатываются отдельным классом, вырезать после релиза.
-        if (heartbeat && ack is not null)
-            await _commands.HandleAsync(cfg, ack, () => ReportOnceAsync(cfg, heartbeat: false));
+        if (sendOk)
+        {
+            // На случай, если очередь копилась, а heartbeat её ещё не разобрал.
+            await _spool.FlushAsync(r => TrySendAsync(cfg, r));
+        }
+        else
+        {
+            _spool.Enqueue(report);   // сервер недоступен — сохраняем и дошлём позже
+        }
+    }
+
+    /// <summary>Отправить отчёт, вернуть true только при HTTP 2xx (для досыла очереди).</summary>
+    private async Task<bool> TrySendAsync(AgentConfig cfg, AgentReportDto report)
+    {
+        try { var (_, status) = await PostAsync(cfg, report); return status is >= 200 and < 300; }
+        catch { return false; }
     }
 
     private async Task<(ReportAckDto? ack, int status)> PostAsync(AgentConfig cfg, AgentReportDto report)
