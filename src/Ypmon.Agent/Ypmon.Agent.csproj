@@ -9,9 +9,16 @@
          Агент НЕ слушает входящих подключений — только исходящие к серверу. -->
     <OutputType>WinExe</OutputType>
     <UseWindowsForms>true</UseWindowsForms>
+    <!-- Иконка приложения (exe) -->
+    <ApplicationIcon>app.ico</ApplicationIcon>
     <!-- Версия агента. Повышайте при выпуске обновления, кладите новый exe в agent-updates на сервере. -->
-    <Version>2.4.0</Version>
+    <Version>2.4.1</Version>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Иконка окна берётся из встроенного ресурса (single-file publish: файла на диске нет). -->
+    <EmbeddedResource Include="app.ico" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.1" />

@@ -57,6 +57,7 @@ public class MainForm : Form
         _cfg = _store.Load();
 
         Text = "YPMonitor — Агент " + Reporter.Version;
+        Icon = LoadAppIcon();
         Width = 900; Height = 620;
         StartPosition = FormStartPosition.CenterScreen;
         MinimumSize = new Size(760, 560);
@@ -870,6 +871,20 @@ public class MainForm : Form
         string[] u = { "Б", "КБ", "МБ", "ГБ", "ТБ" }; double x = b; int i = 0;
         while (x >= 1024 && i < u.Length - 1) { x /= 1024; i++; }
         return $"{x:0.#} {u[i]}";
+    }
+
+    /// <summary>Иконка окна из встроенного ресурса app.ico (single-file publish — файла на диске нет).</summary>
+    private static Icon? LoadAppIcon()
+    {
+        try
+        {
+            var asm = System.Reflection.Assembly.GetExecutingAssembly();
+            var name = Array.Find(asm.GetManifestResourceNames(), n => n.EndsWith("app.ico", StringComparison.OrdinalIgnoreCase));
+            if (name is null) return null;
+            using var s = asm.GetManifestResourceStream(name);
+            return s is null ? null : new Icon(s);
+        }
+        catch { return null; }
     }
 
     private void Info(string msg) => MessageBox.Show(this, msg, "YPMon", MessageBoxButtons.OK, MessageBoxIcon.Information);
