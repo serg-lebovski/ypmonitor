@@ -44,7 +44,7 @@ public class MainForm : Form
     private NumericUpDown _evtMax = null!, _evtLookback = null!;
 
     // Служба
-    private TextBox _svcName = null!, _svcUser = null!, _svcPass = null!, _svcCmd = null!;
+    private TextBox _svcName = null!, _svcUser = null!, _svcPass = null!, _svcCmd = null!, _svcCmdPs = null!;
     private Label _svcStatus = null!;
     private CheckBox _autoUpdate = null!;
 
@@ -462,27 +462,25 @@ public class MainForm : Form
         AddFull(t, _svcStatus);
 
         // Запасной путь: если установка из окна не проходит (политики, антивирус, UAC),
-        // эту команду можно выполнить вручную в cmd от имени администратора.
+        // эти команды можно выполнить вручную от имени администратора.
         AddFull(t, new Label
         {
             Text = "Если установка из окна не срабатывает — скопируйте команду и выполните её\n" +
-                   "в командной строке, запущенной от имени администратора:",
+                   "в командной строке (cmd) ИЛИ в PowerShell, запущенных от имени администратора\n" +
+                   "(две строки — выполните по очереди):",
             AutoSize = true, ForeColor = Color.DimGray, Margin = new Padding(3, 10, 3, 3)
         });
-        var cmdRow = new Panel { Dock = DockStyle.Fill, Height = 28, Margin = new Padding(3, 3, 3, 3) };
-        _svcCmd = new TextBox { Dock = DockStyle.Fill, ReadOnly = true, Font = new Font("Consolas", 8.5f) };
-        var bCopy = new Button { Text = "Копировать", Dock = DockStyle.Right, AutoSize = true };
-        bCopy.Click += (_, _) =>
+        _svcCmd = AddCommandBox(t);
+
+        // Отдельная строка для старых систем: Windows Server 2012 / 2012 R2 и старше.
+        // Там в PowerShell «sc» — псевдоним Set-Content, а оператор && не поддерживается,
+        // поэтому даём нативные командлеты New-Service / Start-Service.
+        AddFull(t, new Label
         {
-            if (!string.IsNullOrWhiteSpace(_svcCmd.Text)) Clipboard.SetText(_svcCmd.Text);
-            bCopy.Text = "Скопировано";
-            var tm = new System.Windows.Forms.Timer { Interval = 1500 };
-            tm.Tick += (s2, _) => { bCopy.Text = "Копировать"; tm.Stop(); tm.Dispose(); };
-            tm.Start();
-        };
-        cmdRow.Controls.Add(_svcCmd);
-        cmdRow.Controls.Add(bCopy);
-        AddFull(t, cmdRow);
+            Text = "Windows Server 2012 / 2012 R2 и старше (нативно для PowerShell):",
+            AutoSize = true, ForeColor = Color.DimGray, Margin = new Padding(3, 8, 3, 3)
+        });
+        _svcCmdPs = AddCommandBox(t);
 
         _svcName.TextChanged += (_, _) => RefreshSvcCmd();
         _svcUser.TextChanged += (_, _) => RefreshSvcCmd();
@@ -527,6 +525,30 @@ public class MainForm : Form
         catch (Exception ex) { Info("Не удалось прочитать журнал: " + ex.Message); }
     }
 
+    /// <summary>Многострочное поле с командой (только чтение) и кнопкой «Копировать». Возвращает поле.</summary>
+    private TextBox AddCommandBox(TableLayoutPanel t)
+    {
+        var panel = new Panel { Dock = DockStyle.Fill, Height = 48, Margin = new Padding(3, 3, 3, 3) };
+        var box = new TextBox
+        {
+            Dock = DockStyle.Fill, ReadOnly = true, Multiline = true, WordWrap = false,
+            ScrollBars = ScrollBars.Horizontal, Font = new Font("Consolas", 8.5f)
+        };
+        var bCopy = new Button { Text = "Копировать", Dock = DockStyle.Right, AutoSize = true };
+        bCopy.Click += (_, _) =>
+        {
+            if (!string.IsNullOrWhiteSpace(box.Text)) Clipboard.SetText(box.Text);
+            bCopy.Text = "Скопировано";
+            var tm = new System.Windows.Forms.Timer { Interval = 1500 };
+            tm.Tick += (s2, _) => { bCopy.Text = "Копировать"; tm.Stop(); tm.Dispose(); };
+            tm.Start();
+        };
+        panel.Controls.Add(box);
+        panel.Controls.Add(bCopy);
+        AddFull(t, panel);
+        return box;
+    }
+
     private void RefreshSvcStatus()
     {
         if (_svcStatus is null) return;
@@ -543,6 +565,8 @@ public class MainForm : Form
         var name = _svcName.Text.Trim();
         var user = string.IsNullOrWhiteSpace(_svcUser.Text) ? null : _svcUser.Text.Trim();
         _svcCmd.Text = string.IsNullOrWhiteSpace(name) ? "" : ServiceManager.BuildInstallCommand(name, user);
+        if (_svcCmdPs is not null)
+            _svcCmdPs.Text = string.IsNullOrWhiteSpace(name) ? "" : ServiceManager.BuildInstallCommandPowerShell(name, user);
     }
 
     private void SvcInstall()

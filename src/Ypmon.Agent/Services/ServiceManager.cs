@@ -49,15 +49,31 @@ public static class ServiceManager
     }
 
     /// <summary>
-    /// Команда установки службы для ручного запуска в консоли (cmd от имени администратора).
-    /// Пароль намеренно не подставляется — его нужно вписать вручную, чтобы не светить в интерфейсе.
+    /// Команда установки службы для ручного запуска (cmd ИЛИ PowerShell, от имени администратора).
+    /// Важно: используем <c>sc.exe</c>, а не <c>sc</c> — в PowerShell «sc» это псевдоним Set-Content,
+    /// и команда падает. Две команды разнесены по строкам, потому что оператор <c>&&</c> не работает
+    /// в Windows PowerShell 5.1/4.0 (Server 2012 R2 и старше). Пароль вписывается вручную.
     /// </summary>
     public static string BuildInstallCommand(string name, string? account)
     {
-        var cmd = $"sc create \"{name}\" binPath= \"{ExePath}\" start= auto DisplayName= \"{DisplayName}\"";
+        var cmd = $"sc.exe create \"{name}\" binPath= \"{ExePath}\" start= auto DisplayName= \"{DisplayName}\"";
         if (!string.IsNullOrWhiteSpace(account))
             cmd += $" obj= \"{account.Trim()}\" password= \"ПАРОЛЬ\"";
-        return cmd + $" && sc start \"{name}\"";
+        return cmd + "\r\n" + $"sc.exe start \"{name}\"";
+    }
+
+    /// <summary>
+    /// Вариант для Windows Server 2012 / 2012 R2 и старше — нативные командлеты PowerShell
+    /// (запускать в PowerShell от имени администратора). Для служебной учётной записи
+    /// добавьте <c>-Credential (Get-Credential)</c> — пароль спросят интерактивно.
+    /// </summary>
+    public static string BuildInstallCommandPowerShell(string name, string? account)
+    {
+        // BinaryPathName в кавычках — путь к exe может содержать пробелы ("C:\Program Files\...").
+        var ps = $"New-Service -Name \"{name}\" -BinaryPathName '\"{ExePath}\"' -DisplayName \"{DisplayName}\" -StartupType Automatic";
+        if (!string.IsNullOrWhiteSpace(account))
+            ps += $" -Credential (Get-Credential \"{account.Trim()}\")";
+        return ps + "\r\n" + $"Start-Service \"{name}\"";
     }
 
     /// <summary>
@@ -78,10 +94,26 @@ public static class ServiceManager
         script.AppendLine($"sc delete \"{Bat(name)}\" >nul 2>&1");
         script.AppendLine("ping -n 2 127.0.0.1 >nul");
         script.AppendLine("echo === Создание службы ===> \"%LOG%\"");
+        // Способ 1 — обычный sc create.
         script.AppendLine($"sc create \"{Bat(name)}\" binPath= \"{Bat(ExePath)}\" start= auto DisplayName= \"{DisplayName}\" {obj} >> \"%LOG%\" 2>&1");
-        // Если создать службу не удалось — прекращаем. Иначе sc description/failure/start посыпались бы
-        // ошибками 1060 («служба не существует»), маскируя настоящую причину.
-        script.AppendLine("if errorlevel 1 (echo [ПРЕРВАНО] Служба не создана, остальные шаги пропущены.>> \"%LOG%\" & exit /b 1)");
+        script.AppendLine("if not errorlevel 1 goto created");
+        // Способ 2 (обход) — полный путь к sc.exe (на случай изменённого PATH) + явный type= own.
+        script.AppendLine("echo [обход 1] Первый способ не сработал, пробуем полный путь sc.exe...>> \"%LOG%\"");
+        script.AppendLine($"\"%SystemRoot%\\System32\\sc.exe\" create \"{Bat(name)}\" binPath= \"{Bat(ExePath)}\" type= own start= auto DisplayName= \"{DisplayName}\" {obj} >> \"%LOG%\" 2>&1");
+        script.AppendLine("if not errorlevel 1 goto created");
+        if (string.IsNullOrWhiteSpace(account))
+        {
+            // Способ 3 (обход, только для LocalSystem) — нативный New-Service через PowerShell.
+            // Значения передаём через переменные окружения, чтобы не мучиться с экранированием кавычек.
+            script.AppendLine("echo [обход 2] Пробуем через PowerShell New-Service...>> \"%LOG%\"");
+            script.AppendLine($"set \"YP_NAME={Bat(name)}\"");
+            script.AppendLine($"set \"YP_EXE={Bat(ExePath)}\"");
+            script.AppendLine("powershell -NoProfile -ExecutionPolicy Bypass -Command \"New-Service -Name $env:YP_NAME -BinaryPathName ('\\\"'+$env:YP_EXE+'\\\"') -DisplayName '" + DisplayName + "' -StartupType Automatic\" >> \"%LOG%\" 2>&1");
+            script.AppendLine("if not errorlevel 1 goto created");
+        }
+        script.AppendLine("echo [ПРЕРВАНО] Служба не создана ни одним способом. Выполните команду установки вручную (см. окно агента).>> \"%LOG%\"");
+        script.AppendLine("exit /b 1");
+        script.AppendLine(":created");
         script.AppendLine($"sc description \"{Bat(name)}\" \"Агент мониторинга резервного копирования YPMon\" >> \"%LOG%\" 2>&1");
         script.AppendLine($"sc failure \"{Bat(name)}\" reset= 60 actions= restart/5000/restart/5000/restart/5000 >> \"%LOG%\" 2>&1");
         script.AppendLine("echo.>> \"%LOG%\"");

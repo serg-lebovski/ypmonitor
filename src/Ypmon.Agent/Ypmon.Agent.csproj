@@ -12,7 +12,7 @@
     <!-- Иконка приложения (exe) -->
     <ApplicationIcon>app.ico</ApplicationIcon>
     <!-- Версия агента. Повышайте при выпуске обновления, кладите новый exe в agent-updates на сервере. -->
-    <Version>2.4.2</Version>
+    <Version>2.4.3</Version>
   </PropertyGroup>
 
   <ItemGroup>
