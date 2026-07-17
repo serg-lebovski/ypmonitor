@@ -166,7 +166,7 @@
             else
             {
                 <table class="tbl">
-                    <thead><tr><th>Диск</th><th>Объём</th><th>Занято</th><th>Свободно</th><th>Порог</th></tr></thead>
+                    <thead><tr><th>Диск</th><th>Общий объём</th><th>Занято</th><th>Порог</th></tr></thead>
                     <tbody>
                     @foreach (var d in Model.Disks)
                     {
@@ -178,14 +178,15 @@
                             <td><strong>@d.Name</strong>@(d.Label is null ? "" : $" ({d.Label})")</td>
                             <td>@UiHelpers.Bytes(d.TotalBytes)</td>
                             <td>
-                                <div style="display:flex;align-items:center;gap:8px">
-                                    <div style="flex:0 0 90px;height:8px;background:var(--card-2);border-radius:4px;overflow:hidden">
-                                        <div style="width:@usedPct.ToString("0", System.Globalization.CultureInfo.InvariantCulture)%;height:100%;background:@(alarm ? "var(--err)" : usedPct > 85 ? "var(--warn)" : "var(--ok)")"></div>
+                                <div style="display:flex;align-items:center;gap:10px">
+                                    <div class="disk-donut @(alarm ? "d-err" : usedPct > 85 ? "d-warn" : "d-ok")"
+                                         style="--p:@usedPct.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture)"
+                                         title="Свободно @UiHelpers.Bytes(d.FreeBytes) (@d.FreePercent.ToString("0")%)">
+                                        <span>@usedPct.ToString("0")%</span>
                                     </div>
-                                    <span>@usedPct.ToString("0")%</span>
+                                    <span>@UiHelpers.Bytes(d.TotalBytes - d.FreeBytes)</span>
                                 </div>
                             </td>
-                            <td>@UiHelpers.Bytes(d.FreeBytes) <span class="muted">(@d.FreePercent.ToString("0")%)</span></td>
                             <td>
                                 @if (alarm)
                                 {
