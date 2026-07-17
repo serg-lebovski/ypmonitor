@@ -124,6 +124,9 @@ public class MonitoredServer
     /// ухудшения показателей SMART (уведомляем, когда становится хуже).</summary>
     public string? DiskHealthStateJson { get; set; }
 
+    /// <summary>Накопители, по которым температура уже превысила порог (JSON-список ключей) — для тревог по переходам.</summary>
+    public string? DiskTempAlertJson { get; set; }
+
     // Текущие состояния тревог — чтобы уведомлять по переходам, а не спамить каждую минуту.
     public bool AlertOfflineActive { get; set; }
     public bool AlertPingActive { get; set; }
@@ -288,6 +291,17 @@ public class ServerSettings
 
     /// <summary>Основной адрес для отчётов об архивации (куда дублируется отчёт по всем клиентам).</summary>
     public string? ArchiveReportEmailTo { get; set; }
+
+    // --- Пороги мониторинга здоровья дисков (SMART) ---
+
+    /// <summary>Слать уведомления по SMART (ухудшение здоровья, перегрев).</summary>
+    public bool SmartAlertsEnabled { get; set; } = true;
+
+    /// <summary>Тревожить и на статус Warning (иначе только на Unhealthy).</summary>
+    public bool SmartAlertOnWarning { get; set; } = true;
+
+    /// <summary>Порог температуры накопителя, °C (тревога при превышении). 0 = не следить за температурой.</summary>
+    public int SmartTempThresholdC { get; set; } = 55;
 
     // --- Внешний адрес сервера (под которым к нему подключаются удалённые агенты) ---
 

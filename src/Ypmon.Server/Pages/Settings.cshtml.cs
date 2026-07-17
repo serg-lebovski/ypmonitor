@@ -133,6 +133,9 @@ public class SettingsModel : PageModel
         s.EmailFrom = input.EmailFrom;
         s.EmailTo = input.EmailTo;
         s.ArchiveReportEmailTo = input.ArchiveReportEmailTo;
+        s.SmartAlertsEnabled = input.SmartAlertsEnabled;
+        s.SmartAlertOnWarning = input.SmartAlertOnWarning;
+        s.SmartTempThresholdC = Math.Clamp(input.SmartTempThresholdC, 0, 120);
         if (s.Id == 0) _db.Settings.Add(s);
         await _db.SaveChangesAsync();
         await _audit.LogAsync(User, "Изменены настройки", "оповещения / SMTP / хранение истории");

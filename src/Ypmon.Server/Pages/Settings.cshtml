@@ -217,6 +217,19 @@
                             <input class="form-control" name="ArchiveReportEmailTo" value="@s.ArchiveReportEmailTo" placeholder="напр. admin@company.ru" />
                             <div class="muted" style="font-size:12px">Сюда дублируется сводный отчёт об архивации по всем клиентам (по расписанию и по кнопке «Разослать отчёт»).</div></div>
 
+                        <h4 style="font-size:16px">🩺 Здоровье дисков (SMART)</h4>
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="checkbox" name="SmartAlertsEnabled" value="true" id="smart" @(s.SmartAlertsEnabled ? "checked" : "") />
+                            <label class="form-check-label" for="smart">Слать уведомления по SMART (ухудшение здоровья, перегрев)</label>
+                        </div>
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="checkbox" name="SmartAlertOnWarning" value="true" id="smartwarn" @(s.SmartAlertOnWarning ? "checked" : "") />
+                            <label class="form-check-label" for="smartwarn">Тревожить и на статус «Предупреждение» (иначе только на «Неисправен»)</label>
+                        </div>
+                        <div class="mb-3"><label>Порог температуры накопителя, °C (0 = не следить)</label>
+                            <input class="form-control" style="max-width:140px" type="number" min="0" max="120" name="SmartTempThresholdC" value="@s.SmartTempThresholdC" />
+                            <div class="muted" style="font-size:12px">Тревога при превышении, возврат в норму — с запасом 3 °C. Температуру шлёт агент 2.5+ (если её отдаёт WMI накопителя).</div></div>
+
                         <button class="btn btn-primary" type="submit">Сохранить</button>
                         <button class="btn btn-primary" type="submit" asp-page-handler="TestAlert" formnovalidate>Отправить тест</button>
                     </form>

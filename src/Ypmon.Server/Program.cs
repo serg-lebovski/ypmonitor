@@ -149,6 +149,10 @@ using (var scope = app.Services.CreateScope())
                     db.Database.ExecuteSqlRaw("ALTER TABLE \"Servers\" ADD COLUMN IF NOT EXISTS \"LastPhysicalDisksJson\" text;");
                     db.Database.ExecuteSqlRaw("ALTER TABLE \"Servers\" ADD COLUMN IF NOT EXISTS \"AlertDiskHealthActive\" boolean NOT NULL DEFAULT false;");
                     db.Database.ExecuteSqlRaw("ALTER TABLE \"Servers\" ADD COLUMN IF NOT EXISTS \"DiskHealthStateJson\" text;");
+                    db.Database.ExecuteSqlRaw("ALTER TABLE \"Servers\" ADD COLUMN IF NOT EXISTS \"DiskTempAlertJson\" text;");
+                    db.Database.ExecuteSqlRaw("ALTER TABLE \"Settings\" ADD COLUMN IF NOT EXISTS \"SmartAlertsEnabled\" boolean NOT NULL DEFAULT true;");
+                    db.Database.ExecuteSqlRaw("ALTER TABLE \"Settings\" ADD COLUMN IF NOT EXISTS \"SmartAlertOnWarning\" boolean NOT NULL DEFAULT true;");
+                    db.Database.ExecuteSqlRaw("ALTER TABLE \"Settings\" ADD COLUMN IF NOT EXISTS \"SmartTempThresholdC\" integer NOT NULL DEFAULT 55;");
                 }
                 else
                 {
@@ -193,6 +197,10 @@ using (var scope = app.Services.CreateScope())
                     try { db.Database.ExecuteSqlRaw("ALTER TABLE \"Servers\" ADD COLUMN \"LastPhysicalDisksJson\" TEXT;"); } catch { }
                     try { db.Database.ExecuteSqlRaw("ALTER TABLE \"Servers\" ADD COLUMN \"AlertDiskHealthActive\" INTEGER NOT NULL DEFAULT 0;"); } catch { }
                     try { db.Database.ExecuteSqlRaw("ALTER TABLE \"Servers\" ADD COLUMN \"DiskHealthStateJson\" TEXT;"); } catch { }
+                    try { db.Database.ExecuteSqlRaw("ALTER TABLE \"Servers\" ADD COLUMN \"DiskTempAlertJson\" TEXT;"); } catch { }
+                    try { db.Database.ExecuteSqlRaw("ALTER TABLE \"Settings\" ADD COLUMN \"SmartAlertsEnabled\" INTEGER NOT NULL DEFAULT 1;"); } catch { }
+                    try { db.Database.ExecuteSqlRaw("ALTER TABLE \"Settings\" ADD COLUMN \"SmartAlertOnWarning\" INTEGER NOT NULL DEFAULT 1;"); } catch { }
+                    try { db.Database.ExecuteSqlRaw("ALTER TABLE \"Settings\" ADD COLUMN \"SmartTempThresholdC\" INTEGER NOT NULL DEFAULT 55;"); } catch { }
                 }
             }
             catch (Exception ex) { logger.LogWarning("Обновление схемы: {Msg}", ex.Message); }

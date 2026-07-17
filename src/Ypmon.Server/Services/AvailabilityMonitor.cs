@@ -254,11 +254,16 @@ public class AvailabilityMonitor : BackgroundService
 
     // --- Здоровье физических дисков (SMART) --------------------------------
 
-    /// <summary>Ранг здоровья для сравнения: чем больше — тем хуже. Unknown/нет данных = 0 (не считаем ухудшением).</summary>
-    private static int HealthRank(string? h) => h switch { "Warning" => 1, "Unhealthy" => 2, _ => 0 };
     private static string HealthRu(string? h) => h switch
     {
         "Healthy" => "Здоров", "Warning" => "Предупреждение", "Unhealthy" => "Неисправен", _ => "нет данных"
+    };
+    /// <summary>Ранг здоровья для сравнения (больше — хуже). Warning учитывается только если включено.</summary>
+    private static int HealthRank(string? h, bool alertOnWarning) => h switch
+    {
+        "Unhealthy" => 2,
+        "Warning" => alertOnWarning ? 1 : 0,
+        _ => 0
     };
 
     private async Task<bool> CheckDiskHealthAsync(ServerSettings s, MonitoredServer srv, TelegramService tg, TelegramReportService topics)
@@ -269,19 +274,25 @@ public class AvailabilityMonitor : BackgroundService
         catch { return false; }
         if (disks is null || disks.Count == 0) return false;
 
-        // Прошлое известное здоровье по каждому накопителю (ключ — серийник, иначе имя).
+        var onWarn = s.SmartAlertOnWarning;
+        var tempTh = s.SmartTempThresholdC;
+
+        // Прошлое здоровье по каждому накопителю (ключ — серийник, иначе имя) и множество «перегретых».
         Dictionary<string, string> prev;
         try
         {
             prev = string.IsNullOrWhiteSpace(srv.DiskHealthStateJson)
-                ? new()
-                : JsonSerializer.Deserialize<Dictionary<string, string>>(srv.DiskHealthStateJson!) ?? new();
+                ? new() : JsonSerializer.Deserialize<Dictionary<string, string>>(srv.DiskHealthStateJson!) ?? new();
         }
         catch { prev = new(); }
+        var hot = ParseActive(srv.DiskTempAlertJson);
 
         var next = new Dictionary<string, string>();
-        var worsened = new List<string>();   // накопители, у которых показатели ухудшились
+        var worsened = new List<string>();
         var improved = new List<string>();
+        var tempWorse = new List<string>();
+        var tempOk = new List<string>();
+        var tempChanged = false;
 
         foreach (var d in disks)
         {
@@ -289,31 +300,61 @@ public class AvailabilityMonitor : BackgroundService
             if (string.IsNullOrWhiteSpace(key)) continue;
             next[key] = d.Health;
 
-            var curRank = HealthRank(d.Health);
-            // Новый накопитель считаем «был здоров» — тогда первое же Warning/Unhealthy = ухудшение.
-            var prevHealth = prev.TryGetValue(key, out var ph) ? ph : "Healthy";
-            var prevRank = HealthRank(prevHealth);
-
-            if (curRank > prevRank)
+            // --- Здоровье ---
+            var prevHealth = prev.TryGetValue(key, out var ph) ? ph : "Healthy";  // новый диск считаем «был здоров»
+            var cur = HealthRank(d.Health, onWarn);
+            var was = HealthRank(prevHealth, onWarn);
+            if (cur > was)
                 worsened.Add($"{WebUtility.HtmlEncode(d.Name)}: {HealthRu(prevHealth)} → <b>{HealthRu(d.Health)}</b>"
-                    + (d.TemperatureC is int t ? $" ({t} °C)" : ""));
-            else if (curRank < prevRank)
+                    + (d.TemperatureC is int tw ? $" ({tw} °C)" : ""));
+            else if (cur < was)
                 improved.Add($"{WebUtility.HtmlEncode(d.Name)}: {HealthRu(prevHealth)} → {HealthRu(d.Health)}");
+
+            // --- Температура (порог с гистерезисом 3 °C) ---
+            if (tempTh > 0 && d.TemperatureC is int tc)
+            {
+                var wasHot = hot.Contains(key);
+                if (!wasHot && tc > tempTh)
+                {
+                    hot.Add(key); tempChanged = true;
+                    tempWorse.Add($"{WebUtility.HtmlEncode(d.Name)}: {tc} °C (порог {tempTh} °C)");
+                }
+                else if (wasHot && tc <= tempTh - 3)
+                {
+                    hot.Remove(key); tempChanged = true;
+                    tempOk.Add($"{WebUtility.HtmlEncode(d.Name)}: {tc} °C");
+                }
+            }
         }
 
-        var stateChanged = !SameState(prev, next);
-        if (stateChanged) srv.DiskHealthStateJson = JsonSerializer.Serialize(next);
-        srv.AlertDiskHealthActive = disks.Any(d => HealthRank(d.Health) > 0);
+        // Убираем из «перегретых» накопители, которых больше нет в отчёте.
+        foreach (var k in hot.ToList())
+            if (!next.ContainsKey(k)) { hot.Remove(k); tempChanged = true; }
 
-        var name = WebUtility.HtmlEncode(srv.Name);
-        if (worsened.Count > 0)
-            await NotifyAsync(s, srv.Client, tg, topics,
-                $"🩺🔴 <b>{name}</b> — ухудшились показатели SMART:\n{string.Join("\n", worsened.Select(x => "• " + x))}\nСтоит проверить накопитель и бэкапы.");
-        if (improved.Count > 0)
-            await NotifyAsync(s, srv.Client, tg, topics,
-                $"🩺🟢 <b>{name}</b> — здоровье накопителя улучшилось:\n{string.Join("\n", improved.Select(x => "• " + x))}");
+        var healthChanged = !SameState(prev, next);
+        if (healthChanged) srv.DiskHealthStateJson = JsonSerializer.Serialize(next);
+        if (tempChanged) srv.DiskTempAlertJson = hot.Count == 0 ? null : JsonSerializer.Serialize(hot.ToList());
+        srv.AlertDiskHealthActive = disks.Any(d => d.Health is "Warning" or "Unhealthy") || hot.Count > 0;
 
-        return stateChanged;
+        // Уведомления шлём только если SMART-оповещения включены (состояние копим в любом случае — без спама после включения).
+        if (s.SmartAlertsEnabled)
+        {
+            var name = WebUtility.HtmlEncode(srv.Name);
+            if (worsened.Count > 0)
+                await NotifyAsync(s, srv.Client, tg, topics,
+                    $"🩺🔴 <b>{name}</b> — ухудшились показатели SMART:\n{string.Join("\n", worsened.Select(x => "• " + x))}\nСтоит проверить накопитель и бэкапы.");
+            if (tempWorse.Count > 0)
+                await NotifyAsync(s, srv.Client, tg, topics,
+                    $"🌡️🔴 <b>{name}</b> — перегрев накопителя:\n{string.Join("\n", tempWorse.Select(x => "• " + x))}");
+            if (improved.Count > 0)
+                await NotifyAsync(s, srv.Client, tg, topics,
+                    $"🩺🟢 <b>{name}</b> — здоровье накопителя улучшилось:\n{string.Join("\n", improved.Select(x => "• " + x))}");
+            if (tempOk.Count > 0)
+                await NotifyAsync(s, srv.Client, tg, topics,
+                    $"🌡️🟢 <b>{name}</b> — температура накопителя в норме:\n{string.Join("\n", tempOk.Select(x => "• " + x))}");
+        }
+
+        return healthChanged || tempChanged;
     }
 
     private static bool SameState(Dictionary<string, string> a, Dictionary<string, string> b)
