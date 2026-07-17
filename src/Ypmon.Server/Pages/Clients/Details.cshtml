@@ -36,7 +36,7 @@
 
 <div class="dash-grid">
     <div>
-        <details class="card-y acc" open>
+        <details class="card-y acc">
             <summary>🖥️ Серверы клиента (@(Model.Client?.Servers.Count ?? 0))</summary>
             <div class="acc-body">
             @if (Model.Client is null || !Model.Client.Servers.Any())
@@ -121,7 +121,7 @@
     @if (canEdit)
     {
         <div class="panel">
-            <details class="card-y acc" open>
+            <details class="card-y acc">
                 <summary>✏️ Изменить клиента</summary>
                 <div class="acc-body">
                     <form method="post" asp-page-handler="SaveClient" asp-route-id="@Model.Id">
@@ -134,6 +134,15 @@
                             <div class="muted" style="font-size:12px">Сервер пингует роутер; пинг пропал/восстановился → уведомление в Telegram-тему клиента. Полезно для клиентов без серверов.</div></div>
                         <div class="mb-3"><label>Проверять роутер каждые, сек</label>
                             <input class="form-control" style="max-width:120px" type="number" min="10" max="86400" name="RouterPingIntervalSeconds" value="@(Model.Client?.RouterPingIntervalSeconds ?? 60)" /></div>
+
+                        <hr style="border-color:var(--border)" />
+                        <div class="mb-2"><strong style="font-size:14px">📦 Дублирование отчёта об архивации</strong>
+                            <div class="muted" style="font-size:12px">Отчёт по серверам этого клиента (успех/проблемы) отправляется дополнительно сюда.</div></div>
+                        <div class="mb-2"><label>Доп. e-mail клиента</label>
+                            <input class="form-control" name="ReportEmail" value="@Model.Client?.ReportEmail" placeholder="напр. client@mail.ru" /></div>
+                        <div class="mb-3"><label>Telegram для личных сообщений (chat_id)</label>
+                            <input class="form-control" name="ReportTelegramChatId" value="@Model.Client?.ReportTelegramChatId" placeholder="напр. 123456789" />
+                            <div class="muted" style="font-size:12px">Численный chat_id пользователя. Он должен сам написать боту <strong>/start</strong>, иначе бот не сможет прислать ему личное сообщение.</div></div>
                         <button class="btn btn-primary w-100" type="submit">Сохранить клиента</button>
                     </form>
                 </div>

@@ -32,6 +32,8 @@ public class DetailsModel : PageModel
     [BindProperty] public string? ClientDescription { get; set; }
     [BindProperty] public string? RouterAddress { get; set; }
     [BindProperty] public int RouterPingIntervalSeconds { get; set; } = 60;
+    [BindProperty] public string? ReportEmail { get; set; }
+    [BindProperty] public string? ReportTelegramChatId { get; set; }
     public string? Message { get; set; }
 
     public async Task<IActionResult> OnGetAsync()
@@ -76,6 +78,8 @@ public class DetailsModel : PageModel
         }
         c.RouterAddress = newRouter;
         c.RouterPingIntervalSeconds = Math.Clamp(RouterPingIntervalSeconds, 10, 86400);
+        c.ReportEmail = string.IsNullOrWhiteSpace(ReportEmail) ? null : ReportEmail.Trim();
+        c.ReportTelegramChatId = string.IsNullOrWhiteSpace(ReportTelegramChatId) ? null : ReportTelegramChatId.Trim();
         await _db.SaveChangesAsync();
         await Load();
         Message = "Клиент сохранён";

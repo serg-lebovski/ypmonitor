@@ -16,7 +16,7 @@
 
 @foreach (var client in Model.Clients.Where(c => c.Servers.Any()))
 {
-    <details class="card-y acc" open>
+    <details class="card-y acc">
         <summary>🗂️ <strong>@client.Name</strong> <span class="muted" style="font-weight:400">— серверов: @client.Servers.Count</span></summary>
         <div class="acc-body">
         @foreach (var s in client.Servers)
@@ -80,7 +80,7 @@
                                 else
                                 {
                                     <table class="tbl" style="margin-top:6px">
-                                        <thead><tr><th>Папка</th><th>Копий</th><th>Объём</th><th>Свежий</th></tr></thead>
+                                        <thead><tr><th>Папка</th><th>Копий</th><th>Общий объём</th><th>Посл. архив</th><th>Свежий</th></tr></thead>
                                         <tbody>
                                         @foreach (var f in folders)
                                         {
@@ -88,6 +88,7 @@
                                                 <td><span class="dot @UiHelpers.DotCss(f.Outcome)"></span>@f.Name</td>
                                                 <td>@f.FileCount</td>
                                                 <td>@UiHelpers.Bytes(f.TotalSizeBytes)</td>
+                                                <td>@(f.LastFileSizeBytes > 0 ? UiHelpers.Bytes(f.LastFileSizeBytes) : "—")<div class="muted" style="font-size:11px">@f.LastFileName</div></td>
                                                 <td>@UiHelpers.DateTimeAbs(f.LastBackupAt)</td>
                                             </tr>
                                         }

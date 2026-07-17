@@ -68,7 +68,7 @@
 
         @if (isAdmin)
         {
-            <details class="card-y acc" open>
+            <details class="card-y acc">
                 <summary>🤖 Telegram-бот</summary>
                 <div class="acc-body">
                     <form method="post" asp-page-handler="SaveTelegram">
@@ -210,9 +210,12 @@
                         <div class="row">
                             <div class="col-md-6 mb-2"><label>От кого</label>
                                 <input class="form-control" name="EmailFrom" value="@s.EmailFrom" /></div>
-                            <div class="col-md-6 mb-3"><label>Кому (через запятую)</label>
+                            <div class="col-md-6 mb-2"><label>Кому — оповещения о проблемах (через запятую)</label>
                                 <input class="form-control" name="EmailTo" value="@s.EmailTo" /></div>
                         </div>
+                        <div class="mb-3"><label>📦 Отчёт об архивации — куда отправлять (общий адрес, через запятую)</label>
+                            <input class="form-control" name="ArchiveReportEmailTo" value="@s.ArchiveReportEmailTo" placeholder="напр. admin@company.ru" />
+                            <div class="muted" style="font-size:12px">Сюда дублируется сводный отчёт об архивации по всем клиентам (по расписанию и по кнопке «Разослать отчёт»).</div></div>
                         <button class="btn btn-primary" type="submit">Сохранить</button>
                         <button class="btn btn-primary" type="submit" asp-page-handler="TestAlert" formnovalidate>Отправить тест</button>
                     </form>
@@ -250,7 +253,7 @@
     </div>
 
     <div class="panel">
-        <details class="card-y acc" open>
+        <details class="card-y acc">
             <summary>👤 Мой профиль</summary>
             <div class="acc-body">
                 <form method="post" asp-page-handler="SaveProfile">

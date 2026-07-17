@@ -39,22 +39,32 @@ public class AlertService
         }
     }
 
-    private async Task SendEmailAsync(ServerSettings s, string subject, string body)
-    {
-        using var msg = new MailMessage
-        {
-            From = new MailAddress(s.EmailFrom ?? s.SmtpUser ?? "ypmon@localhost"),
-            Subject = subject,
-            Body = body,
-            BodyEncoding = Encoding.UTF8,
-            SubjectEncoding = Encoding.UTF8
-        };
-        foreach (var to in (s.EmailTo ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-            msg.To.Add(to);
+    private Task SendEmailAsync(ServerSettings s, string subject, string body) => SendEmailToAsync(s, s.EmailTo, subject, body);
 
-        using var client = new SmtpClient(s.SmtpHost, s.SmtpPort) { EnableSsl = s.SmtpUseSsl };
-        if (!string.IsNullOrWhiteSpace(s.SmtpUser))
-            client.Credentials = new NetworkCredential(s.SmtpUser, s.SmtpPassword);
-        await client.SendMailAsync(msg);
+    /// <summary>Отправляет письмо указанным адресатам (через запятую). Возвращает true при успехе.</summary>
+    public async Task<bool> SendEmailToAsync(ServerSettings s, string? recipients, string subject, string body)
+    {
+        if (string.IsNullOrWhiteSpace(s.SmtpHost) || string.IsNullOrWhiteSpace(recipients)) return false;
+        try
+        {
+            using var msg = new MailMessage
+            {
+                From = new MailAddress(s.EmailFrom ?? s.SmtpUser ?? "ypmon@localhost"),
+                Subject = subject,
+                Body = body,
+                BodyEncoding = Encoding.UTF8,
+                SubjectEncoding = Encoding.UTF8
+            };
+            foreach (var to in recipients.Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                msg.To.Add(to);
+            if (msg.To.Count == 0) return false;
+
+            using var client = new SmtpClient(s.SmtpHost, s.SmtpPort) { EnableSsl = s.SmtpUseSsl };
+            if (!string.IsNullOrWhiteSpace(s.SmtpUser))
+                client.Credentials = new NetworkCredential(s.SmtpUser, s.SmtpPassword);
+            await client.SendMailAsync(msg);
+            return true;
+        }
+        catch (Exception ex) { _log.LogWarning(ex, "Не удалось отправить e-mail на {To}", recipients); return false; }
     }
 }

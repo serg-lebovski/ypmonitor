@@ -29,7 +29,7 @@ else
         var probCnt = servers.Count(x => !x.IsOffline(Model.OfflineThreshold) && x.LastOutcome >= JobOutcome.Warning);
         var shrinkCnt = servers.Count(x => x.BackupShrinkActive);
         var allOk = offCnt == 0 && probCnt == 0 && shrinkCnt == 0 && servers.Any();
-        <details class="card-y acc" open>
+        <details class="card-y acc">
             <summary>
                 <span class="dot @(allOk ? "ok" : (offCnt + probCnt + shrinkCnt) > 0 ? "err" : "unknown")"></span>
                 🗂️ <strong>@client.Name</strong>

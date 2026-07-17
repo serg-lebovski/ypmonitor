@@ -51,7 +51,8 @@ public class DailyReportScheduler : BackgroundService
         using var scope = _sp.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var s = await db.Settings.FirstOrDefaultAsync();
-        if (s is null || !s.DailyReportEnabled || !s.TelegramEnabled) return;
+        // Отчёт может уходить в Telegram и/или на почту — достаточно включённого расписания.
+        if (s is null || !s.DailyReportEnabled) return;
 
         var omsk = TelegramReportService.OmskNow();
         var today = DateOnly.FromDateTime(omsk);

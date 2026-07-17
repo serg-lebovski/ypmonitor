@@ -95,7 +95,7 @@
             <div class="kv"><span class="k">Порог устаревания</span><span class="v">@(s.BackupStaleDays > 0 ? s.BackupStaleDays + " дн." : $"по умолчанию ({Model.DefaultBackupStaleDays} дн.)")</span></div>
         </div>
 
-        <details class="card-y acc" open>
+        <details class="card-y acc">
             <summary>📁 Папки бэкапов (архивация)</summary>
             <div class="acc-body">
             @if (Model.Report is null || !Model.Report.Folders.Any())
@@ -105,7 +105,7 @@
             else
             {
                 <table class="tbl">
-                    <thead><tr><th>Папка</th><th>Статус</th><th>Файлов</th><th>Объём</th><th>Посл. файл</th></tr></thead>
+                    <thead><tr><th>Папка</th><th>Статус</th><th>Файлов</th><th>Общий объём</th><th>Посл. архив</th><th>Посл. файл</th></tr></thead>
                     <tbody>
                     @foreach (var f in Model.Report.Folders)
                     {
@@ -116,6 +116,7 @@
                             <td><span class="badge-status @UiHelpers.OutcomeCss(f.Outcome)">@UiHelpers.OutcomeText(f.Outcome)</span></td>
                             <td>@f.FileCount</td>
                             <td>@UiHelpers.Bytes(f.TotalSizeBytes)</td>
+                            <td>@(f.LastFileSizeBytes > 0 ? UiHelpers.Bytes(f.LastFileSizeBytes) : "—")<div class="muted" style="font-size:11px">@f.LastFileName</div></td>
                             <td>@UiHelpers.DateTimeAbs(f.LastBackupAt)</td>
                         </tr>
                     }
@@ -125,7 +126,7 @@
             </div>
         </details>
 
-        <details class="card-y acc" open>
+        <details class="card-y acc">
             <summary>💽 Диски</summary>
             <div class="acc-body">
             @if (!Model.Disks.Any())
@@ -249,7 +250,7 @@
     @if (!Model.Info)
     {
     <div class="panel">
-        <details class="card-y acc" open>
+        <details class="card-y acc">
             <summary>🔌 Данные подключения агента</summary>
             <div class="acc-body">
             <div class="conn-box">

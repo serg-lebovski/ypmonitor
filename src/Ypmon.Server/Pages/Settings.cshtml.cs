@@ -127,6 +127,7 @@ public class SettingsModel : PageModel
         s.SmtpPassword = input.SmtpPassword;
         s.EmailFrom = input.EmailFrom;
         s.EmailTo = input.EmailTo;
+        s.ArchiveReportEmailTo = input.ArchiveReportEmailTo;
         if (s.Id == 0) _db.Settings.Add(s);
         await _db.SaveChangesAsync();
         await Load();

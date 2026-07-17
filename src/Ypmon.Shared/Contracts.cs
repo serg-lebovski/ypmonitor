@@ -34,6 +34,9 @@ public class FolderStatusDto
     /// <summary>Имя самого свежего файла (для наглядности).</summary>
     public string? LastFileName { get; set; }
 
+    /// <summary>Размер самого свежего файла (объём последнего архива), байт.</summary>
+    public long LastFileSizeBytes { get; set; }
+
     /// <summary>Примечание агента (например, ошибка доступа).</summary>
     public string? Message { get; set; }
 

@@ -45,6 +45,14 @@ public class Client
     /// <summary>Как часто пинговать роутер, сек (по умолчанию 60).</summary>
     public int RouterPingIntervalSeconds { get; set; } = 60;
 
+    // --- Дополнительные адресаты отчёта об архивации (по серверам этого клиента) ---
+
+    /// <summary>Дополнительный e-mail клиента, куда дублируется отчёт об архивации.</summary>
+    public string? ReportEmail { get; set; }
+
+    /// <summary>Telegram chat_id пользователя для личных сообщений от бота (нужно, чтобы он написал боту /start).</summary>
+    public string? ReportTelegramChatId { get; set; }
+
     /// <summary>Текущая тревога «роутер не отвечает» (для уведомлений по переходам).</summary>
     public bool AlertRouterPingActive { get; set; }
 
@@ -251,4 +259,7 @@ public class ServerSettings
     public string? SmtpPassword { get; set; }
     public string? EmailFrom { get; set; }
     public string? EmailTo { get; set; }
+
+    /// <summary>Основной адрес для отчётов об архивации (куда дублируется отчёт по всем клиентам).</summary>
+    public string? ArchiveReportEmailTo { get; set; }
 }

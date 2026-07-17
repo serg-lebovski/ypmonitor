@@ -41,6 +41,7 @@ public class FolderMonitorService
             {
                 st.LastBackupAt = new DateTimeOffset(latest.LastWriteTimeUtc, TimeSpan.Zero);
                 st.LastFileName = latest.Name;
+                st.LastFileSizeBytes = latest.Length;
             }
             st.Message = files.Length == 0
                 ? "В папке нет файлов"
