@@ -90,6 +90,13 @@ public class AgentReportDto
     /// <summary>Локальные диски (буква, объём, свободно). Передаются и в heartbeat — данные дешёвые,
     /// а серверные пороги заполненности работают со свежими цифрами.</summary>
     public List<DiskStatusDto> Disks { get; set; } = new();
+
+    /// <summary>Интервал heartbeat агента, сек. Сервер по нему понимает, когда агент реально «пропал»
+    /// (порог офлайна = 2×интервал + запас), а не ждёт фиксированный глобальный порог.</summary>
+    public int HeartbeatIntervalSeconds { get; set; }
+
+    /// <summary>Интервал полного отчёта агента, сек (информационно, показывается в карточке сервера).</summary>
+    public int ReportIntervalSeconds { get; set; }
 }
 
 /// <summary>

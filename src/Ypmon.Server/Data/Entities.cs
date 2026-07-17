@@ -37,6 +37,21 @@ public class Client
     /// <summary>ID темы (forum topic) в Telegram-группе, куда пишется ежедневный отчёт по этому клиенту.</summary>
     public long? TelegramTopicId { get; set; }
 
+    // --- Роутер клиента: у некоторых клиентов нет серверов, но пинг до роутера знать полезно ---
+
+    /// <summary>Адрес роутера клиента (IP/hostname). Заполнен — сервер пингует его по расписанию.</summary>
+    public string? RouterAddress { get; set; }
+
+    /// <summary>Как часто пинговать роутер, сек (по умолчанию 60).</summary>
+    public int RouterPingIntervalSeconds { get; set; } = 60;
+
+    /// <summary>Текущая тревога «роутер не отвечает» (для уведомлений по переходам).</summary>
+    public bool AlertRouterPingActive { get; set; }
+
+    /// <summary>Итог последней проверки роутера (null — ещё не проверялся).</summary>
+    public bool? LastRouterPingOk { get; set; }
+    public DateTimeOffset? LastRouterPingAt { get; set; }
+
     public List<MonitoredServer> Servers { get; set; } = new();
 }
 
@@ -79,6 +94,9 @@ public class MonitoredServer
     /// <summary>Пинговать IP-адрес сервера: если ping пропал — на адресе пропал интернет.</summary>
     public bool MonitorPing { get; set; }
 
+    /// <summary>Как часто пинговать IP, сек (по умолчанию 60).</summary>
+    public int PingIntervalSeconds { get; set; } = 60;
+
     /// <summary>Пороги по дискам: JSON-словарь {"C:": 10} — минимальный % свободного места (0/нет = выкл).</summary>
     public string? DiskAlertsJson { get; set; }
 
@@ -102,14 +120,30 @@ public class MonitoredServer
     public string? LastMachineName { get; set; }
     public string? LastAgentVersion { get; set; }
 
+    /// <summary>Интервал heartbeat агента, сек (0 — агент ещё не сообщал). По нему считается порог «офлайн».</summary>
+    public int LastHeartbeatIntervalSeconds { get; set; }
+
+    /// <summary>Интервал полного отчёта агента, сек (информационно).</summary>
+    public int LastReportIntervalSeconds { get; set; }
+
     /// <summary>Полный последний отчёт (JSON AgentReportDto).</summary>
     public string? LastReportJson { get; set; }
 
     public List<Report> Reports { get; set; } = new();
 
-    /// <summary>Сервер «офлайн», если давно не было отчётов.</summary>
+    /// <summary>
+    /// Сервер «офлайн», если давно не было отчётов. Если агент сообщил свой интервал heartbeat,
+    /// порог = 2×интервал + 30 сек (но не меньше 90) — офлайн ловится «сразу», с поправкой на
+    /// настроенную агентом частоту; иначе — глобальный порог из настроек.
+    /// </summary>
     public bool IsOffline(int offlineThresholdSeconds)
-        => LastSeenAt is null || (DateTimeOffset.UtcNow - LastSeenAt.Value).TotalSeconds > offlineThresholdSeconds;
+    {
+        if (LastSeenAt is null) return true;
+        var threshold = LastHeartbeatIntervalSeconds > 0
+            ? Math.Max(90, LastHeartbeatIntervalSeconds * 2 + 30)
+            : offlineThresholdSeconds;
+        return (DateTimeOffset.UtcNow - LastSeenAt.Value).TotalSeconds > threshold;
+    }
 }
 
 /// <summary>Исторический отчёт от агента.</summary>

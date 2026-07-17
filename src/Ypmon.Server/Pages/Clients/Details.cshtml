@@ -8,7 +8,26 @@
 }
 
 <h1 class="page-title">🗂️ @Model.Client?.Name</h1>
-<div class="muted mb-3">@Model.Client?.Description &nbsp; <a href="/Clients">← к списку клиентов</a></div>
+<div class="muted mb-3">
+    @Model.Client?.Description &nbsp;
+    @if (!string.IsNullOrWhiteSpace(Model.Client?.RouterAddress))
+    {
+        var rc = Model.Client!;
+        if (rc.LastRouterPingOk is null)
+        {
+            <span class="badge-status st-unknown">📶 роутер @rc.RouterAddress: ещё не проверялся</span>
+        }
+        else if (rc.LastRouterPingOk == true)
+        {
+            <span class="badge-status st-ok">📶 роутер @rc.RouterAddress: отвечает (@UiHelpers.Ago(rc.LastRouterPingAt))</span>
+        }
+        else
+        {
+            <span class="badge-status st-err">📶 роутер @rc.RouterAddress: НЕ отвечает (@UiHelpers.Ago(rc.LastRouterPingAt))</span>
+        }
+    }
+    &nbsp; <a href="/Clients">← к списку клиентов</a>
+</div>
 
 @if (Model.Message is not null)
 {
@@ -110,6 +129,11 @@
                             <input class="form-control" name="ClientName" value="@Model.Client?.Name" required /></div>
                         <div class="mb-3"><label>Описание</label>
                             <textarea class="form-control" name="ClientDescription" rows="2">@Model.Client?.Description</textarea></div>
+                        <div class="mb-2"><label>Роутер клиента (IP/адрес — пусто = не пинговать)</label>
+                            <input class="form-control" name="RouterAddress" value="@Model.Client?.RouterAddress" placeholder="напр. 192.168.1.1 или внешний IP" />
+                            <div class="muted" style="font-size:12px">Сервер пингует роутер; пинг пропал/восстановился → уведомление в Telegram-тему клиента. Полезно для клиентов без серверов.</div></div>
+                        <div class="mb-3"><label>Проверять роутер каждые, сек</label>
+                            <input class="form-control" style="max-width:120px" type="number" min="10" max="86400" name="RouterPingIntervalSeconds" value="@(Model.Client?.RouterPingIntervalSeconds ?? 60)" /></div>
                         <button class="btn btn-primary w-100" type="submit">Сохранить клиента</button>
                     </form>
                 </div>

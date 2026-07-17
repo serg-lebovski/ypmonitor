@@ -29,6 +29,8 @@ public class DetailsModel : PageModel
     // Редактирование клиента
     [BindProperty] public string ClientName { get; set; } = "";
     [BindProperty] public string? ClientDescription { get; set; }
+    [BindProperty] public string? RouterAddress { get; set; }
+    [BindProperty] public int RouterPingIntervalSeconds { get; set; } = 60;
     public string? Message { get; set; }
 
     public async Task<IActionResult> OnGetAsync()
@@ -63,6 +65,16 @@ public class DetailsModel : PageModel
         if (c is null) return NotFound();
         if (!string.IsNullOrWhiteSpace(ClientName)) c.Name = ClientName.Trim();
         c.Description = ClientDescription?.Trim();
+        var newRouter = string.IsNullOrWhiteSpace(RouterAddress) ? null : RouterAddress.Trim();
+        if (newRouter != c.RouterAddress)
+        {
+            // Адрес сменили/убрали — старое состояние тревоги и результата больше не актуально.
+            c.AlertRouterPingActive = false;
+            c.LastRouterPingOk = null;
+            c.LastRouterPingAt = null;
+        }
+        c.RouterAddress = newRouter;
+        c.RouterPingIntervalSeconds = Math.Clamp(RouterPingIntervalSeconds, 10, 86400);
         await _db.SaveChangesAsync();
         await Load();
         Message = "Клиент сохранён";

@@ -8,20 +8,24 @@ using Ypmon.Shared;
 namespace Ypmon.Server.Services;
 
 /// <summary>
-/// Фоновый мониторинг (раз в минуту), настраивается в карточке сервера:
-///  • связь с агентом — если агент молчит дольше порога, «пропала связь с сервером»;
-///  • ping IP-адреса — если адрес не отвечает, «на адресе пропал интернет»;
+/// Фоновый мониторинг (цикл каждые 15 сек), настраивается в карточках сервера/клиента:
+///  • связь с агентом — порог офлайна адаптивный (2×heartbeat-интервал агента + запас),
+///    поэтому «пропала связь» ловится сразу, с поправкой на настроенную агентом частоту;
+///  • ping IP сервера — с индивидуальным интервалом проверки (карточка сервера);
+///  • ping роутера клиента — у клиента может не быть серверов, но роутер пингуется;
 ///  • свободное место на дисках — порог задаётся на каждый диск.
 /// Уведомления уходят в Telegram-тему клиента только по переходам состояния
-/// (упало/восстановилось) — без повторов каждую минуту.
+/// (упало/восстановилось) — без повторов.
 /// </summary>
 public class AvailabilityMonitor : BackgroundService
 {
     private readonly IServiceProvider _sp;
     private readonly ILogger<AvailabilityMonitor> _log;
 
-    // Ping: требуем 2 неудачных цикла подряд, чтобы одиночная потеря пакетов не поднимала тревогу.
-    private readonly Dictionary<int, int> _pingFails = new();
+    // Ping: требуем 2 неудачных проверки подряд, чтобы одиночная потеря пакетов не поднимала тревогу.
+    private readonly Dictionary<string, int> _pingFails = new();
+    // Когда наступает следующая проверка ping (ключи: "s<id>" — сервер, "c<id>" — роутер клиента).
+    private readonly Dictionary<string, DateTimeOffset> _nextDue = new();
 
     public AvailabilityMonitor(IServiceProvider sp, ILogger<AvailabilityMonitor> log)
     {
@@ -35,7 +39,7 @@ public class AvailabilityMonitor : BackgroundService
         {
             try { await TickAsync(ct); }
             catch (Exception ex) { _log.LogError(ex, "Ошибка мониторинга доступности"); }
-            try { await Task.Delay(TimeSpan.FromSeconds(60), ct); } catch { }
+            try { await Task.Delay(TimeSpan.FromSeconds(15), ct); } catch { }
         }
     }
 
@@ -59,7 +63,24 @@ public class AvailabilityMonitor : BackgroundService
             dirty |= await CheckPingAsync(settings, srv, tg, topics);
             dirty |= await CheckDisksAsync(settings, srv, tg, topics);
         }
+
+        // Роутеры клиентов: пингуем всех, у кого задан адрес (даже если серверов нет).
+        var clients = await db.Clients
+            .Where(c => c.RouterAddress != null && c.RouterAddress != "")
+            .ToListAsync(ct);
+        foreach (var client in clients)
+            dirty |= await CheckRouterAsync(settings, client, tg, topics);
+
         if (dirty) await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>Пора ли выполнять периодическую проверку с данным интервалом.</summary>
+    private bool Due(string key, int intervalSeconds)
+    {
+        var now = DateTimeOffset.UtcNow;
+        if (_nextDue.TryGetValue(key, out var next) && now < next) return false;
+        _nextDue[key] = now.AddSeconds(Math.Max(10, intervalSeconds));
+        return true;
     }
 
     // --- Связь с агентом -------------------------------------------------
@@ -77,42 +98,76 @@ public class AvailabilityMonitor : BackgroundService
         var text = offline
             ? $"🔴 <b>{name}</b> — пропала связь с сервером: агент не выходит на связь (последний отчёт: {UiHelpers.Ago(srv.LastSeenAt)})."
             : $"🟢 <b>{name}</b> — связь с сервером восстановлена.";
-        await NotifyAsync(s, srv, tg, topics, text);
+        await NotifyAsync(s, srv.Client, tg, topics, text);
         return true;
     }
 
-    // --- Ping IP (интернет на адресе) -------------------------------------
+    // --- Ping IP сервера (интернет на адресе) ------------------------------
 
     private async Task<bool> CheckPingAsync(ServerSettings s, MonitoredServer srv, TelegramService tg, TelegramReportService topics)
     {
+        var key = "s" + srv.Id;
         if (!srv.MonitorPing || string.IsNullOrWhiteSpace(srv.IpAddress))
         {
-            _pingFails.Remove(srv.Id);
+            _pingFails.Remove(key);
             return false;
         }
+        if (!Due(key, srv.PingIntervalSeconds)) return false;
 
         var host = ExtractHost(srv.IpAddress!);
         var ok = await PingHostAsync(host);
-        if (ok) _pingFails.Remove(srv.Id);
-        else _pingFails[srv.Id] = _pingFails.GetValueOrDefault(srv.Id) + 1;
+        if (ok) _pingFails.Remove(key);
+        else _pingFails[key] = _pingFails.GetValueOrDefault(key) + 1;
 
         var name = WebUtility.HtmlEncode(srv.Name);
         if (ok && srv.AlertPingActive)
         {
             srv.AlertPingActive = false;
-            await NotifyAsync(s, srv, tg, topics, $"🟢 <b>{name}</b> — адрес {host} снова отвечает на ping, интернет на адресе восстановлен.");
+            await NotifyAsync(s, srv.Client, tg, topics, $"🟢 <b>{name}</b> — адрес {host} снова отвечает на ping, интернет на адресе восстановлен.");
             return true;
         }
-        if (!ok && !srv.AlertPingActive && _pingFails.GetValueOrDefault(srv.Id) >= 2)
+        if (!ok && !srv.AlertPingActive && _pingFails.GetValueOrDefault(key) >= 2)
         {
             srv.AlertPingActive = true;
-            await NotifyAsync(s, srv, tg, topics, $"🌐🔴 <b>{name}</b> — адрес {host} не отвечает на ping: похоже, на адресе пропал интернет.");
+            await NotifyAsync(s, srv.Client, tg, topics, $"🌐🔴 <b>{name}</b> — адрес {host} не отвечает на ping: похоже, на адресе пропал интернет.");
             return true;
         }
         return false;
     }
 
-    /// <summary>Достаёт хост из поля «Сетевой адрес / IP» (терпит http://…, host:port, лишние пути).</summary>
+    // --- Ping роутера клиента ----------------------------------------------
+
+    private async Task<bool> CheckRouterAsync(ServerSettings s, Client client, TelegramService tg, TelegramReportService topics)
+    {
+        var key = "c" + client.Id;
+        if (!Due(key, client.RouterPingIntervalSeconds)) return false;
+
+        var host = ExtractHost(client.RouterAddress!);
+        var ok = await PingHostAsync(host);
+        if (ok) _pingFails.Remove(key);
+        else _pingFails[key] = _pingFails.GetValueOrDefault(key) + 1;
+
+        var dirty = client.LastRouterPingOk != ok || client.LastRouterPingAt is null;
+        client.LastRouterPingOk = ok;
+        client.LastRouterPingAt = DateTimeOffset.UtcNow;
+
+        var name = WebUtility.HtmlEncode(client.Name);
+        if (ok && client.AlertRouterPingActive)
+        {
+            client.AlertRouterPingActive = false;
+            await NotifyAsync(s, client, tg, topics, $"🟢 <b>{name}</b> — роутер {host} снова отвечает на ping.");
+            return true;
+        }
+        if (!ok && !client.AlertRouterPingActive && _pingFails.GetValueOrDefault(key) >= 2)
+        {
+            client.AlertRouterPingActive = true;
+            await NotifyAsync(s, client, tg, topics, $"🌐🔴 <b>{name}</b> — роутер {host} не отвечает на ping.");
+            return true;
+        }
+        return dirty;
+    }
+
+    /// <summary>Достаёт хост из поля адреса (терпит http://…, host:port, лишние пути).</summary>
     public static string ExtractHost(string raw)
     {
         raw = raw.Trim();
@@ -166,7 +221,7 @@ public class AvailabilityMonitor : BackgroundService
             {
                 active.Add(d.Name);
                 changed = true;
-                await NotifyAsync(s, srv, tg, topics,
+                await NotifyAsync(s, srv.Client, tg, topics,
                     $"💽🔴 <b>{name}</b> — диск {d.Name} почти заполнен: свободно {freePct:0.#}% ({UiHelpers.Bytes(d.FreeBytes)} из {UiHelpers.Bytes(d.TotalBytes)}), порог {minFree}%.");
             }
             // Гистерезис +2%: не дёргаем «восстановилось/упало» на границе порога.
@@ -174,7 +229,7 @@ public class AvailabilityMonitor : BackgroundService
             {
                 active.Remove(d.Name);
                 changed = true;
-                await NotifyAsync(s, srv, tg, topics,
+                await NotifyAsync(s, srv.Client, tg, topics,
                     $"💽🟢 <b>{name}</b> — на диске {d.Name} снова достаточно места: свободно {freePct:0.#}% ({UiHelpers.Bytes(d.FreeBytes)}).");
             }
         }
@@ -212,13 +267,13 @@ public class AvailabilityMonitor : BackgroundService
 
     // --- Доставка ------------------------------------------------------------
 
-    private async Task NotifyAsync(ServerSettings s, MonitoredServer srv, TelegramService tg, TelegramReportService topics, string text)
+    private async Task NotifyAsync(ServerSettings s, Client? client, TelegramService tg, TelegramReportService topics, string text)
     {
         if (!s.TelegramEnabled || string.IsNullOrWhiteSpace(s.TelegramBotToken) || string.IsNullOrWhiteSpace(s.TelegramChatId))
             return; // состояние всё равно отслеживаем, чтобы после включения бота не было шквала старых тревог
         try
         {
-            long? topic = srv.Client is null ? null : await topics.EnsureTopicAsync(s, srv.Client);
+            long? topic = client is null ? null : await topics.EnsureTopicAsync(s, client);
             var (ok, err) = await tg.SendMessageAsync(s, s.TelegramChatId!, text, topic, disablePreview: true);
             if (!ok) _log.LogWarning("Мониторинг: не удалось отправить уведомление в Telegram: {Err}", err);
         }

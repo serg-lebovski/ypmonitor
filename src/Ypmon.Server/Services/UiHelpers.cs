@@ -83,6 +83,18 @@ public static class UiHelpers
         return $"{v:0.#} {u[i]}";
     }
 
+    /// <summary>Интервал в секундах → «2 ч 30 мин», «45 сек».</summary>
+    public static string Duration(int seconds)
+    {
+        if (seconds <= 0) return "—";
+        var h = seconds / 3600; var m = seconds % 3600 / 60; var s = seconds % 60;
+        var parts = new List<string>();
+        if (h > 0) parts.Add($"{h} ч");
+        if (m > 0) parts.Add($"{m} мин");
+        if (s > 0 || parts.Count == 0) parts.Add($"{s} сек");
+        return string.Join(" ", parts);
+    }
+
     public static string Ago(DateTimeOffset? t)
     {
         if (t is null) return "никогда";

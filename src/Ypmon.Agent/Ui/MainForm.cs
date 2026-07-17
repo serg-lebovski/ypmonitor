@@ -25,7 +25,8 @@ public class MainForm : Form
 
     // Подключение
     private TextBox _serverUrl = null!, _apiKey = null!;
-    private NumericUpDown _reportSec = null!, _heartbeatSec = null!;
+    private NumericUpDown _reportH = null!, _reportM = null!;            // интервал отчёта: часы + минуты
+    private NumericUpDown _hbH = null!, _hbM = null!, _hbS = null!;      // интервал связи: часы + минуты + секунды
 
     // Задания архивации (папки)
     private DataGridView _folderGrid = null!;
@@ -135,8 +136,8 @@ public class MainForm : Form
         AddTitle(t, "Настройки подключения к серверу");
         _serverUrl = AddText(t, "Адрес сервера YPMon (http://10.0.0.1:8081)");
         _apiKey = AddText(t, "API-ключ сервера");
-        _reportSec = AddNum(t, "Интервал отчёта о состоянии, секунд (по умолч. 21600 = 6 ч)", 30, 604800);
-        _heartbeatSec = AddNum(t, "Интервал проверки связи, секунд", 15, 86400);
+        (_reportH, _reportM, _) = AddDuration(t, "Как часто отправлять отчёт о состоянии (по умолч. 6 ч)", withSeconds: false, maxHours: 168);
+        (_hbH, _hbM, _hbS) = AddDuration(t, "Как часто отправлять доступность агента (по умолч. 1 мин)", withSeconds: true, maxHours: 24);
 
         var btnTest = new Button { Text = "🔌 Проверить соединение с сервером", AutoSize = true, Margin = new Padding(3, 6, 3, 3) };
         btnTest.Click += (_, _) => TestConnection();
@@ -696,8 +697,8 @@ public class MainForm : Form
         _loading = true;
         _serverUrl.Text = _cfg.ServerUrl;
         _apiKey.Text = _cfg.ApiKey;
-        _reportSec.Value = Clamp(_cfg.ReportIntervalSeconds, 30, 604800);
-        _heartbeatSec.Value = Clamp(_cfg.HeartbeatIntervalSeconds, 15, 86400);
+        SetDuration((int)Clamp(_cfg.ReportIntervalSeconds, 60, 604800), _reportH, _reportM, null);
+        SetDuration((int)Clamp(_cfg.HeartbeatIntervalSeconds, 15, 86400), _hbH, _hbM, _hbS);
 
         var evt = _cfg.EventLog ?? new EventLogConfig();
         _evtEnabled.Checked = evt.Enabled;
@@ -719,8 +720,8 @@ public class MainForm : Form
     {
         _cfg.ServerUrl = _serverUrl.Text.Trim();
         _cfg.ApiKey = _apiKey.Text.Trim();
-        _cfg.ReportIntervalSeconds = (int)_reportSec.Value;
-        _cfg.HeartbeatIntervalSeconds = (int)_heartbeatSec.Value;
+        _cfg.ReportIntervalSeconds = GetDuration(_reportH, _reportM, null, minSeconds: 60);       // минимум 1 мин
+        _cfg.HeartbeatIntervalSeconds = GetDuration(_hbH, _hbM, _hbS, minSeconds: 15);            // минимум 15 сек
 
         _cfg.EventLog ??= new EventLogConfig();
         _cfg.EventLog.Enabled = _evtEnabled.Checked;
@@ -806,6 +807,48 @@ public class MainForm : Form
         t.Controls.Add(num, 1, r);
         return num;
     }
+
+    /// <summary>Строка «интервал»: часы + минуты (+ секунды). Возвращает поля; секунды могут быть null.</summary>
+    private static (NumericUpDown h, NumericUpDown m, NumericUpDown? s) AddDuration(
+        TableLayoutPanel t, string label, bool withSeconds, int maxHours)
+    {
+        var lbl = new Label { Text = label, AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(3, 6, 3, 3) };
+        var row = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Margin = new Padding(0) };
+
+        NumericUpDown Num(int max) => new() { Minimum = 0, Maximum = max, Width = 62, Margin = new Padding(3, 3, 2, 3) };
+        Label Unit(string text) => new() { Text = text, AutoSize = true, Margin = new Padding(0, 8, 8, 3) };
+
+        var h = Num(maxHours);
+        var m = Num(59);
+        row.Controls.Add(h); row.Controls.Add(Unit("ч"));
+        row.Controls.Add(m); row.Controls.Add(Unit("мин"));
+        NumericUpDown? s = null;
+        if (withSeconds)
+        {
+            s = Num(59);
+            row.Controls.Add(s); row.Controls.Add(Unit("сек"));
+        }
+
+        var r = t.RowCount++;
+        t.Controls.Add(lbl, 0, r);
+        t.Controls.Add(row, 1, r);
+        return (h, m, s);
+    }
+
+    /// <summary>Раскладывает секунды в поля «ч/мин/сек».</summary>
+    private static void SetDuration(int totalSeconds, NumericUpDown h, NumericUpDown m, NumericUpDown? s)
+    {
+        totalSeconds = Math.Max(0, totalSeconds);
+        var hours = Math.Min(totalSeconds / 3600, (int)h.Maximum);
+        var rest = totalSeconds - hours * 3600;
+        h.Value = hours;
+        m.Value = Math.Min(rest / 60, 59);
+        if (s is not null) s.Value = rest % 60;
+    }
+
+    /// <summary>Собирает секунды из полей «ч/мин/сек» с нижним пределом.</summary>
+    private static int GetDuration(NumericUpDown h, NumericUpDown m, NumericUpDown? s, int minSeconds)
+        => Math.Max(minSeconds, (int)h.Value * 3600 + (int)m.Value * 60 + (int)(s?.Value ?? 0));
 
     private static void AddFull(TableLayoutPanel t, Control c)
     {

@@ -62,6 +62,7 @@
             <div class="kv"><span class="k">Машина агента</span><span class="v">@(s.LastMachineName ?? "—")</span></div>
             <div class="kv"><span class="k">Версия агента</span><span class="v">@(s.LastAgentVersion ?? "—")</span></div>
             <div class="kv"><span class="k">Последний отчёт</span><span class="v">@UiHelpers.DateTimeAbs(s.LastSeenAt) <span class="muted">(@UiHelpers.Ago(s.LastSeenAt))</span></span></div>
+            <div class="kv"><span class="k">Интервалы агента</span><span class="v">связь: @UiHelpers.Duration(s.LastHeartbeatIntervalSeconds) · отчёт: @UiHelpers.Duration(s.LastReportIntervalSeconds)</span></div>
             <div class="kv"><span class="k">Последний бэкап</span><span class="v">@UiHelpers.DateTimeAbs(lastBackup)</span></div>
             <div class="kv"><span class="k">Объём копий</span><span class="v">@UiHelpers.Bytes(sizeBytes) <span class="muted">(файлов: @s.LastBackupCount)</span></span></div>
             <div class="kv"><span class="k">Порог устаревания</span><span class="v">@(s.BackupStaleDays > 0 ? s.BackupStaleDays + " дн." : $"по умолчанию ({Model.DefaultBackupStaleDays} дн.)")</span></div>
@@ -261,6 +262,13 @@
                         <input class="form-check-input" type="checkbox" name="monitorPing" value="true" id="mp" @(s.MonitorPing ? "checked" : "") />
                         <label class="form-check-label" for="mp">Пинговать IP-адрес (@(string.IsNullOrWhiteSpace(s.IpAddress) ? "не задан!" : s.IpAddress))
                             <div class="muted" style="font-size:12px">IP не отвечает на ping → «на адресе пропал интернет»</div></label>
+                    </div>
+                    @{ var pi = Math.Max(10, s.PingIntervalSeconds); }
+                    <div class="mb-2" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+                        <span class="muted" style="font-size:12px;flex:0 0 110px">Проверять каждые</span>
+                        <input class="form-control" style="max-width:70px" type="number" min="0" max="168" name="pingH" value="@(pi / 3600)" /><span class="muted" style="font-size:12px">ч</span>
+                        <input class="form-control" style="max-width:70px" type="number" min="0" max="59" name="pingM" value="@(pi % 3600 / 60)" /><span class="muted" style="font-size:12px">мин</span>
+                        <input class="form-control" style="max-width:70px" type="number" min="0" max="59" name="pingS" value="@(pi % 60)" /><span class="muted" style="font-size:12px">сек</span>
                     </div>
 
                     <div class="mb-2" style="margin-top:10px"><strong style="font-size:13px">Пороги по дискам</strong>

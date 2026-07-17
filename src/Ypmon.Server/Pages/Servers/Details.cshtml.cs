@@ -81,7 +81,7 @@ public class DetailsModel : PageModel
         return Page();
     }
 
-    public async Task<IActionResult> OnPostSaveMonitoringAsync(bool monitorOffline, bool monitorPing)
+    public async Task<IActionResult> OnPostSaveMonitoringAsync(bool monitorOffline, bool monitorPing, int pingH, int pingM, int pingS)
     {
         if (!User.CanEdit()) return Forbid();
         var s = await _db.Servers.FindAsync(Id);
@@ -89,6 +89,7 @@ public class DetailsModel : PageModel
 
         s.MonitorOfflineAlert = monitorOffline;
         s.MonitorPing = monitorPing;
+        s.PingIntervalSeconds = Math.Clamp(pingH * 3600 + pingM * 60 + pingS, 10, 7 * 24 * 3600);
 
         // Пороги по дискам: поля формы th_<имя диска>, значение — минимальный % свободного места (0/пусто = выкл).
         var dict = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);

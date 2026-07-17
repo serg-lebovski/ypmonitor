@@ -26,6 +26,10 @@ public class ReportIngestService
         if (server is null)
             return new ReportAckDto { Accepted = false, Message = "Неизвестный API-ключ" };
 
+        // Интервалы агента (настраиваются в агенте) — по heartbeat-интервалу считается порог «офлайн».
+        if (report.HeartbeatIntervalSeconds > 0) server.LastHeartbeatIntervalSeconds = report.HeartbeatIntervalSeconds;
+        if (report.ReportIntervalSeconds > 0) server.LastReportIntervalSeconds = report.ReportIntervalSeconds;
+
         // Heartbeat: время связи + свежие данные о дисках.
         if (report.IsHeartbeat)
         {

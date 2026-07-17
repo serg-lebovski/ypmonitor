@@ -63,7 +63,9 @@ public class Reporter : BackgroundService
             Folders = heartbeat ? new() : _folders.Build(cfg),
             // Диски передаём и в heartbeat: сбор дешёвый, а серверные пороги
             // заполненности работают со свежими данными (раз в минуту, а не раз в 6 часов).
-            Disks = CollectDisks()
+            Disks = CollectDisks(),
+            HeartbeatIntervalSeconds = Math.Max(15, cfg.HeartbeatIntervalSeconds),
+            ReportIntervalSeconds = Math.Max(60, cfg.ReportIntervalSeconds)
         };
     }
 
