@@ -146,6 +146,8 @@ using (var scope = app.Services.CreateScope())
                     db.Database.ExecuteSqlRaw("ALTER TABLE \"Settings\" ADD COLUMN IF NOT EXISTS \"ArchiveReportEmailTo\" text;");
                     db.Database.ExecuteSqlRaw("ALTER TABLE \"Settings\" ADD COLUMN IF NOT EXISTS \"ExternalAddress\" text;");
                     db.Database.ExecuteSqlRaw("ALTER TABLE \"Settings\" ADD COLUMN IF NOT EXISTS \"ExternalPort\" integer NOT NULL DEFAULT 8081;");
+                    db.Database.ExecuteSqlRaw("ALTER TABLE \"Servers\" ADD COLUMN IF NOT EXISTS \"LastPhysicalDisksJson\" text;");
+                    db.Database.ExecuteSqlRaw("ALTER TABLE \"Servers\" ADD COLUMN IF NOT EXISTS \"AlertDiskHealthActive\" boolean NOT NULL DEFAULT false;");
                 }
                 else
                 {
@@ -187,6 +189,8 @@ using (var scope = app.Services.CreateScope())
                     try { db.Database.ExecuteSqlRaw("ALTER TABLE \"Settings\" ADD COLUMN \"ArchiveReportEmailTo\" TEXT;"); } catch { }
                     try { db.Database.ExecuteSqlRaw("ALTER TABLE \"Settings\" ADD COLUMN \"ExternalAddress\" TEXT;"); } catch { }
                     try { db.Database.ExecuteSqlRaw("ALTER TABLE \"Settings\" ADD COLUMN \"ExternalPort\" INTEGER NOT NULL DEFAULT 8081;"); } catch { }
+                    try { db.Database.ExecuteSqlRaw("ALTER TABLE \"Servers\" ADD COLUMN \"LastPhysicalDisksJson\" TEXT;"); } catch { }
+                    try { db.Database.ExecuteSqlRaw("ALTER TABLE \"Servers\" ADD COLUMN \"AlertDiskHealthActive\" INTEGER NOT NULL DEFAULT 0;"); } catch { }
                 }
             }
             catch (Exception ex) { logger.LogWarning("Обновление схемы: {Msg}", ex.Message); }

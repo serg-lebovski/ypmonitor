@@ -114,6 +114,12 @@ public class MonitoredServer
     /// <summary>Последние данные о дисках от агента (JSON List&lt;DiskStatusDto&gt;), обновляются и heartbeat'ом.</summary>
     public string? LastDisksJson { get; set; }
 
+    /// <summary>Последнее здоровье физических накопителей (JSON List&lt;PhysicalDiskDto&gt;), из полного отчёта.</summary>
+    public string? LastPhysicalDisksJson { get; set; }
+
+    /// <summary>Активна тревога «проблема со здоровьем диска (SMART)» — для уведомлений по переходам.</summary>
+    public bool AlertDiskHealthActive { get; set; }
+
     // Текущие состояния тревог — чтобы уведомлять по переходам, а не спамить каждую минуту.
     public bool AlertOfflineActive { get; set; }
     public bool AlertPingActive { get; set; }

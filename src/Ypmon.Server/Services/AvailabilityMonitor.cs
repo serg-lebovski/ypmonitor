@@ -57,7 +57,8 @@ public class AvailabilityMonitor : BackgroundService
 
         // Диски проверяем у всех, кто прислал их (порог по умолчанию 15% работает и без явной настройки).
         var servers = await db.Servers.Include(s => s.Client)
-            .Where(s => s.MonitorOfflineAlert || s.MonitorPing || s.DiskAlertsJson != null || s.LastDisksJson != null)
+            .Where(s => s.MonitorOfflineAlert || s.MonitorPing || s.DiskAlertsJson != null
+                     || s.LastDisksJson != null || s.LastPhysicalDisksJson != null)
             .ToListAsync(ct);
 
         var dirty = false;
@@ -66,6 +67,7 @@ public class AvailabilityMonitor : BackgroundService
             dirty |= await CheckOfflineAsync(settings, srv, tg, topics);
             dirty |= await CheckPingAsync(settings, srv, tg, topics);
             dirty |= await CheckDisksAsync(settings, srv, tg, topics);
+            dirty |= await CheckDiskHealthAsync(settings, srv, tg, topics);
         }
 
         // Роутеры клиентов: пингуем всех, у кого задан адрес (даже если серверов нет).
@@ -248,6 +250,36 @@ public class AvailabilityMonitor : BackgroundService
         if (changed)
             srv.AlertDisksActiveJson = JsonSerializer.Serialize(active.ToList());
         return changed;
+    }
+
+    // --- Здоровье физических дисков (SMART) --------------------------------
+
+    private async Task<bool> CheckDiskHealthAsync(ServerSettings s, MonitoredServer srv, TelegramService tg, TelegramReportService topics)
+    {
+        if (string.IsNullOrWhiteSpace(srv.LastPhysicalDisksJson)) return false;
+        List<PhysicalDiskDto>? disks;
+        try { disks = JsonSerializer.Deserialize<List<PhysicalDiskDto>>(srv.LastPhysicalDisksJson!); }
+        catch { return false; }
+        if (disks is null || disks.Count == 0) return false;
+
+        var bad = disks.Where(d => d.Health is "Warning" or "Unhealthy").ToList();
+        var problem = bad.Count > 0;
+        if (problem == srv.AlertDiskHealthActive) return false;   // без перехода — не тревожим
+
+        srv.AlertDiskHealthActive = problem;
+        var name = WebUtility.HtmlEncode(srv.Name);
+        string text;
+        if (problem)
+        {
+            var det = string.Join(", ", bad.Select(d => $"{WebUtility.HtmlEncode(d.Name)}: {d.Health}"));
+            text = $"🧯🔴 <b>{name}</b> — проблема со здоровьем накопителя (SMART): {det}. Стоит проверить диск / бэкапы.";
+        }
+        else
+        {
+            text = $"🧯🟢 <b>{name}</b> — здоровье накопителей (SMART) снова в норме.";
+        }
+        await NotifyAsync(s, srv.Client, tg, topics, text);
+        return true;
     }
 
     /// <summary>

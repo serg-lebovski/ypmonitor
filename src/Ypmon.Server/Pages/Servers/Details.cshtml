@@ -209,6 +209,36 @@
             </div>
         </details>
 
+        <details class="card-y acc">
+            <summary>🩺 Здоровье накопителей (SMART)</summary>
+            <div class="acc-body">
+            @if (!Model.PhysicalDisks.Any())
+            {
+                <div class="muted">Нет данных SMART (нужен агент версии 2.5+; на виртуальных дисках WMI может не отдавать SMART).</div>
+            }
+            else
+            {
+                <table class="tbl">
+                    <thead><tr><th>Накопитель</th><th>Здоровье</th><th>Температура</th><th>Объём</th></tr></thead>
+                    <tbody>
+                    @foreach (var p in Model.PhysicalDisks)
+                    {
+                        var css = p.Health switch { "Healthy" => "st-ok", "Warning" => "st-warn", "Unhealthy" => "st-err", _ => "st-unknown" };
+                        var htext = p.Health switch { "Healthy" => "Здоров", "Warning" => "Предупреждение", "Unhealthy" => "Неисправен", _ => "Нет данных" };
+                        <tr>
+                            <td><strong>@p.Name</strong>@(string.IsNullOrWhiteSpace(p.Serial) ? "" : "")
+                                @if (!string.IsNullOrWhiteSpace(p.Serial)) { <div class="muted" style="font-size:11px">S/N @p.Serial</div> }</td>
+                            <td><span class="badge-status @css">@htext</span></td>
+                            <td>@(p.TemperatureC is int t ? $"{t} °C" : "—")</td>
+                            <td>@(p.SizeBytes > 0 ? UiHelpers.Bytes(p.SizeBytes) : "—")</td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            }
+            </div>
+        </details>
+
         @{ var latest = Model.History.FirstOrDefault(); var prev = Model.History.Skip(1).ToList(); }
         <details class="card-y acc">
             <summary>

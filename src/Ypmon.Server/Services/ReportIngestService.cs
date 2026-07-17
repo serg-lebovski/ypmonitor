@@ -87,6 +87,8 @@ public class ReportIngestService
         server.LastReportJson = JsonSerializer.Serialize(report);
         if (report.Disks.Count > 0)
             server.LastDisksJson = JsonSerializer.Serialize(report.Disks);
+        if (report.PhysicalDisks.Count > 0)
+            server.LastPhysicalDisksJson = JsonSerializer.Serialize(report.PhysicalDisks);
         _commands.MarkReportReceived(server);   // [YPMON-REMOTE-CMD] полный отчёт получен — запрос выполнен
 
         // Сохраняем новые ошибки Windows (без дублей).

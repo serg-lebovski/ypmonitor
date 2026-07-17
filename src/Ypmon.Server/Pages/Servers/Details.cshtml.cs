@@ -42,6 +42,9 @@ public class DetailsModel : PageModel
     public List<DiskStatusDto> Disks { get; set; } = new();
     public Dictionary<string, int> DiskThresholds { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
+    // Здоровье физических накопителей (SMART) — показывается свёрнутым списком.
+    public List<PhysicalDiskDto> PhysicalDisks { get; set; } = new();
+
     // Поля редактирования
     [BindProperty] public string Name { get; set; } = "";
     [BindProperty] public string? PhysicalAddress { get; set; }
@@ -76,6 +79,10 @@ public class DetailsModel : PageModel
         if (Server.LastDisksJson is not null)
         {
             try { Disks = JsonSerializer.Deserialize<List<DiskStatusDto>>(Server.LastDisksJson) ?? new(); } catch { }
+        }
+        if (Server.LastPhysicalDisksJson is not null)
+        {
+            try { PhysicalDisks = JsonSerializer.Deserialize<List<PhysicalDiskDto>>(Server.LastPhysicalDisksJson) ?? new(); } catch { }
         }
         DiskThresholds = AvailabilityMonitor.ParseThresholds(Server.DiskAlertsJson);
         History = await _db.Reports.Where(r => r.ServerId == Id)

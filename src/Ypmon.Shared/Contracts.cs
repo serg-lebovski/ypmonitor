@@ -60,6 +60,25 @@ public class DiskStatusDto
     public double FreePercent => TotalBytes > 0 ? FreeBytes * 100.0 / TotalBytes : 0;
 }
 
+/// <summary>Состояние физического накопителя (SMART/WMI). Необязательное — старые агенты его не присылают.</summary>
+public class PhysicalDiskDto
+{
+    /// <summary>Модель/имя накопителя (FriendlyName).</summary>
+    public string Name { get; set; } = "";
+
+    /// <summary>Серийный номер (если доступен).</summary>
+    public string? Serial { get; set; }
+
+    /// <summary>Здоровье: Healthy / Warning / Unhealthy / Unknown.</summary>
+    public string Health { get; set; } = "Unknown";
+
+    /// <summary>Температура, °C (если доступна).</summary>
+    public int? TemperatureC { get; set; }
+
+    /// <summary>Объём накопителя, байт.</summary>
+    public long SizeBytes { get; set; }
+}
+
 /// <summary>Ошибка/предупреждение из журнала событий Windows.</summary>
 public class EventLogEntryDto
 {
@@ -93,6 +112,10 @@ public class AgentReportDto
     /// <summary>Локальные диски (буква, объём, свободно). Передаются и в heartbeat — данные дешёвые,
     /// а серверные пороги заполненности работают со свежими цифрами.</summary>
     public List<DiskStatusDto> Disks { get; set; } = new();
+
+    /// <summary>Здоровье физических накопителей (SMART/WMI). Присылается в полном отчёте; может быть пустым
+    /// (старый агент, не-Windows, нет данных WMI). Сервер обрабатывает опционально.</summary>
+    public List<PhysicalDiskDto> PhysicalDisks { get; set; } = new();
 
     /// <summary>Интервал heartbeat агента, сек. Сервер по нему понимает, когда агент реально «пропал»
     /// (порог офлайна = 2×интервал + запас), а не ждёт фиксированный глобальный порог.</summary>
