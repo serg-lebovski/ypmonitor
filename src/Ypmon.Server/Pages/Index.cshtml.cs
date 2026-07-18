@@ -24,6 +24,9 @@ public class IndexModel : PageModel
     // График «место на дисках»: по одной полосе на диск, худшие сверху.
     public List<DiskBar> DiskBars { get; set; } = new();
 
+    /// <summary>Сколько серверов с проблемой по месту (есть диск ниже порога) — для свёрнутого заголовка.</summary>
+    public int DiskProblemServers { get; set; }
+
     // График «работа архивации»: итоги полных отчётов по дням (последние 14 дней).
     public List<DaySlice> ArchiveDays { get; set; } = new();
     public int ArchiveMaxPerDay { get; set; } = 1;
@@ -65,6 +68,7 @@ public class IndexModel : PageModel
     private void BuildDiskBars(List<MonitoredServer> servers)
     {
         var bars = new List<DiskBar>();
+        var problemServers = new HashSet<int>();
         foreach (var s in servers)
         {
             if (string.IsNullOrWhiteSpace(s.LastDisksJson)) continue;
@@ -81,10 +85,12 @@ public class IndexModel : PageModel
                 var sev = th > 0 && free < th ? "err"
                     : th > 0 && free < th * 1.5 ? "warn"
                     : "ok";
+                if (sev == "err") problemServers.Add(s.Id);
                 bars.Add(new DiskBar(s.Id, s.Name, s.Client?.Name ?? "", d.Name, d.Label,
                     100 - free, free, th, sev));
             }
         }
+        DiskProblemServers = problemServers.Count;
         // Худшие (меньше всего свободного места) — сверху; ограничим топ-16, чтобы график читался.
         DiskBars = bars.OrderBy(b => b.FreePercent).Take(16).ToList();
     }

@@ -19,8 +19,19 @@
 
 @* --- Графики: место на дисках + работа архивации --- *@
 <div class="charts-grid">
-    <div class="card-y">
-        <h3 style="margin-bottom:4px">💽 Свободное место на дисках</h3>
+    <details class="card-y acc">
+        <summary>
+            💽 Свободное место на дисках
+            @if (Model.DiskProblemServers > 0)
+            {
+                <span class="badge-status st-err">проблемных серверов: @Model.DiskProblemServers</span>
+            }
+            else
+            {
+                <span class="badge-status st-ok">нет проблем</span>
+            }
+        </summary>
+        <div class="acc-body">
         <div class="muted" style="font-size:12px;margin-bottom:14px">Худшие по остатку места сверху. Красный — ниже порога, оранжевый — близко к порогу.</div>
         @if (!Model.DiskBars.Any())
         {
@@ -45,7 +56,8 @@
                 </div>
             }
         }
-    </div>
+        </div>
+    </details>
 
     <div class="card-y">
         <h3 style="margin-bottom:4px">📦 Работа архивации</h3>
