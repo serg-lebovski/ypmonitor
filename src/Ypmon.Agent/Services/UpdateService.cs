@@ -30,30 +30,66 @@ public class UpdateService : BackgroundService
     private async Task TickAsync()
     {
         var cfg = _store.Load();
-        if (!cfg.AutoUpdate) return;
-        if (cfg.LastUpdateCheck is not null && (DateTimeOffset.UtcNow - cfg.LastUpdateCheck.Value).TotalHours < 24)
+        if (!cfg.AutoUpdate)
+        {
+            _log.LogInformation("Проверка обновлений пропущена: автообновление выключено в настройках агента.");
             return;
+        }
+        if (cfg.LastUpdateCheck is not null && (DateTimeOffset.UtcNow - cfg.LastUpdateCheck.Value).TotalHours < 24)
+            return;   // троттлинг раз в сутки — молча, чтобы не засорять лог
 
-        var info = await UpdateInstaller.CheckAsync(cfg);
+        _log.LogInformation("Проверка обновлений на сервере {Server}. Текущая версия агента: {Cur}.",
+            string.IsNullOrWhiteSpace(cfg.ServerUrl) ? "(адрес не задан)" : cfg.ServerUrl, Reporter.Version);
+
+        UpdateInstaller.VersionInfo info;
+        try
+        {
+            info = await UpdateInstaller.CheckAsync(cfg);
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning("Не удалось проверить обновление (обновление не выполнено): {Reason}", ex.Message);
+            return;
+        }
 
         cfg.LastUpdateCheck = DateTimeOffset.UtcNow;
         _store.Save(cfg);
 
-        if (!info.Available || !UpdateInstaller.IsNewer(info.Version, Reporter.Version)) return;
+        if (!info.Available || string.IsNullOrWhiteSpace(info.Version))
+        {
+            _log.LogInformation("Новой версии не видно: сервер не сообщил доступную версию " +
+                "(не задан адрес/ключ, установщик не выложен на сервер или сервер недоступен). Обновление не выполнено.");
+            return;
+        }
 
-        _log.LogInformation("Доступна новая версия агента: {Ver} (текущая {Cur})", info.Version, Reporter.Version);
+        if (!UpdateInstaller.IsNewer(info.Version, Reporter.Version))
+        {
+            _log.LogInformation("Обновление не требуется: на сервере {Ver}, установлена {Cur} — уже актуально.",
+                info.Version, Reporter.Version);
+            return;
+        }
+
+        _log.LogInformation("Видит новую версию агента: {Ver} (текущая {Cur}).", info.Version, Reporter.Version);
 
         // Автоматическую замену выполняем только в режиме службы, чтобы не прерывать работу окна настроек.
         if (!Program.IsServiceMode)
         {
-            _log.LogInformation("Обновление будет установлено службой YpmonAgent.");
+            _log.LogInformation("Сейчас не обновляюсь: агент запущен в режиме окна настроек. " +
+                "Обновление установит служба YpmonAgent при своей проверке.");
             return;
         }
 
-        var installer = await UpdateInstaller.DownloadAsync(cfg);
-        _log.LogInformation("Установщик загружен, запуск тихой установки и перезапуск службы.");
-        UpdateInstaller.RunInstaller(installer, silent: true);
-        // Останавливаемся, чтобы установщик мог заменить файлы; службу он запустит заново сам.
-        _life.StopApplication();
+        try
+        {
+            var installer = await UpdateInstaller.DownloadAsync(cfg);
+            _log.LogInformation("Установщик {Ver} загружен, запуск тихой установки и перезапуск службы.", info.Version);
+            UpdateInstaller.RunInstaller(installer, silent: true);
+            // Останавливаемся, чтобы установщик мог заменить файлы; службу он запустит заново сам.
+            _life.StopApplication();
+        }
+        catch (Exception ex)
+        {
+            _log.LogError(ex, "Не удалось скачать/запустить установщик обновления {Ver} — обновление не выполнено.", info.Version);
+        }
     }
 }

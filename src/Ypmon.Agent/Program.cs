@@ -2,6 +2,7 @@ using System.Windows.Forms;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Hosting.WindowsServices;
+using Microsoft.Extensions.Logging;
 using Ypmon.Agent.Services;
 using Ypmon.Agent.Ui;
 
@@ -101,6 +102,11 @@ internal static class Program
         Host.CreateDefaultBuilder(args)
             .UseContentRoot(AppContext.BaseDirectory)
             .UseWindowsService(o => o.ServiceName = "YpmonAgent")
+            .ConfigureLogging(logging =>
+            {
+                // Файловый лог рядом с exe (папка log), хранение 30 дней. Работает и в службе, и в окне.
+                logging.AddProvider(new FileLoggerProvider());
+            })
             .ConfigureServices(services =>
             {
                 services.AddSingleton<ConfigStore>();

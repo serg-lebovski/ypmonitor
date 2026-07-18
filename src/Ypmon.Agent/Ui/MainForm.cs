@@ -491,7 +491,28 @@ public class MainForm : Form
         var bUpd = new Button { Text = "🔄 Проверить обновления сейчас", AutoSize = true, Margin = new Padding(3, 4, 3, 4) };
         bUpd.Click += (_, _) => CheckUpdates();
         AddFull(t, bUpd);
+
+        AddSection(t, "Логи агента");
+        AddFull(t, new Label
+        {
+            Text = "Логи пишутся в папку log рядом с программой (файл на день, хранятся 30 дней).",
+            AutoSize = true, ForeColor = Color.DimGray, Margin = new Padding(3, 2, 3, 3)
+        });
+        var bLogs = new Button { Text = "📁 Открыть папку логов", AutoSize = true, Margin = new Padding(3, 4, 3, 4) };
+        bLogs.Click += (_, _) => OpenLogsFolder();
+        AddFull(t, bLogs);
         return t;
+    }
+
+    private void OpenLogsFolder()
+    {
+        try
+        {
+            var dir = System.IO.Path.Combine(AppContext.BaseDirectory, "log");
+            System.IO.Directory.CreateDirectory(dir);
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("explorer.exe", $"\"{dir}\"") { UseShellExecute = true });
+        }
+        catch (Exception ex) { Info("Не удалось открыть папку логов: " + ex.Message); }
     }
 
     private void EventLogPreview()
