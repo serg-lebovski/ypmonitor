@@ -307,6 +307,37 @@
                         <div class="muted mb-2" style="font-size:12px">Порт по умолчанию 8081 (порт приёма отчётов). Укажите другой, только если снаружи он проброшен на иной порт.</div>
                         <button class="btn btn-primary" type="submit">Сохранить внешний адрес</button>
                     </form>
+
+                    <hr style="border-color:var(--border)" />
+                    <div class="mb-2"><strong style="font-size:14px">💾 Резервное копирование базы</strong>
+                        <div class="muted" style="font-size:12px">
+                            @if (Model.DbProvider == "postgres")
+                            {
+                                <text>Дамп PostgreSQL (<span class="code mono">pg_dump</span>, обычный SQL, сжат gzip). Внутри — клиенты, серверы, отчёты, события, настройки и журнал действий.</text>
+                            }
+                            else
+                            {
+                                <text>Копия файла базы SQLite (согласованный снимок, сервер останавливать не нужно).</text>
+                            }
+                        </div>
+                    </div>
+                    @if (Model.BackupAvailable)
+                    {
+                        <form method="post" asp-page-handler="Backup">
+                            <button class="btn btn-primary" type="submit">Создать и скачать резервную копию</button>
+                        </form>
+                        <div class="muted mt-2" style="font-size:12px">
+                            Большая база может выгружаться несколько секунд — дождитесь начала загрузки.
+                            @if (Model.DbProvider == "postgres")
+                            {
+                                <text><br />Восстановление: <span class="code mono">gunzip -c ypmon-….sql.gz | docker exec -i ypmon-postgres psql -U admin_yp -d ypmon</span></text>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="alert-y alert-err">На сервере нет утилиты <span class="mono">pg_dump</span>. Обновите сервер (раздел «Обновление сервера») — она устанавливается при пересборке образа.</div>
+                    }
                 }
             </div>
         </details>

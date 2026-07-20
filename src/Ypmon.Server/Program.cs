@@ -55,6 +55,7 @@ builder.Services.AddDataProtection()
 builder.Services.AddHttpClient();
 builder.Services.AddScoped<AlertService>();
 builder.Services.AddScoped<AuditService>();
+builder.Services.AddSingleton<BackupService>();
 builder.Services.AddScoped<ReportIngestService>();
 builder.Services.AddSingleton<ServerUpdateService>();
 builder.Services.AddSingleton<WireGuardProxyService>();

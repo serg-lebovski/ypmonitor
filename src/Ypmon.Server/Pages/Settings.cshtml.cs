@@ -19,10 +19,13 @@ public class SettingsModel : PageModel
     private readonly TelegramReportService _report;
     private readonly WireGuardProxyService _wg;
     private readonly AuditService _audit;
+    private readonly BackupService _backup;
     public SettingsModel(AppDbContext db, IConfiguration cfg, AlertService alerts, IWebHostEnvironment env,
-        ServerUpdateService upd, TelegramService tg, TelegramReportService report, WireGuardProxyService wg, AuditService audit)
+        ServerUpdateService upd, TelegramService tg, TelegramReportService report, WireGuardProxyService wg, AuditService audit,
+        BackupService backup)
     {
         _db = db; _cfg = cfg; _alerts = alerts; _env = env; _upd = upd; _tg = tg; _report = report; _wg = wg; _audit = audit;
+        _backup = backup;
     }
 
     public bool WireGuardRunning { get; set; }
@@ -37,6 +40,7 @@ public class SettingsModel : PageModel
     // Информация о сервере (из конфигурации, меняется в appsettings.json)
     public int HttpPort { get; set; }
     public string DbProvider { get; set; } = "sqlite";
+    public bool BackupAvailable { get; set; }
 
     // Установщик агента (лежит в папке agent-updates рядом с сервером)
     public bool AgentInstallerExists { get; set; }
@@ -62,6 +66,7 @@ public class SettingsModel : PageModel
             AuditLog = await _db.Audit.OrderByDescending(a => a.At).Take(200).ToListAsync();
         HttpPort = _cfg.GetValue<int?>("Server:HttpPort") ?? 8080;
         DbProvider = _cfg["Database:Provider"] ?? "sqlite";
+        BackupAvailable = _backup.IsAvailable;
 
         var updatesDir = Path.Combine(_env.ContentRootPath, "agent-updates");
         var installer = Path.Combine(updatesDir, "YpmonAgent-Setup.exe");
@@ -84,6 +89,39 @@ public class SettingsModel : PageModel
         }
         WireGuardRunning = _wg.IsRunning;
         WireGuardStatus = _wg.LastStatus;
+    }
+
+    /// <summary>Резервная копия БД: делает дамп и сразу отдаёт его на скачивание.</summary>
+    public async Task<IActionResult> OnPostBackupAsync()
+    {
+        if (!IsAdmin) return Forbid();
+
+        string tempPath, fileName;
+        try
+        {
+            _backup.PruneTemp();
+            (tempPath, fileName) = await _backup.CreateAsync(HttpContext.RequestAborted);
+        }
+        catch (Exception ex)
+        {
+            await Load();
+            IsError = true;
+            Message = "Не удалось создать резервную копию: " + ex.Message;
+            return Page();
+        }
+
+        var size = new FileInfo(tempPath).Length;
+        await _audit.LogAsync(User, "Резервная копия БД", $"{fileName}, {UiHelpers.Bytes(size)}");
+
+        // FileStreamOptions с DeleteOnClose — временный файл исчезнет сам после отдачи.
+        var stream = new FileStream(tempPath, new FileStreamOptions
+        {
+            Mode = FileMode.Open,
+            Access = FileAccess.Read,
+            Share = FileShare.Read,
+            Options = FileOptions.DeleteOnClose | FileOptions.Asynchronous,
+        });
+        return File(stream, "application/octet-stream", fileName);
     }
 
     public async Task<IActionResult> OnPostCheckUpdateAsync()
