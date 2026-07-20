@@ -17,7 +17,73 @@
     <div class="metric metric-click" data-filter="offline" title="Показать только офлайн"><div class="v" style="color:var(--unknown)">@Model.OfflineCount</div><div class="l">Офлайн</div></div>
 </div>
 
+@* --- Фильтры (работают для плиток и для списка по клиентам) --- *@
+@if (Model.Clients.Any())
+{
+    <div class="card-y filter-panel">
+        <div class="fp-row">
+            <span class="fp-label">Статус:</span>
+            <div class="chips">
+                <button type="button" class="chip" data-status="all">Все</button>
+                <button type="button" class="chip" data-status="ok">В норме</button>
+                <button type="button" class="chip" data-status="problem">С проблемами</button>
+                <button type="button" class="chip" data-status="offline">Офлайн</button>
+            </div>
+        </div>
+        <div class="fp-row">
+            <input type="search" id="dashSearch" class="form-control fp-search" placeholder="Поиск: сервер, машина, IP, клиент…" />
+            <select id="dashClient" class="form-select fp-client">
+                <option value="">Все клиенты</option>
+                @foreach (var c in Model.Clients)
+                {
+                    <option value="@c.Name.ToLowerInvariant()">@c.Name</option>
+                }
+            </select>
+            <button type="button" class="btn btn-sm btn-primary" id="fpReset">Сбросить</button>
+            <span class="muted fp-count" id="fpCount"></span>
+        </div>
+    </div>
+
+    @* --- Плитки серверов: по одной на сервер, цвет + иконка + подпись статуса --- *@
+    <div class="row-title">🖥️ Серверы — последний результат</div>
+    <div class="tiles">
+        @foreach (var client in Model.Clients)
+        {
+            foreach (var s in client.Servers)
+            {
+                var tOffline = s.IsOffline(Model.OfflineThreshold);
+                var tStatus = tOffline ? "offline"
+                    : (s.LastOutcome >= JobOutcome.Warning || s.BackupShrinkActive) ? "problem"
+                    : s.LastOutcome == JobOutcome.Ok ? "ok" : "unknown";
+                var tIcon = tOffline ? "⏸" : s.BackupShrinkActive ? "⚠" : s.LastOutcome switch
+                {
+                    JobOutcome.Ok => "✔", JobOutcome.Warning => "⚠", JobOutcome.Error => "✖", _ => "…"
+                };
+                var tWord = tOffline ? "Офлайн" : s.BackupShrinkActive ? "Объём упал" : s.LastOutcome switch
+                {
+                    JobOutcome.Ok => "В норме", JobOutcome.Warning => "Предупреждение", JobOutcome.Error => "Ошибка", _ => "Нет данных"
+                };
+                var tCls = tOffline ? "t-off"
+                    : s.LastOutcome == JobOutcome.Error ? "t-err"
+                    : (s.LastOutcome == JobOutcome.Warning || s.BackupShrinkActive) ? "t-warn"
+                    : s.LastOutcome == JobOutcome.Ok ? "t-ok" : "t-unk";
+                <div class="tile @tCls" data-tile data-status="@tStatus"
+                     data-client="@client.Name.ToLowerInvariant()"
+                     data-name="@((s.Name + " " + (s.LastMachineName ?? "") + " " + (s.IpAddress ?? "")).ToLowerInvariant())"
+                     onclick="location.href='/Servers/Details?id=@s.Id&info=true'"
+                     title="@client.Name / @s.Name — @tWord (последний отчёт: @UiHelpers.Ago(s.LastSeenAt))">
+                    <div class="tile-status"><span class="tile-ico">@tIcon</span>@tWord</div>
+                    <div class="tile-name">@s.Name</div>
+                    <div class="tile-client">@client.Name</div>
+                    <div class="tile-sub">@UiHelpers.Ago(s.LastSeenAt)</div>
+                </div>
+            }
+        }
+    </div>
+}
+
 @* --- Графики: место на дисках + работа архивации --- *@
+<div class="row-title">📊 Ёмкость и архивация</div>
 <div class="charts-grid">
     <details class="card-y acc">
         <summary>
@@ -95,29 +161,7 @@
 @* --- Список по клиентам --- *@
 @if (Model.Clients.Any())
 {
-    <div class="card-y filter-panel">
-        <div class="fp-row">
-            <span class="fp-label">Статус:</span>
-            <div class="chips">
-                <button type="button" class="chip" data-status="all">Все</button>
-                <button type="button" class="chip" data-status="ok">В норме</button>
-                <button type="button" class="chip" data-status="problem">С проблемами</button>
-                <button type="button" class="chip" data-status="offline">Офлайн</button>
-            </div>
-        </div>
-        <div class="fp-row">
-            <input type="search" id="dashSearch" class="form-control fp-search" placeholder="Поиск: сервер, машина, клиент…" />
-            <select id="dashClient" class="form-select fp-client">
-                <option value="">Все клиенты</option>
-                @foreach (var c in Model.Clients)
-                {
-                    <option value="@c.Name.ToLowerInvariant()">@c.Name</option>
-                }
-            </select>
-            <button type="button" class="btn btn-sm btn-primary" id="fpReset">Сбросить</button>
-            <span class="muted fp-count" id="fpCount"></span>
-        </div>
-    </div>
+    <div class="row-title">🗂️ Серверы по клиентам</div>
 }
 @if (!Model.Clients.Any())
 {
@@ -227,6 +271,17 @@ else
                 var q = (sr.value || '').trim().toLowerCase();
                 var cf = cl.value || '';
                 var shown = 0;
+
+                // Плитки серверов — под тем же фильтром, что и список.
+                document.querySelectorAll('[data-tile]').forEach(function (t) {
+                    var st = t.getAttribute('data-status') || '';
+                    var nm = t.getAttribute('data-name') || '';
+                    var cn = t.getAttribute('data-client') || '';
+                    var vis = (status === 'all' || st === status)
+                        && (q === '' || nm.indexOf(q) >= 0 || cn.indexOf(q) >= 0)
+                        && (cf === '' || cn === cf);
+                    t.style.display = vis ? '' : 'none';
+                });
 
                 document.querySelectorAll('details[data-client]').forEach(function (d) {
                     var cname = d.getAttribute('data-name') || '';

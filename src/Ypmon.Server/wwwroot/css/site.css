@@ -181,6 +181,38 @@ label { color: var(--muted); font-size: 13px; margin-bottom: 4px; }
 .disk-donut.d-warn { --dc: var(--warn); }
 .disk-donut.d-err { --dc: var(--err); }
 
+/* --- Заголовок секции (аналог row в Grafana) --- */
+.row-title {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 14px; font-weight: 600; color: var(--muted);
+    text-transform: uppercase; letter-spacing: .04em;
+    margin: 20px 0 10px; padding-bottom: 6px; border-bottom: 1px solid var(--border);
+}
+
+/* --- Плитки серверов (stat-панели) --- */
+.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; margin-bottom: 4px; }
+.tile {
+    background: var(--card); border: 1px solid var(--border); border-top: 3px solid var(--unknown);
+    border-radius: 10px; padding: 10px 12px; cursor: pointer; min-width: 0;
+    transition: border-color .15s, transform .1s;
+}
+.tile:hover { border-color: var(--accent); }
+.tile:active { transform: scale(.99); }
+.tile-status { font-size: 13px; font-weight: 700; display: flex; align-items: center; gap: 6px; }
+.tile-ico { font-size: 13px; }
+.tile-name { font-size: 15px; font-weight: 600; margin-top: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tile-client { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tile-sub { color: var(--muted); font-size: 11px; margin-top: 6px; }
+
+.tile.t-ok { border-top-color: var(--ok); }
+.tile.t-ok .tile-status { color: var(--ok); }
+.tile.t-warn { border-top-color: var(--warn); }
+.tile.t-warn .tile-status { color: var(--warn); }
+.tile.t-err { border-top-color: var(--err); }
+.tile.t-err .tile-status { color: var(--err); }
+.tile.t-off, .tile.t-unk { border-top-color: var(--unknown); }
+.tile.t-off .tile-status, .tile.t-unk .tile-status { color: var(--unknown); }
+
 /* --- Панель фильтров дашборда --- */
 .metric-click { cursor: pointer; transition: border-color .15s, transform .1s; }
 .metric-click:hover { border-color: var(--accent); }
@@ -226,7 +258,8 @@ label { color: var(--muted); font-size: 13px; margin-bottom: 4px; }
 /* Столбчатый график архивации */
 .achart { display: flex; align-items: flex-end; gap: 6px; height: 170px; padding-top: 4px; }
 .acol { flex: 1; display: flex; flex-direction: column; align-items: center; height: 100%; justify-content: flex-end; }
-.astack { display: flex; flex-direction: column; justify-content: flex-end; width: 100%; max-width: 26px; }
+/* gap 2px — разделитель между сегментами стека, чтобы соседние цвета не сливались */
+.astack { display: flex; flex-direction: column; justify-content: flex-end; width: 100%; max-width: 26px; gap: 2px; }
 .aseg { width: 100%; }
 .aseg.sev-ok { background: var(--ok); }
 .aseg.sev-warn { background: var(--warn); }
