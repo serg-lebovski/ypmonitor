@@ -11,10 +11,10 @@
 </div>
 
 <div class="metrics" style="margin-top:14px">
-    <div class="metric"><div class="v">@Model.TotalServers</div><div class="l">Серверов всего</div></div>
-    <div class="metric"><div class="v" style="color:var(--ok)">@Model.OkCount</div><div class="l">В норме</div></div>
-    <div class="metric"><div class="v" style="color:var(--err)">@Model.ProblemCount</div><div class="l">С проблемами</div></div>
-    <div class="metric"><div class="v" style="color:var(--unknown)">@Model.OfflineCount</div><div class="l">Офлайн</div></div>
+    <div class="metric metric-click" data-filter="all" title="Показать все серверы"><div class="v">@Model.TotalServers</div><div class="l">Серверов всего</div></div>
+    <div class="metric metric-click" data-filter="ok" title="Показать только те, что в норме"><div class="v" style="color:var(--ok)">@Model.OkCount</div><div class="l">В норме</div></div>
+    <div class="metric metric-click" data-filter="problem" title="Показать только проблемные"><div class="v" style="color:var(--err)">@Model.ProblemCount</div><div class="l">С проблемами</div></div>
+    <div class="metric metric-click" data-filter="offline" title="Показать только офлайн"><div class="v" style="color:var(--unknown)">@Model.OfflineCount</div><div class="l">Офлайн</div></div>
 </div>
 
 @* --- Графики: место на дисках + работа архивации --- *@
@@ -95,9 +95,28 @@
 @* --- Список по клиентам --- *@
 @if (Model.Clients.Any())
 {
-    <div class="dash-toolbar">
-        <label class="dt-check"><input type="checkbox" id="onlyProblems" /> Только проблемные</label>
-        <input type="search" id="dashSearch" class="form-control dt-search" placeholder="Поиск по клиенту или серверу…" />
+    <div class="card-y filter-panel">
+        <div class="fp-row">
+            <span class="fp-label">Статус:</span>
+            <div class="chips">
+                <button type="button" class="chip" data-status="all">Все</button>
+                <button type="button" class="chip" data-status="ok">В норме</button>
+                <button type="button" class="chip" data-status="problem">С проблемами</button>
+                <button type="button" class="chip" data-status="offline">Офлайн</button>
+            </div>
+        </div>
+        <div class="fp-row">
+            <input type="search" id="dashSearch" class="form-control fp-search" placeholder="Поиск: сервер, машина, клиент…" />
+            <select id="dashClient" class="form-select fp-client">
+                <option value="">Все клиенты</option>
+                @foreach (var c in Model.Clients)
+                {
+                    <option value="@c.Name.ToLowerInvariant()">@c.Name</option>
+                }
+            </select>
+            <button type="button" class="btn btn-sm btn-primary" id="fpReset">Сбросить</button>
+            <span class="muted fp-count" id="fpCount"></span>
+        </div>
     </div>
 }
 @if (!Model.Clients.Any())
@@ -142,8 +161,10 @@ else
                         var offline = s.IsOffline(Model.OfflineThreshold);
                         var outcome = offline ? JobOutcome.Unknown : s.LastOutcome;
                         var (lastBackup, sizeBytes) = UiHelpers.BackupSummary(s.LastReportJson);
-                        var srvProblem = offline || s.LastOutcome >= JobOutcome.Warning || s.BackupShrinkActive;
-                        <tr style="cursor:pointer" data-server data-problem="@(srvProblem ? 1 : 0)" data-name="@((s.Name + " " + (s.LastMachineName ?? "")).ToLowerInvariant())"
+                        var srvStatus = offline ? "offline"
+                            : (s.LastOutcome >= JobOutcome.Warning || s.BackupShrinkActive) ? "problem"
+                            : s.LastOutcome == JobOutcome.Ok ? "ok" : "unknown";
+                        <tr style="cursor:pointer" data-server data-status="@srvStatus" data-name="@((s.Name + " " + (s.LastMachineName ?? "") + " " + (s.IpAddress ?? "")).ToLowerInvariant())"
                             onclick="location.href='/Servers/Details?id=@s.Id&info=true'">
                             <td><span class="dot @UiHelpers.DotCss(outcome)"></span><strong>@s.Name</strong>
                                 <div class="muted" style="font-size:12px">@(s.LastMachineName ?? "")</div></td>
@@ -184,37 +205,70 @@ else
             if (!document.hidden && !typing) location.reload();
         }, 60000);
 
-        // Фильтр «только проблемные» + поиск по клиенту/серверу. Состояние — в localStorage.
+        // Фильтры дашборда: статус (кликом по метрике или чипу), поиск, клиент. Состояние сохраняется.
         (function () {
-            var cb = document.getElementById('onlyProblems');
             var sr = document.getElementById('dashSearch');
-            if (!cb || !sr) return;
-            cb.checked = localStorage.getItem('yp_onlyProblems') === '1';
+            var cl = document.getElementById('dashClient');
+            var reset = document.getElementById('fpReset');
+            var cnt = document.getElementById('fpCount');
+            var chips = document.querySelectorAll('.chip[data-status]');
+            if (!sr || !cl) return;
+
+            var status = localStorage.getItem('yp_status') || 'all';
             sr.value = sessionStorage.getItem('yp_dashSearch') || '';
+            cl.value = sessionStorage.getItem('yp_dashClient') || '';
+
             function apply() {
-                var only = cb.checked;
-                var q = (sr.value || '').trim().toLowerCase();
-                localStorage.setItem('yp_onlyProblems', only ? '1' : '0');
+                localStorage.setItem('yp_status', status);
                 sessionStorage.setItem('yp_dashSearch', sr.value || '');
+                sessionStorage.setItem('yp_dashClient', cl.value || '');
+                chips.forEach(function (b) { b.classList.toggle('active', b.getAttribute('data-status') === status); });
+
+                var q = (sr.value || '').trim().toLowerCase();
+                var cf = cl.value || '';
+                var shown = 0;
+
                 document.querySelectorAll('details[data-client]').forEach(function (d) {
-                    var clientName = d.getAttribute('data-name') || '';
+                    var cname = d.getAttribute('data-name') || '';
                     var rows = d.querySelectorAll('tr[data-server]');
-                    var anyVisible = false;
+                    var any = false;
                     rows.forEach(function (tr) {
-                        var prob = tr.getAttribute('data-problem') === '1';
-                        var name = tr.getAttribute('data-name') || '';
-                        var show = (!only || prob) && (q === '' || name.indexOf(q) >= 0 || clientName.indexOf(q) >= 0);
-                        tr.style.display = show ? '' : 'none';
-                        if (show) anyVisible = true;
+                        var st = tr.getAttribute('data-status') || '';
+                        var nm = tr.getAttribute('data-name') || '';
+                        var okStatus = status === 'all' || st === status;
+                        var okQuery = q === '' || nm.indexOf(q) >= 0 || cname.indexOf(q) >= 0;
+                        var okClient = cf === '' || cname === cf;
+                        var vis = okStatus && okQuery && okClient;
+                        tr.style.display = vis ? '' : 'none';
+                        if (vis) { any = true; shown++; }
                     });
-                    var clientMatch = q === '' || clientName.indexOf(q) >= 0;
-                    var showClient = rows.length ? anyVisible : (!only && clientMatch);
+                    var clientMatch = (cf === '' || cname === cf) && (q === '' || cname.indexOf(q) >= 0);
+                    var showClient = rows.length ? any : (status === 'all' && clientMatch);
                     d.style.display = showClient ? '' : 'none';
-                    if (showClient && (only || q !== '') && anyVisible) d.open = true;
+                    // При активном фильтре разворачиваем клиента, чтобы результат был виден сразу.
+                    if (showClient && any && (status !== 'all' || q !== '' || cf !== '')) d.open = true;
                 });
+
+                if (cnt) cnt.textContent = 'показано серверов: ' + shown;
             }
-            cb.addEventListener('change', apply);
+
+            chips.forEach(function (b) {
+                b.addEventListener('click', function () { status = b.getAttribute('data-status'); apply(); });
+            });
             sr.addEventListener('input', apply);
+            cl.addEventListener('change', apply);
+            if (reset) reset.addEventListener('click', function () { status = 'all'; sr.value = ''; cl.value = ''; apply(); });
+
+            // Клик по цифрам метрик — переключает фильтр статуса.
+            document.querySelectorAll('.metric-click[data-filter]').forEach(function (m) {
+                m.addEventListener('click', function () {
+                    status = m.getAttribute('data-filter');
+                    apply();
+                    var fp = document.querySelector('.filter-panel');
+                    if (fp) fp.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                });
+            });
+
             apply();
         })();
     </script>

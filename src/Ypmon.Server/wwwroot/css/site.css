@@ -181,10 +181,25 @@ label { color: var(--muted); font-size: 13px; margin-bottom: 4px; }
 .disk-donut.d-warn { --dc: var(--warn); }
 .disk-donut.d-err { --dc: var(--err); }
 
-/* --- Тулбар дашборда (фильтр/поиск) --- */
-.dash-toolbar { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; margin: 4px 0 14px; }
-.dash-toolbar .dt-check { display: flex; align-items: center; gap: 6px; color: var(--text); font-size: 14px; cursor: pointer; margin: 0; }
-.dash-toolbar .dt-search { max-width: 320px; }
+/* --- Панель фильтров дашборда --- */
+.metric-click { cursor: pointer; transition: border-color .15s, transform .1s; }
+.metric-click:hover { border-color: var(--accent); }
+.metric-click:active { transform: scale(.99); }
+
+.filter-panel { display: flex; flex-direction: column; gap: 10px; }
+.fp-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.fp-label { color: var(--muted); font-size: 13px; }
+.fp-search { max-width: 300px; }
+.fp-client { max-width: 220px; }
+.fp-count { font-size: 12px; margin-left: auto; }
+
+.chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.chip {
+    background: var(--card-2); border: 1px solid var(--border); color: var(--muted);
+    border-radius: 20px; padding: 5px 12px; font-size: 13px; cursor: pointer;
+}
+.chip:hover { color: var(--text); border-color: var(--accent); }
+.chip.active { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
 
 /* --- Графики дашборда --- */
 .charts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }

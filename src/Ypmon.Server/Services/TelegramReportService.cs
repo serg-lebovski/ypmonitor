@@ -115,9 +115,23 @@ public class TelegramReportService
         var name = WebUtility.HtmlEncode(srv.Name);
         var offline = srv.IsOffline(s.OfflineThresholdSeconds);
         var ok = !offline && srv.LastOutcome == JobOutcome.Ok && !srv.BackupShrinkActive;
+        var link = BuildLink(s, srv);
+
+        // Нехватка места на дисках: тревога в бота приходит один раз (при уходе ниже порога),
+        // а здесь напоминаем о ней в каждом ежедневном отчёте, пока место не освободили.
+        var lowDisks = LowDiskDetails(srv);
 
         if (ok)
-            return ($"✅ <b>{name}</b> — архивация успешна", $"✅ {srv.Name} — архивация успешна", false);
+        {
+            if (lowDisks is null)
+                return ($"✅ <b>{name}</b> — архивация успешна", $"✅ {srv.Name} — архивация успешна", false);
+
+            var htmlOk = $"⚠️ <b>{name}</b> — архивация успешна, но мало места на диске\n{WebUtility.HtmlEncode(lowDisks)}";
+            if (link is not null) htmlOk += $"\n🔗 <a href=\"{link}\">открыть сервер</a>";
+            var plainOk = $"⚠️ {srv.Name} — архивация успешна, но мало места на диске: {lowDisks}"
+                          + (link is not null ? $" ({link})" : "");
+            return (htmlOk, plainOk, true);
+        }
 
         var details = offline
             ? $"агент офлайн (последний отчёт: {UiHelpers.Ago(srv.LastSeenAt)})"
@@ -125,11 +139,34 @@ public class TelegramReportService
                 ? $"объём бэкапа резко уменьшился ({UiHelpers.Bytes(srv.BackupShrinkFromBytes)} → {UiHelpers.Bytes(srv.BackupShrinkToBytes)}) — проверьте"
                 : ProblemDetails(srv);
 
-        var link = BuildLink(s, srv);
         var html = $"❌ <b>{name}</b> — ошибка архивации\n{WebUtility.HtmlEncode(details)}";
+        if (lowDisks is not null) html += $"\n💽 мало места: {WebUtility.HtmlEncode(lowDisks)}";
         if (link is not null) html += $"\n🔗 <a href=\"{link}\">открыть сервер</a>";
-        var plain = $"❌ {srv.Name} — ошибка архивации: {details}" + (link is not null ? $" ({link})" : "");
+        var plain = $"❌ {srv.Name} — ошибка архивации: {details}"
+                    + (lowDisks is not null ? $"; мало места: {lowDisks}" : "")
+                    + (link is not null ? $" ({link})" : "");
         return (html, plain, true);
+    }
+
+    /// <summary>Диски ниже порога свободного места («C: 8% свободно (порог 15%)») или null, если всё в норме.</summary>
+    private static string? LowDiskDetails(MonitoredServer srv)
+    {
+        if (string.IsNullOrWhiteSpace(srv.LastDisksJson)) return null;
+        List<DiskStatusDto>? disks;
+        try { disks = JsonSerializer.Deserialize<List<DiskStatusDto>>(srv.LastDisksJson!); }
+        catch { return null; }
+        if (disks is null || disks.Count == 0) return null;
+
+        var thresholds = AvailabilityMonitor.ParseThresholds(srv.DiskAlertsJson);
+        var bad = new List<string>();
+        foreach (var d in disks)
+        {
+            if (d.TotalBytes <= 0) continue;
+            var min = thresholds.TryGetValue(d.Name, out var t) ? t : AvailabilityMonitor.DefaultDiskFreePercent;
+            if (min > 0 && d.FreePercent < min)
+                bad.Add($"{d.Name} {d.FreePercent:0.#}% свободно ({UiHelpers.Bytes(d.FreeBytes)}), порог {min}%");
+        }
+        return bad.Count == 0 ? null : string.Join("; ", bad);
     }
 
     private static string ProblemDetails(MonitoredServer srv)
