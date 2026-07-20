@@ -31,3 +31,7 @@ agent-updates/
 installers/**/Ypmon.Agent.exe
 installers/**/Ypmon.Server.exe
 installers/**/*.exe
+
+# Локальные данные разработки (ключи DataProtection, sqlite-база)
+src/Ypmon.Server/Data/keys/
+src/Ypmon.Server/data/
