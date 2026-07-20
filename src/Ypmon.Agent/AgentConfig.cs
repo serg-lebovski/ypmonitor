@@ -18,6 +18,15 @@ public class AgentConfig
     /// </summary>
     public int HeartbeatIntervalSeconds { get; set; } = 60;
 
+    /// <summary>
+    /// Порог перегрева процессора, °C: при достижении агент не ждёт расписания, а сразу шлёт
+    /// полный отчёт на сервер. 0 — не следить за температурой.
+    /// </summary>
+    public int CpuTempTriggerC { get; set; } = 90;
+
+    /// <summary>Как часто проверять температуру процессора, секунд.</summary>
+    public int CpuTempCheckSeconds { get; set; } = 60;
+
     /// <summary>Имя службы Windows.</summary>
     public string ServiceName { get; set; } = "YpmonAgent";
 

@@ -159,6 +159,10 @@ using (var scope = app.Services.CreateScope())
                     db.Database.ExecuteSqlRaw("ALTER TABLE \"Settings\" ADD COLUMN IF NOT EXISTS \"SmartAlertsEnabled\" boolean NOT NULL DEFAULT true;");
                     db.Database.ExecuteSqlRaw("ALTER TABLE \"Settings\" ADD COLUMN IF NOT EXISTS \"SmartAlertOnWarning\" boolean NOT NULL DEFAULT true;");
                     db.Database.ExecuteSqlRaw("ALTER TABLE \"Settings\" ADD COLUMN IF NOT EXISTS \"SmartTempThresholdC\" integer NOT NULL DEFAULT 55;");
+                    db.Database.ExecuteSqlRaw("ALTER TABLE \"Servers\" ADD COLUMN IF NOT EXISTS \"LastCpuTemperatureC\" double precision;");
+                    db.Database.ExecuteSqlRaw("ALTER TABLE \"Servers\" ADD COLUMN IF NOT EXISTS \"AlertCpuOverheatActive\" boolean NOT NULL DEFAULT false;");
+                    db.Database.ExecuteSqlRaw("ALTER TABLE \"Settings\" ADD COLUMN IF NOT EXISTS \"CpuTempAlertsEnabled\" boolean NOT NULL DEFAULT true;");
+                    db.Database.ExecuteSqlRaw("ALTER TABLE \"Settings\" ADD COLUMN IF NOT EXISTS \"CpuTempThresholdC\" integer NOT NULL DEFAULT 90;");
                 }
                 else
                 {
@@ -207,6 +211,10 @@ using (var scope = app.Services.CreateScope())
                     try { db.Database.ExecuteSqlRaw("ALTER TABLE \"Settings\" ADD COLUMN \"SmartAlertsEnabled\" INTEGER NOT NULL DEFAULT 1;"); } catch { }
                     try { db.Database.ExecuteSqlRaw("ALTER TABLE \"Settings\" ADD COLUMN \"SmartAlertOnWarning\" INTEGER NOT NULL DEFAULT 1;"); } catch { }
                     try { db.Database.ExecuteSqlRaw("ALTER TABLE \"Settings\" ADD COLUMN \"SmartTempThresholdC\" INTEGER NOT NULL DEFAULT 55;"); } catch { }
+                    try { db.Database.ExecuteSqlRaw("ALTER TABLE \"Servers\" ADD COLUMN \"LastCpuTemperatureC\" REAL;"); } catch { }
+                    try { db.Database.ExecuteSqlRaw("ALTER TABLE \"Servers\" ADD COLUMN \"AlertCpuOverheatActive\" INTEGER NOT NULL DEFAULT 0;"); } catch { }
+                    try { db.Database.ExecuteSqlRaw("ALTER TABLE \"Settings\" ADD COLUMN \"CpuTempAlertsEnabled\" INTEGER NOT NULL DEFAULT 1;"); } catch { }
+                    try { db.Database.ExecuteSqlRaw("ALTER TABLE \"Settings\" ADD COLUMN \"CpuTempThresholdC\" INTEGER NOT NULL DEFAULT 90;"); } catch { }
                 }
             }
             catch (Exception ex) { logger.LogWarning("Обновление схемы: {Msg}", ex.Message); }

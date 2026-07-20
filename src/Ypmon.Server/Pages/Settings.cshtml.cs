@@ -205,6 +205,8 @@ public class SettingsModel : PageModel
         s.SmartAlertsEnabled = input.SmartAlertsEnabled;
         s.SmartAlertOnWarning = input.SmartAlertOnWarning;
         s.SmartTempThresholdC = Math.Clamp(input.SmartTempThresholdC, 0, 120);
+        s.CpuTempAlertsEnabled = input.CpuTempAlertsEnabled;
+        s.CpuTempThresholdC = Math.Clamp(input.CpuTempThresholdC, 0, 120);
         if (s.Id == 0) _db.Settings.Add(s);
         await _db.SaveChangesAsync();
         await _audit.LogAsync(User, "Изменены настройки", "оповещения / SMTP / хранение истории");

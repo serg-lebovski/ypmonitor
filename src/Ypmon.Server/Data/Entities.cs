@@ -127,6 +127,12 @@ public class MonitoredServer
     /// <summary>Накопители, по которым температура уже превысила порог (JSON-список ключей) — для тревог по переходам.</summary>
     public string? DiskTempAlertJson { get; set; }
 
+    /// <summary>Последняя температура процессора, °C (от агента). null — датчик недоступен или агент старый.</summary>
+    public double? LastCpuTemperatureC { get; set; }
+
+    /// <summary>Активна тревога «перегрев процессора» — чтобы уведомлять по переходам, а не каждый отчёт.</summary>
+    public bool AlertCpuOverheatActive { get; set; }
+
     // Текущие состояния тревог — чтобы уведомлять по переходам, а не спамить каждую минуту.
     public bool AlertOfflineActive { get; set; }
     public bool AlertPingActive { get; set; }
@@ -343,6 +349,17 @@ public class ServerSettings
 
     /// <summary>Порог температуры накопителя, °C (тревога при превышении). 0 = не следить за температурой.</summary>
     public int SmartTempThresholdC { get; set; } = 55;
+
+    // --- Перегрев процессора ---
+
+    /// <summary>Слать уведомления о перегреве процессора.</summary>
+    public bool CpuTempAlertsEnabled { get; set; } = true;
+
+    /// <summary>
+    /// Порог температуры процессора, °C. 0 = не следить.
+    /// Свой порог есть и у агента (когда слать внеплановый отчёт) — по умолчанию оба равны 90.
+    /// </summary>
+    public int CpuTempThresholdC { get; set; } = 90;
 
     // --- Внешний адрес сервера (под которым к нему подключаются удалённые агенты) ---
 

@@ -230,6 +230,19 @@
                             <input class="form-control" style="max-width:140px" type="number" min="0" max="120" name="SmartTempThresholdC" value="@s.SmartTempThresholdC" />
                             <div class="muted" style="font-size:12px">Тревога при превышении, возврат в норму — с запасом 3 °C. Температуру шлёт агент 2.5+ (если её отдаёт WMI накопителя).</div></div>
 
+                        <h4 style="font-size:16px">🔥 Перегрев процессора</h4>
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="checkbox" name="CpuTempAlertsEnabled" value="true" id="cputemp" @(s.CpuTempAlertsEnabled ? "checked" : "") />
+                            <label class="form-check-label" for="cputemp">Слать уведомления о перегреве процессора</label>
+                        </div>
+                        <div class="mb-3"><label>Порог температуры процессора, °C (0 = не следить)</label>
+                            <input class="form-control" style="max-width:140px" type="number" min="0" max="120" name="CpuTempThresholdC" value="@s.CpuTempThresholdC" />
+                            <div class="muted" style="font-size:12px">
+                                При превышении агент 2.6+ шлёт отчёт немедленно, не дожидаясь расписания, и сервер сразу пишет в бота.
+                                Возврат в норму — с запасом 5 °C. Свой такой же порог есть у агента (по умолчанию оба 90 °C).
+                                <br />Датчик доступен не на всех машинах: на серверном железе и в виртуалках ACPI-термозоны часто нет — тогда в карточке сервера будет «нет данных».
+                            </div></div>
+
                         <button class="btn btn-primary" type="submit">Сохранить</button>
                         <button class="btn btn-primary" type="submit" asp-page-handler="TestAlert" formnovalidate>Отправить тест</button>
                     </form>

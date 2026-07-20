@@ -47,6 +47,8 @@ public class MainForm : Form
     private TextBox _svcName = null!, _svcUser = null!, _svcPass = null!, _svcCmd = null!, _svcCmdPs = null!;
     private Label _svcStatus = null!;
     private CheckBox _autoUpdate = null!;
+    private Label _cpuTempLabel = null!;
+    private NumericUpDown _cpuTempTrigger = null!;
 
     // Отчёты
     private TextBox _statusBox = null!;
@@ -486,6 +488,23 @@ public class MainForm : Form
         _svcUser.TextChanged += (_, _) => RefreshSvcCmd();
         RefreshSvcCmd();
 
+        AddSection(t, "Температура процессора");
+        _cpuTempLabel = new Label
+        {
+            Text = "Текущая температура: измеряется…",
+            AutoSize = true, ForeColor = Color.DimGray, Margin = new Padding(3, 2, 3, 3)
+        };
+        AddFull(t, _cpuTempLabel);
+        _cpuTempTrigger = AddNum(t, "Порог перегрева, °C (0 — не следить)", 0, 120);
+        AddFull(t, new Label
+        {
+            Text = "При достижении порога агент сразу отправляет отчёт на сервер, не дожидаясь расписания,\n"
+                 + "и сервер поднимает тревогу в Telegram. Возврат в норму — с запасом 5 °C.\n"
+                 + "Датчик есть не на всех машинах: на серверном железе и в виртуальных машинах\n"
+                 + "ACPI-термозона часто отсутствует — тогда будет «нет данных».",
+            AutoSize = true, ForeColor = Color.DimGray, Margin = new Padding(3, 2, 3, 8)
+        });
+
         AddSection(t, "Обновления агента");
         _autoUpdate = AddCheck(t, "Автоматически обновлять агента с сервера (раз в день)");
         var bUpd = new Button { Text = "🔄 Проверить обновления сейчас", AutoSize = true, Margin = new Padding(3, 4, 3, 4) };
@@ -755,11 +774,31 @@ public class MainForm : Form
 
         _svcName.Text = string.IsNullOrWhiteSpace(_cfg.ServiceName) ? "YpmonAgent" : _cfg.ServiceName;
         _autoUpdate.Checked = _cfg.AutoUpdate;
+        _cpuTempTrigger.Value = Clamp(_cfg.CpuTempTriggerC, 0, 120);
         _loading = false;
+
+        RefreshCpuTemp();
 
         RefreshFolderList();
         ShowFolderPanel(false);
         RefreshSvcStatus();
+    }
+
+    /// <summary>
+    /// Показывает текущую температуру процессора. Читаем датчик прямо здесь: окно настроек и
+    /// рабочий процесс агента — разные процессы, значение из службы сюда не попадает.
+    /// </summary>
+    private void RefreshCpuTemp()
+    {
+        if (!OperatingSystem.IsWindows()) { _cpuTempLabel.Text = "Текущая температура: недоступно (не Windows)"; return; }
+        try
+        {
+            var t = Services.CpuTemperatureCollector.Read();
+            _cpuTempLabel.Text = t is { } v
+                ? $"Текущая температура: {v:0.#} °C"
+                : "Текущая температура: нет данных — " + (Services.CpuTemperatureCollector.LastUnavailableReason ?? "датчик недоступен");
+        }
+        catch (Exception ex) { _cpuTempLabel.Text = "Текущая температура: ошибка чтения — " + ex.Message; }
     }
 
     private void SaveAll(bool notify)
@@ -778,6 +817,7 @@ public class MainForm : Form
 
         _cfg.ServiceName = string.IsNullOrWhiteSpace(_svcName.Text) ? "YpmonAgent" : _svcName.Text.Trim();
         _cfg.AutoUpdate = _autoUpdate.Checked;
+        _cfg.CpuTempTriggerC = (int)_cpuTempTrigger.Value;
 
         _store.Save(_cfg);
         if (notify)

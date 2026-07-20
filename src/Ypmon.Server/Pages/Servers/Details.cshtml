@@ -89,6 +89,20 @@
             <div class="kv"><span class="k">Внешний IP (роутер)</span><span class="v">@(s.ExternalIpAddress ?? "—")</span></div>
             <div class="kv"><span class="k">Машина агента</span><span class="v">@(s.LastMachineName ?? "—")</span></div>
             <div class="kv"><span class="k">Версия агента</span><span class="v">@(s.LastAgentVersion ?? "—")</span></div>
+            <div class="kv"><span class="k">Температура ЦП</span><span class="v">
+                @if (s.LastCpuTemperatureC is { } cpuT)
+                {
+                    <span>@cpuT.ToString("0.#") °C</span>
+                    @if (s.AlertCpuOverheatActive)
+                    {
+                        <span class="badge b-err" style="margin-left:6px">🔥 перегрев</span>
+                    }
+                }
+                else
+                {
+                    <span class="muted">нет данных <span style="font-size:11px">(датчик недоступен или агент до 2.6)</span></span>
+                }
+            </span></div>
             <div class="kv"><span class="k">Последний отчёт</span><span class="v">@UiHelpers.DateTimeAbs(s.LastSeenAt) <span class="muted">(@UiHelpers.Ago(s.LastSeenAt))</span></span></div>
             <div class="kv"><span class="k">Интервалы агента</span><span class="v">связь: @UiHelpers.Duration(s.LastHeartbeatIntervalSeconds) · отчёт: @UiHelpers.Duration(s.LastReportIntervalSeconds)</span></div>
             <div class="kv"><span class="k">Последний бэкап</span><span class="v">@UiHelpers.DateTimeAbs(lastBackup)</span></div>

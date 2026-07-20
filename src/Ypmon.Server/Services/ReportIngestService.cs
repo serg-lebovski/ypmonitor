@@ -11,11 +11,64 @@ public class ReportIngestService
     private readonly AppDbContext _db;
     private readonly AlertService _alerts;
     private readonly RemoteCommandService _commands;   // [YPMON-REMOTE-CMD]
+    private readonly TelegramService _tg;
+    private readonly TelegramReportService _topics;
+    private readonly ServerLogService _logs;
     private readonly ILogger<ReportIngestService> _log;
 
-    public ReportIngestService(AppDbContext db, AlertService alerts, RemoteCommandService commands, ILogger<ReportIngestService> log)
+    public ReportIngestService(AppDbContext db, AlertService alerts, RemoteCommandService commands,
+        TelegramService tg, TelegramReportService topics, ServerLogService logs, ILogger<ReportIngestService> log)
     {
-        _db = db; _alerts = alerts; _commands = commands; _log = log;
+        _db = db; _alerts = alerts; _commands = commands; _tg = tg; _topics = topics; _logs = logs; _log = log;
+    }
+
+    /// <summary>
+    /// Перегрев процессора. Проверяем прямо при приёме отчёта, а не в фоновом мониторе:
+    /// агент при перегреве шлёт отчёт вне расписания, и тревога должна уйти сразу.
+    /// Уведомляем по переходам (с гистерезисом 5 °C), чтобы не спамить каждым отчётом.
+    /// </summary>
+    private async Task CheckCpuTemperatureAsync(MonitoredServer server, ServerSettings? settings, AgentReportDto report)
+    {
+        if (report.CpuTemperatureC is not { } temp) return;   // старый агент или датчик недоступен
+        server.LastCpuTemperatureC = temp;
+
+        var limit = settings?.CpuTempThresholdC ?? 90;
+        if (settings is null || limit <= 0) return;
+
+        var name = System.Net.WebUtility.HtmlEncode(server.Name);
+        if (temp >= limit && !server.AlertCpuOverheatActive)
+        {
+            server.AlertCpuOverheatActive = true;
+            _logs.Warn(LogArea.Reports, $"Перегрев процессора: {server.Name} — {temp:0.#} °C (порог {limit} °C)",
+                report.MachineName);
+            if (settings.CpuTempAlertsEnabled)
+                await NotifyAsync(settings, server.Client,
+                    $"🔥🔴 <b>{name}</b> — перегрев процессора: {temp:0.#} °C (порог {limit} °C).\n"
+                    + "Проверьте охлаждение и нагрузку на сервере.");
+        }
+        else if (temp <= limit - 5 && server.AlertCpuOverheatActive)
+        {
+            server.AlertCpuOverheatActive = false;
+            _logs.Info(LogArea.Reports, $"Температура процессора в норме: {server.Name} — {temp:0.#} °C",
+                report.MachineName);
+            if (settings.CpuTempAlertsEnabled)
+                await NotifyAsync(settings, server.Client,
+                    $"🔥🟢 <b>{name}</b> — температура процессора вернулась в норму: {temp:0.#} °C.");
+        }
+    }
+
+    /// <summary>Сообщение в тему клиента в Telegram (как остальные тревоги мониторинга).</summary>
+    private async Task NotifyAsync(ServerSettings s, Client? client, string text)
+    {
+        if (!s.TelegramEnabled || string.IsNullOrWhiteSpace(s.TelegramBotToken) || string.IsNullOrWhiteSpace(s.TelegramChatId))
+            return;
+        try
+        {
+            long? topic = client is null ? null : await _topics.EnsureTopicAsync(s, client);
+            var (ok, err) = await _tg.SendMessageAsync(s, s.TelegramChatId!, text, topic, disablePreview: true);
+            if (!ok) _log.LogWarning("Не удалось отправить уведомление о перегреве: {Err}", err);
+        }
+        catch (Exception ex) { _log.LogWarning(ex, "Ошибка отправки уведомления о перегреве"); }
     }
 
     public async Task<ReportAckDto> IngestAsync(string apiKey, AgentReportDto report)
@@ -37,6 +90,9 @@ public class ReportIngestService
             server.LastReportedAt = report.ReportedAt;
             if (report.Disks.Count > 0)
                 server.LastDisksJson = JsonSerializer.Serialize(report.Disks);
+            // Температура приходит и в heartbeat — перегрев ловим раз в минуту, а не раз в 6 часов.
+            var hbSettings = await _db.Settings.FirstOrDefaultAsync();
+            await CheckCpuTemperatureAsync(server, hbSettings, report);
             var ack = Ack(server, "OK (heartbeat)");
             _commands.FillAck(server, ack);   // [YPMON-REMOTE-CMD] флаги «нужен отчёт» / «обновись»
             await _db.SaveChangesAsync();
@@ -89,6 +145,7 @@ public class ReportIngestService
             server.LastDisksJson = JsonSerializer.Serialize(report.Disks);
         if (report.PhysicalDisks.Count > 0)
             server.LastPhysicalDisksJson = JsonSerializer.Serialize(report.PhysicalDisks);
+        await CheckCpuTemperatureAsync(server, settings, report);
         _commands.MarkReportReceived(server);   // [YPMON-REMOTE-CMD] полный отчёт получен — запрос выполнен
 
         // Сохраняем новые ошибки Windows (без дублей).

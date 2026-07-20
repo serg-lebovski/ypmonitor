@@ -29,12 +29,62 @@ public class Reporter : BackgroundService
         _store = store; _spool = spool; _folders = folders; _events = events; _commands = commands; _log = log;
     }
 
+    /// <summary>Последняя измеренная температура процессора (шлётся в отчётах, показывается в окне агента).</summary>
+    public static double? LastCpuTemperatureC { get; private set; }
+
+    /// <summary>Идёт ли сейчас перегрев — чтобы отправить срочный отчёт один раз, а не в каждом цикле.</summary>
+    private bool _overheatActive;
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         var full = RunLoop(stoppingToken, heartbeat: false, cfg => Math.Max(30, cfg.ReportIntervalSeconds));
         var heartbeat = RunLoop(stoppingToken, heartbeat: true, cfg => Math.Max(15, cfg.HeartbeatIntervalSeconds));
-        await Task.WhenAll(full, heartbeat);
+        var temp = WatchCpuTemperatureAsync(stoppingToken);
+        await Task.WhenAll(full, heartbeat, temp);
     }
+
+    /// <summary>
+    /// Следит за температурой процессора. При выходе за порог отправляет полный отчёт немедленно,
+    /// не дожидаясь расписания, — сервер по нему сразу поднимет тревогу.
+    /// </summary>
+    private async Task WatchCpuTemperatureAsync(CancellationToken ct)
+    {
+        while (!ct.IsCancellationRequested)
+        {
+            var cfg = _store.Load();
+            var period = Math.Max(15, cfg.CpuTempCheckSeconds);
+            try
+            {
+                var t = ReadCpuTemperature();
+                LastCpuTemperatureC = t;
+
+                if (t is { } temp && cfg.CpuTempTriggerC > 0)
+                {
+                    if (temp >= cfg.CpuTempTriggerC && !_overheatActive)
+                    {
+                        _overheatActive = true;
+                        _log.LogWarning("Перегрев процессора: {Temp} °C (порог {Limit} °C) — отправляю внеплановый отчёт",
+                            temp, cfg.CpuTempTriggerC);
+                        await ReportOnceAsync(cfg, heartbeat: false, overheatTrigger: true);
+                    }
+                    // Гистерезис 5 °C: около порога температура скачет, иначе агент задёргал бы сервер.
+                    else if (temp <= cfg.CpuTempTriggerC - 5 && _overheatActive)
+                    {
+                        _overheatActive = false;
+                        _log.LogInformation("Температура процессора вернулась в норму: {Temp} °C", temp);
+                        await ReportOnceAsync(cfg, heartbeat: false, overheatTrigger: true);
+                    }
+                }
+            }
+            catch (Exception ex) { _log.LogWarning(ex, "Ошибка проверки температуры процессора"); }
+
+            try { await Task.Delay(TimeSpan.FromSeconds(period), ct); } catch { }
+        }
+    }
+
+    /// <summary>Температура процессора — только на Windows, best-effort (может быть недоступна).</summary>
+    private static double? ReadCpuTemperature()
+        => OperatingSystem.IsWindows() ? CpuTemperatureCollector.Read() : null;
 
     private async Task RunLoop(CancellationToken ct, bool heartbeat, Func<AgentConfig, int> intervalSeconds)
     {
@@ -53,10 +103,14 @@ public class Reporter : BackgroundService
         }
     }
 
-    public AgentReportDto BuildReport(AgentConfig cfg, bool heartbeat)
+    public AgentReportDto BuildReport(AgentConfig cfg, bool heartbeat, bool overheatTrigger = false)
     {
+        // Температуру берём из последнего замера наблюдателя, а не читаем WMI заново:
+        // запрос не самый дешёвый, а свежесть в пределах минуты нас устраивает.
         return new AgentReportDto
         {
+            CpuTemperatureC = LastCpuTemperatureC,
+            CpuOverheatTrigger = overheatTrigger,
             MachineName = Environment.MachineName,
             AgentVersion = Version,
             ReportedAt = DateTimeOffset.UtcNow,
@@ -102,9 +156,9 @@ public class Reporter : BackgroundService
         return list;
     }
 
-    private async Task ReportOnceAsync(AgentConfig cfg, bool heartbeat)
+    private async Task ReportOnceAsync(AgentConfig cfg, bool heartbeat, bool overheatTrigger = false)
     {
-        var report = BuildReport(cfg, heartbeat);
+        var report = BuildReport(cfg, heartbeat, overheatTrigger);
 
         if (string.IsNullOrWhiteSpace(cfg.ServerUrl) || string.IsNullOrWhiteSpace(cfg.ApiKey))
         {
