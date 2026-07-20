@@ -89,12 +89,31 @@ public class MonitoredServer
     /// <summary>Порог тревоги: нет новых файлов в папках дольше N дней (0 = использовать глобальное значение).</summary>
     public int BackupStaleDays { get; set; } = 0;
 
-    // [YPMON-REMOTE-CMD] Флаги-команды агенту (вырезать после релиза, см. RemoteCommandService).
+    // --- Команды агенту (см. RemoteCommandService) ---
+    // Агент забирает команду сам, отвечая на heartbeat; входящих соединений к нему нет.
 
-    /// <summary>[YPMON-REMOTE-CMD] Администратор запросил у агента полный отчёт (агент заберёт при следующей связи).</summary>
+    /// <summary>Ожидающая команда из закрытого списка (0 — нет). Хранится числом = <see cref="AgentCommand"/>.</summary>
+    public int PendingCommand { get; set; }
+
+    /// <summary>Уникальный номер ожидающей команды — защита от повторного исполнения.</summary>
+    public long PendingCommandId { get; set; }
+
+    /// <summary>Когда команда выдана (для срока годности).</summary>
+    public DateTimeOffset? PendingCommandAt { get; set; }
+
+    /// <summary>Кто выдал команду (логин) — для журнала и карточки сервера.</summary>
+    public string? PendingCommandBy { get; set; }
+
+    /// <summary>Номер последней команды, которую агент подтвердил выполненной.</summary>
+    public long LastExecutedCommandId { get; set; }
+
+    /// <summary>Когда агент подтвердил выполнение последней команды.</summary>
+    public DateTimeOffset? LastExecutedCommandAt { get; set; }
+
+    /// <summary>Устарело (агенты до 2.7): флаг «нужен полный отчёт».</summary>
     public bool ReportRequested { get; set; }
 
-    /// <summary>[YPMON-REMOTE-CMD] Администратор запросил принудительное обновление агента (одноразовый флаг).</summary>
+    /// <summary>Устарело (агенты до 2.7): флаг «обновись принудительно».</summary>
     public bool UpdateRequested { get; set; }
 
     // --- Мониторинг доступности и дисков (настраивается в карточке сервера) ---

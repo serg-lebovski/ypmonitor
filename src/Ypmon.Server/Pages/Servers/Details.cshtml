@@ -25,7 +25,7 @@
         }
         else
         {
-            @* [YPMON-REMOTE-CMD] кнопки-команды агенту — вырезать после релиза *@
+            @* Команды агенту: сервер передаёт только номер команды из закрытого списка. *@
             <form method="post" asp-page-handler="RequestReport" asp-route-id="@s.Id">
                 <button class="btn btn-sm btn-primary" type="submit" title="Агент пришлёт свежий отчёт при следующей связи">🔄 Запросить отчёт</button>
             </form>
@@ -34,6 +34,10 @@
                 <form method="post" asp-page-handler="RequestUpdate" asp-route-id="@s.Id"
                       onsubmit="return confirm('Отправить агенту команду на принудительное обновление? Агент скачает установщик с этого сервера и перезапустит службу.')">
                     <button class="btn btn-sm btn-primary" type="submit" title="Агент проверит и установит обновление при следующей связи">⬆️ Обновить агента</button>
+                </form>
+                <form method="post" asp-page-handler="RequestReboot" asp-route-id="@s.Id"
+                      onsubmit="return confirm('ПЕРЕЗАГРУЗИТЬ СЕРВЕР «@s.Name»?\n\nМашина уйдёт в перезагрузку через минуту после того, как агент получит команду. Все работающие на ней задачи будут прерваны.\n\nПродолжить?')">
+                    <button class="btn btn-sm btn-danger" type="submit" title="Агент перезагрузит машину при следующей связи">⚡ Перезагрузить сервер</button>
                 </form>
             }
             <a class="btn btn-sm btn-primary" href="/Servers">☰ все серверы</a>
@@ -89,6 +93,24 @@
             <div class="kv"><span class="k">Внешний IP (роутер)</span><span class="v">@(s.ExternalIpAddress ?? "—")</span></div>
             <div class="kv"><span class="k">Машина агента</span><span class="v">@(s.LastMachineName ?? "—")</span></div>
             <div class="kv"><span class="k">Версия агента</span><span class="v">@(s.LastAgentVersion ?? "—")</span></div>
+            @{ var pending = Ypmon.Server.Services.RemoteCommandService.PendingOf(s); }
+            @if (pending != Ypmon.Shared.AgentCommand.None)
+            {
+                <div class="kv"><span class="k">Ожидает команда</span><span class="v">
+                    <strong>@Ypmon.Server.Services.RemoteCommandService.Title(pending)</strong>
+                    <span class="muted">— выдал @s.PendingCommandBy, @UiHelpers.Ago(s.PendingCommandAt); агент заберёт при следующей связи</span>
+                    @if (canEdit)
+                    {
+                        <form method="post" asp-page-handler="CancelCommand" asp-route-id="@s.Id" style="display:inline;margin-left:8px">
+                            <button class="btn btn-sm" type="submit">отменить</button>
+                        </form>
+                    }
+                </span></div>
+            }
+            else if (s.LastExecutedCommandAt is not null)
+            {
+                <div class="kv"><span class="k">Последняя команда</span><span class="v muted">выполнена @UiHelpers.Ago(s.LastExecutedCommandAt)</span></div>
+            }
             <div class="kv"><span class="k">Температура ЦП</span><span class="v">
                 @if (s.LastCpuTemperatureC is { } cpuT)
                 {

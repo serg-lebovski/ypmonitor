@@ -10,7 +10,7 @@ public class ReportIngestService
 {
     private readonly AppDbContext _db;
     private readonly AlertService _alerts;
-    private readonly RemoteCommandService _commands;   // [YPMON-REMOTE-CMD]
+    private readonly RemoteCommandService _commands;
     private readonly TelegramService _tg;
     private readonly TelegramReportService _topics;
     private readonly ServerLogService _logs;
@@ -94,7 +94,8 @@ public class ReportIngestService
             var hbSettings = await _db.Settings.FirstOrDefaultAsync();
             await CheckCpuTemperatureAsync(server, hbSettings, report);
             var ack = Ack(server, "OK (heartbeat)");
-            _commands.FillAck(server, ack);   // [YPMON-REMOTE-CMD] флаги «нужен отчёт» / «обновись»
+            _commands.MarkExecuted(server, report.LastCommandId);   // агент подтвердил выполнение
+            _commands.FillAck(server, ack);                         // и получает следующую команду, если есть
             await _db.SaveChangesAsync();
             return ack;
         }
@@ -146,7 +147,8 @@ public class ReportIngestService
         if (report.PhysicalDisks.Count > 0)
             server.LastPhysicalDisksJson = JsonSerializer.Serialize(report.PhysicalDisks);
         await CheckCpuTemperatureAsync(server, settings, report);
-        _commands.MarkReportReceived(server);   // [YPMON-REMOTE-CMD] полный отчёт получен — запрос выполнен
+        _commands.MarkExecuted(server, report.LastCommandId);
+        _commands.MarkReportReceived(server);   // полный отчёт получен — запрос закрыт
 
         // Сохраняем новые ошибки Windows (без дублей).
         if (events.Count > 0)

@@ -16,7 +16,7 @@ public class Reporter : BackgroundService
     private readonly SpoolStore _spool;
     private readonly FolderMonitorService _folders;
     private readonly EventLogReaderService _events;
-    private readonly RemoteCommandHandler _commands;   // [YPMON-REMOTE-CMD] вырезать после релиза
+    private readonly RemoteCommandHandler _commands;
     private readonly ILogger<Reporter> _log;
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(30) };
 
@@ -122,7 +122,9 @@ public class Reporter : BackgroundService
             // Здоровье накопителей (SMART) — только в полном отчёте: сбор через WMI дороже.
             PhysicalDisks = heartbeat ? new() : CollectPhysicalDisks(),
             HeartbeatIntervalSeconds = Math.Max(15, cfg.HeartbeatIntervalSeconds),
-            ReportIntervalSeconds = Math.Max(60, cfg.ReportIntervalSeconds)
+            ReportIntervalSeconds = Math.Max(60, cfg.ReportIntervalSeconds),
+            // Номер последней выполненной команды — по нему сервер снимает её с очереди.
+            LastCommandId = RemoteCommandHandler.LastExecutedId
         };
     }
 
@@ -176,7 +178,7 @@ public class Reporter : BackgroundService
                 var flushed = await _spool.FlushAsync(r => TrySendAsync(cfg, r));
                 if (flushed > 0) _log.LogInformation("Досланы отложенные отчёты: {N}", flushed);
             }
-            // [YPMON-REMOTE-CMD] Флаги-команды из ответа сервера — вырезать после релиза.
+            // Команда из ответа сервера (закрытый список, исполняется в RemoteCommandHandler).
             if (hack is not null)
                 await _commands.HandleAsync(cfg, hack, () => ReportOnceAsync(cfg, heartbeat: false));
             return;

@@ -11,7 +11,7 @@ namespace Ypmon.Server.Pages.Servers;
 public class DetailsModel : PageModel
 {
     private readonly AppDbContext _db;
-    private readonly RemoteCommandService _commands;   // [YPMON-REMOTE-CMD]
+    private readonly RemoteCommandService _commands;
     private readonly AuditService _audit;
     public DetailsModel(AppDbContext db, RemoteCommandService commands, AuditService audit) { _db = db; _commands = commands; _audit = audit; }
 
@@ -218,27 +218,47 @@ public class DetailsModel : PageModel
         return RedirectToPage("/Index");
     }
 
-    // [YPMON-REMOTE-CMD] Кнопка «Запросить отчёт» — вырезать после релиза.
+    // Кнопка «Запросить отчёт» — единственная команда, доступная роли «Мониторинг»:
+    // она ничего не меняет на машине клиента, только просит прислать данные.
     public async Task<IActionResult> OnPostRequestReportAsync()
+        => await IssueAsync(AgentCommand.RequestReport,
+            "Запрос отправлен. Агент пришлёт отчёт при следующей связи (обычно в течение 1–2 минут).",
+            requireEdit: false);
+
+    // Кнопка «Обновить агента» (принудительное обновление).
+    public async Task<IActionResult> OnPostRequestUpdateAsync()
+        => await IssueAsync(AgentCommand.UpdateAgent,
+            "Команда на обновление отправлена. Агент проверит и установит обновление при следующей связи " +
+            "(обычно в течение 1–2 минут); служба перезапустится сама.");
+
+    // Кнопка «Перезагрузить сервер».
+    public async Task<IActionResult> OnPostRequestRebootAsync()
+        => await IssueAsync(AgentCommand.RebootMachine,
+            "Команда на перезагрузку отправлена. Агент получит её при следующей связи и перезагрузит машину " +
+            "с отсрочкой в 1 минуту.");
+
+    // Кнопка «Отменить команду».
+    public async Task<IActionResult> OnPostCancelCommandAsync()
     {
-        await _commands.RequestReportAsync(Id);
+        if (!User.CanEdit()) return Forbid();
+        await _commands.CancelAsync(Id);
         await Load();
         FillEditFields();
-        await _audit.LogAsync(User, "Запрошен отчёт у агента", Server?.Name);   // [YPMON-REMOTE-CMD]
-        Message = "Запрос отправлен. Агент пришлёт отчёт при следующей связи (обычно в течение 1–2 минут).";
+        await _audit.LogAsync(User, "Отменена команда агенту", Server?.Name);
+        Message = "Команда снята с очереди.";
         return Page();
     }
 
-    // [YPMON-REMOTE-CMD] Кнопка «Обновить агента» (принудительное обновление) — вырезать после релиза.
-    public async Task<IActionResult> OnPostRequestUpdateAsync()
+    /// <summary>Общая часть выдачи команды: права, постановка в очередь, журнал.</summary>
+    private async Task<IActionResult> IssueAsync(AgentCommand command, string message, bool requireEdit = true)
     {
-        if (!User.CanEdit()) return Forbid();
-        await _commands.RequestUpdateAsync(Id);
+        if (requireEdit && !User.CanEdit()) return Forbid();
+
+        await _commands.IssueAsync(Id, command, User.Identity?.Name ?? "?");
         await Load();
         FillEditFields();
-        await _audit.LogAsync(User, "Форс-обновление агента", Server?.Name);   // [YPMON-REMOTE-CMD]
-        Message = "Команда на обновление отправлена. Агент проверит и установит обновление при следующей связи " +
-                  "(обычно в течение 1–2 минут); служба перезапустится сама.";
+        await _audit.LogAsync(User, "Команда агенту: " + RemoteCommandService.Title(command), Server?.Name);
+        Message = message;
         return Page();
     }
 
