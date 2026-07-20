@@ -263,6 +263,94 @@
                     }
                 </div>
             </details>
+
+            <details class="card-y acc" @(Model.ServerLogs.Any() && (!string.IsNullOrEmpty(Model.LogLevel) || !string.IsNullOrEmpty(Model.LogAreaFilter) || !string.IsNullOrWhiteSpace(Model.LogQuery)) ? "open" : null)>
+                <summary>📋 Журнал сервера</summary>
+                <div class="acc-body">
+                    <div class="muted mb-2" style="font-size:12px">
+                        Вход в систему, приём отчётов от агентов, отказы в доступе и ошибки.
+                        Хранится @Ypmon.Server.Services.ServerLogWriter.RetentionDays дней, старые записи удаляются автоматически.
+                        Heartbeat агентов (раз в минуту) не пишется, иначе журнал состоял бы только из него.
+                    </div>
+
+                    <form method="get" class="row mb-2">
+                        <div class="col-md-3 mb-2">
+                            <label>Уровень</label>
+                            <select class="form-control" name="logLevel">
+                                <option value="" selected="@(Model.LogLevel == "")">все</option>
+                                <option value="Information" selected="@(Model.LogLevel == "Information")">информация</option>
+                                <option value="Warning" selected="@(Model.LogLevel == "Warning")">предупреждения</option>
+                                <option value="Error" selected="@(Model.LogLevel == "Error")">ошибки</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3 mb-2">
+                            <label>Раздел</label>
+                            <select class="form-control" name="logArea">
+                                <option value="" selected="@(Model.LogAreaFilter == "")">все</option>
+                                <option value="Auth" selected="@(Model.LogAreaFilter == "Auth")">аутентификация</option>
+                                <option value="Reports" selected="@(Model.LogAreaFilter == "Reports")">отчёты</option>
+                                <option value="Notify" selected="@(Model.LogAreaFilter == "Notify")">оповещения</option>
+                                <option value="System" selected="@(Model.LogAreaFilter == "System")">система</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4 mb-2">
+                            <label>Поиск</label>
+                            <input class="form-control" name="logQ" value="@Model.LogQuery" placeholder="текст, логин или IP" />
+                        </div>
+                        <div class="col-md-2 mb-2" style="display:flex;align-items:flex-end;gap:6px">
+                            <button class="btn btn-primary" type="submit">Показать</button>
+                            <a class="btn" href="/Settings">Сброс</a>
+                        </div>
+                    </form>
+
+                    @if (!Model.ServerLogs.Any())
+                    {
+                        <div class="muted">Записей нет.</div>
+                    }
+                    else
+                    {
+                        <table class="tbl">
+                            <thead><tr><th>Когда (UTC)</th><th>Уровень</th><th>Раздел</th><th>Событие</th><th>Кто / откуда</th></tr></thead>
+                            <tbody>
+                            @foreach (var l in Model.ServerLogs)
+                            {
+                                var (icon, word) = l.Level switch
+                                {
+                                    "Error" => ("❌", "ошибка"),
+                                    "Warning" => ("⚠️", "предупр."),
+                                    _ => ("ℹ️", "инфо"),
+                                };
+                                var areaWord = l.Area switch
+                                {
+                                    Ypmon.Server.Data.LogArea.Auth => "аутентификация",
+                                    Ypmon.Server.Data.LogArea.Reports => "отчёты",
+                                    Ypmon.Server.Data.LogArea.Notify => "оповещения",
+                                    _ => "система",
+                                };
+                                <tr>
+                                    <td class="mono" style="white-space:nowrap">@l.At.UtcDateTime.ToString("yyyy-MM-dd HH:mm:ss")</td>
+                                    <td style="white-space:nowrap">@icon @word</td>
+                                    <td style="white-space:nowrap">@areaWord</td>
+                                    <td>
+                                        @l.Message
+                                        @if (!string.IsNullOrWhiteSpace(l.Details))
+                                        {
+                                            <div class="muted mono" style="font-size:11px;white-space:pre-wrap;max-height:120px;overflow:auto">@l.Details</div>
+                                        }
+                                    </td>
+                                    <td class="mono" style="white-space:nowrap;font-size:12px">
+                                        @l.Who@(string.IsNullOrWhiteSpace(l.Ip) ? "" : (string.IsNullOrWhiteSpace(l.Who) ? l.Ip : $" ({l.Ip})"))
+                                    </td>
+                                </tr>
+                            }
+                            </tbody>
+                        </table>
+                        <div class="muted" style="font-size:12px;margin-top:8px">
+                            Показано @Model.ServerLogs.Count из @Model.ServerLogTotal подходящих записей (самые свежие).
+                        </div>
+                    }
+                </div>
+            </details>
         }
 
         <details class="card-y acc">

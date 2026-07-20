@@ -12,7 +12,8 @@ namespace Ypmon.Server.Pages;
 public class LoginModel : PageModel
 {
     private readonly AppDbContext _db;
-    public LoginModel(AppDbContext db) => _db = db;
+    private readonly ServerLogService _logs;
+    public LoginModel(AppDbContext db, ServerLogService logs) { _db = db; _logs = logs; }
 
     [BindProperty] public string Username { get; set; } = "";
     [BindProperty] public string Password { get; set; } = "";
@@ -31,9 +32,12 @@ public class LoginModel : PageModel
         if (!await _db.Users.AnyAsync())
             return RedirectToPage("/Setup");
 
+        var ip = ServerLogService.ClientIp(HttpContext);
         var user = await _db.Users.FirstOrDefaultAsync(u => u.Username == Username);
         if (user is null || !PasswordHasher.Verify(Password, user.PasswordHash, user.PasswordSalt))
         {
+            _logs.Warn(LogArea.Auth, "Неудачная попытка входа", Username, ip,
+                user is null ? "пользователь не найден" : "неверный пароль");
             Error = "Неверный логин или пароль";
             return Page();
         }
@@ -51,6 +55,7 @@ public class LoginModel : PageModel
         await HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme,
             new ClaimsPrincipal(identity));
 
+        _logs.Info(LogArea.Auth, "Вход в систему", user.Username, ip, $"роль: {user.Role}");
         return RedirectToPage("/Index");
     }
 }

@@ -34,6 +34,13 @@ public class SettingsModel : PageModel
     public ServerSettings Settings { get; set; } = new();
     public List<AppUser> Users { get; set; } = new();
     public List<AuditEntry> AuditLog { get; set; } = new();
+
+    // Журнал сервера (аутентификация, приём отчётов, ошибки) с фильтрами.
+    public List<ServerLog> ServerLogs { get; set; } = new();
+    public int ServerLogTotal { get; set; }
+    [BindProperty(SupportsGet = true, Name = "logLevel")] public string LogLevel { get; set; } = "";
+    [BindProperty(SupportsGet = true, Name = "logArea")] public string LogAreaFilter { get; set; } = "";
+    [BindProperty(SupportsGet = true, Name = "logQ")] public string LogQuery { get; set; } = "";
     public string? Message { get; set; }
     public bool IsError { get; set; }
 
@@ -63,7 +70,10 @@ public class SettingsModel : PageModel
         Settings = await _db.Settings.FirstOrDefaultAsync() ?? new ServerSettings();
         Users = await _db.Users.OrderBy(u => u.Username).ToListAsync();
         if (IsAdmin)
+        {
             AuditLog = await _db.Audit.OrderByDescending(a => a.At).Take(200).ToListAsync();
+            await LoadServerLogs();
+        }
         HttpPort = _cfg.GetValue<int?>("Server:HttpPort") ?? 8080;
         DbProvider = _cfg["Database:Provider"] ?? "sqlite";
         BackupAvailable = _backup.IsAvailable;
@@ -89,6 +99,27 @@ public class SettingsModel : PageModel
         }
         WireGuardRunning = _wg.IsRunning;
         WireGuardStatus = _wg.LastStatus;
+    }
+
+    /// <summary>Журнал сервера с учётом выбранных фильтров (последние 300 записей).</summary>
+    private async Task LoadServerLogs()
+    {
+        var q = _db.Logs.AsQueryable();
+
+        if (!string.IsNullOrEmpty(LogLevel))
+            q = q.Where(l => l.Level == LogLevel);
+        if (!string.IsNullOrEmpty(LogAreaFilter) && Enum.TryParse<LogArea>(LogAreaFilter, out var area))
+            q = q.Where(l => l.Area == area);
+        if (!string.IsNullOrWhiteSpace(LogQuery))
+        {
+            var term = LogQuery.Trim();
+            q = q.Where(l => EF.Functions.Like(l.Message, $"%{term}%")
+                          || (l.Who != null && EF.Functions.Like(l.Who, $"%{term}%"))
+                          || (l.Ip != null && EF.Functions.Like(l.Ip, $"%{term}%")));
+        }
+
+        ServerLogTotal = await q.CountAsync();
+        ServerLogs = await q.OrderByDescending(l => l.At).Take(300).ToListAsync();
     }
 
     /// <summary>Резервная копия БД: делает дамп и сразу отдаёт его на скачивание.</summary>

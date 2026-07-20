@@ -62,9 +62,12 @@ public class MaintenanceService : BackgroundService
         if (settings.ReportRetentionDays > 0)
         {
             var cutoff = DateTimeOffset.UtcNow.AddDays(-settings.ReportRetentionDays);
-            db.Reports.RemoveRange(db.Reports.Where(r => r.ReceivedAt < cutoff));
-            db.Events.RemoveRange(db.Events.Where(e => e.ReceivedAt < cutoff));
-            await db.SaveChangesAsync(ct);
+            // Через SQL, а не LINQ: сравнение DateTimeOffset EF не умеет транслировать в sqlite
+            // (на postgres работало, на sqlite чистка молча падала с ошибкой).
+            await db.Database.ExecuteSqlRawAsync(
+                @"DELETE FROM ""Reports"" WHERE ""ReceivedAt"" < {0}", new object[] { cutoff }, ct);
+            await db.Database.ExecuteSqlRawAsync(
+                @"DELETE FROM ""Events"" WHERE ""ReceivedAt"" < {0}", new object[] { cutoff }, ct);
         }
     }
 }

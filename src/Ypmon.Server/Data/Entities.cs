@@ -233,6 +233,47 @@ public class AuditEntry
     public string? Details { get; set; }
 }
 
+/// <summary>Категория записи в журнале сервера (для фильтра в интерфейсе).</summary>
+public enum LogArea
+{
+    /// <summary>Прочее: запуск, фоновые службы, обновления.</summary>
+    System = 0,
+    /// <summary>Вход/выход пользователей, отказы в доступе.</summary>
+    Auth = 1,
+    /// <summary>Приём отчётов от агентов.</summary>
+    Reports = 2,
+    /// <summary>Оповещения: Telegram, почта.</summary>
+    Notify = 3,
+}
+
+/// <summary>
+/// Запись журнала сервера: аутентификация, приём отчётов, ошибки.
+/// Пишется как явными вызовами <see cref="Ypmon.Server.Services.ServerLogService"/>,
+/// так и перехватом предупреждений/ошибок из обычного ILogger.
+/// </summary>
+public class ServerLog
+{
+    public long Id { get; set; }
+    public DateTimeOffset At { get; set; } = DateTimeOffset.UtcNow;
+
+    /// <summary>Information / Warning / Error.</summary>
+    public string Level { get; set; } = "Information";
+
+    public LogArea Area { get; set; } = LogArea.System;
+
+    /// <summary>Текст события.</summary>
+    public string Message { get; set; } = "";
+
+    /// <summary>Кто (логин пользователя или имя сервера/агента), если применимо.</summary>
+    public string? Who { get; set; }
+
+    /// <summary>IP-адрес источника запроса, если применимо.</summary>
+    public string? Ip { get; set; }
+
+    /// <summary>Подробности: текст исключения, детали запроса.</summary>
+    public string? Details { get; set; }
+}
+
 /// <summary>Глобальные настройки сервера (одна запись, key/value-подход не нужен).</summary>
 public class ServerSettings
 {

@@ -13,6 +13,7 @@ public class AppDbContext : DbContext
     public DbSet<AgentEvent> Events => Set<AgentEvent>();
     public DbSet<ServerSettings> Settings => Set<ServerSettings>();
     public DbSet<AuditEntry> Audit => Set<AuditEntry>();
+    public DbSet<ServerLog> Logs => Set<ServerLog>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -40,5 +41,6 @@ public class AppDbContext : DbContext
         b.Entity<AgentEvent>().HasIndex(e => new { e.ServerId, e.TimeCreated });
 
         b.Entity<AuditEntry>().HasIndex(a => a.At);
+        b.Entity<ServerLog>().HasIndex(l => l.At);
     }
 }
