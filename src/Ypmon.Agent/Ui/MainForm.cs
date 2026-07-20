@@ -53,6 +53,9 @@ public class MainForm : Form
     // Отчёты
     private TextBox _statusBox = null!;
 
+    // Главная (сводка по этой машине)
+    private HomePage _home = null!;
+
     public MainForm(bool workerRunningHere)
     {
         _workerRunningHere = workerRunningHere;
@@ -86,6 +89,7 @@ public class MainForm : Form
         Controls.Add(sidebar);
         Controls.Add(bottom);
 
+        AddNav(sidebar, "🏠 Главная", _home = new HomePage(_store));
         AddNav(sidebar, "Настройки подключения к серверу", BuildConnectionPage());
         AddNav(sidebar, "Задания архивации", BuildJobsPage());
         AddNav(sidebar, "Информация об отчётах", BuildReportInfoPage());
