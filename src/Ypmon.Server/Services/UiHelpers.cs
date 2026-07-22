@@ -100,6 +100,13 @@ public static class UiHelpers
     public static int EffectiveStaleDays(int serverStaleDays, int defaultStaleDays)
         => serverStaleDays > 0 ? serverStaleDays : defaultStaleDays;
 
+    /// <summary>Действующий порог устаревания конкретной папки: свой, иначе порог сервера, иначе глобальный.</summary>
+    public static int FolderStale(string folderName, Dictionary<string, int>? perFolder, int serverStaleDays, int defaultStaleDays)
+    {
+        if (perFolder is not null && perFolder.TryGetValue(folderName, out var v) && v > 0) return v;
+        return EffectiveStaleDays(serverStaleDays, defaultStaleDays);
+    }
+
     public static string Bytes(long b)
     {
         string[] u = { "Б", "КБ", "МБ", "ГБ", "ТБ" };

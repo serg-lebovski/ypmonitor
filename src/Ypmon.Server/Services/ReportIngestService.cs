@@ -108,9 +108,14 @@ public class ReportIngestService
             ? server.BackupStaleDays
             : (settings?.DefaultBackupStaleDays ?? 1);
 
-        // Вычисляем статус каждой папки.
+        // Вычисляем статус каждой папки. У папки может быть свой порог устаревания
+        // (напр. еженедельный бэкап), иначе — общий порог сервера/по умолчанию.
+        var folderStale = ParseFolderStaleDays(server.FolderStaleDaysJson);
         foreach (var f in report.Folders)
-            f.Outcome = EvaluateFolder(f, staleDays);
+        {
+            var eff = folderStale.TryGetValue(f.Name, out var pv) && pv > 0 ? pv : staleDays;
+            f.Outcome = EvaluateFolder(f, eff);
+        }
 
         var overall = report.Folders.Count == 0
             ? JobOutcome.Unknown
@@ -229,6 +234,22 @@ public class ReportIngestService
         }
 
         return Ack(server, "OK");
+    }
+
+    /// <summary>Пороги устаревания по папкам из JSON {"имя": дней}. Имена без учёта регистра.</summary>
+    public static Dictionary<string, int> ParseFolderStaleDays(string? json)
+    {
+        var result = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        if (string.IsNullOrWhiteSpace(json)) return result;
+        try
+        {
+            var raw = JsonSerializer.Deserialize<Dictionary<string, int>>(json!);
+            if (raw is not null)
+                foreach (var (k, v) in raw)
+                    result[k] = Math.Clamp(v, 0, 3650);
+        }
+        catch { }
+        return result;
     }
 
     private static JobOutcome EvaluateFolder(FolderStatusDto f, int staleDays)

@@ -42,6 +42,9 @@ public class DetailsModel : PageModel
     public List<DiskStatusDto> Disks { get; set; } = new();
     public Dictionary<string, int> DiskThresholds { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
+    // Пороги устаревания по папкам (имя папки → дней; 0/нет = наследует порог сервера).
+    public Dictionary<string, int> FolderStaleDays { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
     // Здоровье физических накопителей (SMART) — показывается свёрнутым списком.
     public List<PhysicalDiskDto> PhysicalDisks { get; set; } = new();
 
@@ -85,12 +88,15 @@ public class DetailsModel : PageModel
             try { PhysicalDisks = JsonSerializer.Deserialize<List<PhysicalDiskDto>>(Server.LastPhysicalDisksJson) ?? new(); } catch { }
         }
         DiskThresholds = AvailabilityMonitor.ParseThresholds(Server.DiskAlertsJson);
+        FolderStaleDays = ReportIngestService.ParseFolderStaleDays(Server.FolderStaleDaysJson);
+        // Сортируем по Id (автоинкремент ⇒ тот же порядок, что ReceivedAt): sqlite не умеет
+        // ORDER BY по DateTimeOffset, а провайдер sqlite в проекте поддерживается.
         History = await _db.Reports.Where(r => r.ServerId == Id)
-            .OrderByDescending(r => r.ReceivedAt).Take(15).ToListAsync();
+            .OrderByDescending(r => r.Id).Take(15).ToListAsync();
 
         // Тренд объёма бэкапа: последние 30 полных отчётов, объём = сумма доступных папок из payload.
         var trendRows = await _db.Reports.Where(r => r.ServerId == Id)
-            .OrderByDescending(r => r.ReceivedAt).Take(20)
+            .OrderByDescending(r => r.Id).Take(20)
             .Select(r => new { r.ReceivedAt, r.PayloadJson }).ToListAsync();
         trendRows.Reverse();   // хронологический порядок
         foreach (var r in trendRows)
@@ -106,7 +112,7 @@ public class DetailsModel : PageModel
         }
         if (BackupTrend.Count > 0) BackupTrendMax = Math.Max(1, BackupTrend.Max(p => p.Size));
         Events = await _db.Events.Where(e => e.ServerId == Id)
-            .OrderByDescending(e => e.TimeCreated).Take(50).ToListAsync();
+            .OrderByDescending(e => e.Id).Take(50).ToListAsync();
     }
 
     public async Task<IActionResult> OnPostSaveAsync()
@@ -148,6 +154,16 @@ public class DetailsModel : PageModel
                 dict[disk] = Math.Clamp(v, 0, 99);
         }
         s.DiskAlertsJson = dict.Count == 0 ? null : JsonSerializer.Serialize(dict);
+
+        // Пороги устаревания по папкам: поля формы fs_<имя папки>, значение — дней (0 = наследовать порог сервера).
+        var folderDict = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        foreach (var key in Request.Form.Keys.Where(k => k.StartsWith("fs_", StringComparison.Ordinal)))
+        {
+            var folder = key[3..];
+            if (int.TryParse(Request.Form[key], out var v) && v > 0)
+                folderDict[folder] = Math.Clamp(v, 1, 3650);
+        }
+        s.FolderStaleDaysJson = folderDict.Count == 0 ? null : JsonSerializer.Serialize(folderDict);
 
         // Чистим состояния тревог по дискам, для которых порог убрали, — иначе «висящая» тревога
         // не даст уведомлению сработать после повторного включения порога.

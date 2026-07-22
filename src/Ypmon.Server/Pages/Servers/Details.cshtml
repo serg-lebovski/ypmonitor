@@ -86,7 +86,7 @@
                 {
                     var problemFolders = Model.Report?.Folders
                         .Where(f => f.Outcome != JobOutcome.Ok)
-                        .Select(f => $"{f.Name}: {UiHelpers.FolderReason(f, UiHelpers.EffectiveStaleDays(s.BackupStaleDays, Model.DefaultBackupStaleDays))}")
+                        .Select(f => $"{f.Name}: {UiHelpers.FolderReason(f, UiHelpers.FolderStale(f.Name, Model.FolderStaleDays, s.BackupStaleDays, Model.DefaultBackupStaleDays))}")
                         .ToList() ?? new();
                     var summary = problemFolders.Count > 0 ? string.Join("\n", problemFolders) : UiHelpers.OutcomeText(s.LastOutcome);
                     <span class="badge-status @UiHelpers.OutcomeCss(s.LastOutcome)" title="@summary">@UiHelpers.OutcomeText(s.LastOutcome)</span>
@@ -149,10 +149,10 @@
                 <table class="tbl">
                     <thead><tr><th>Папка</th><th>Статус</th><th>Файлов</th><th>Общий объём</th><th>Посл. архив</th><th>Посл. файл</th></tr></thead>
                     <tbody>
-                    @{ var staleDays = UiHelpers.EffectiveStaleDays(Model.Server!.BackupStaleDays, Model.DefaultBackupStaleDays); }
                     @foreach (var f in Model.Report.Folders)
                     {
-                        var reason = UiHelpers.FolderReason(f, staleDays);
+                        var fStale = UiHelpers.FolderStale(f.Name, Model.FolderStaleDays, Model.Server!.BackupStaleDays, Model.DefaultBackupStaleDays);
+                        var reason = UiHelpers.FolderReason(f, fStale);
                         <tr>
                             <td><span class="dot @UiHelpers.DotCss(f.Outcome)"></span>@f.Name
                                 <div class="muted" style="font-size:12px">@f.Path</div>
@@ -439,6 +439,30 @@
                                 <input class="form-control" style="max-width:90px" type="number" min="0" max="99"
                                        name="th_@d.Name" value="@th" />
                                 <span class="muted" style="font-size:12px">% свободно, мин.</span>
+                            </div>
+                        }
+                    }
+                    <div class="mb-2" style="margin-top:14px"><strong style="font-size:13px">Пороги устаревания по папкам</strong>
+                        <div class="muted" style="font-size:12px">
+                            Через сколько дней без новых файлов папка считается проблемной. 0 = общий порог сервера
+                            (@(s.BackupStaleDays > 0 ? s.BackupStaleDays + " дн." : $"по умолчанию {Model.DefaultBackupStaleDays} дн.")).
+                            Для еженедельного бэкапа поставьте 8, для ежемесячного — 35.
+                        </div></div>
+                    @{ var monFolders = Model.Report?.Folders ?? new List<Ypmon.Shared.FolderStatusDto>(); }
+                    @if (!monFolders.Any())
+                    {
+                        <div class="muted mb-2" style="font-size:12px">Папки появятся после первого полного отчёта агента.</div>
+                    }
+                    else
+                    {
+                        foreach (var f in monFolders)
+                        {
+                            var cur = Model.FolderStaleDays.TryGetValue(f.Name, out var fv) ? fv : 0;
+                            <div class="mb-2" style="display:flex;align-items:center;gap:8px">
+                                <span style="flex:1;overflow:hidden;text-overflow:ellipsis" title="@f.Path">@f.Name</span>
+                                <input class="form-control" style="max-width:90px" type="number" min="0" max="3650"
+                                       name="fs_@f.Name" value="@cur" />
+                                <span class="muted" style="font-size:12px">дн. (0 = общий)</span>
                             </div>
                         }
                     }

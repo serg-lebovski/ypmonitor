@@ -30,6 +30,7 @@ public class IndexModel : PageModel
     public Dictionary<int, List<DiskStatusDto>> DisksByServer { get; } = new();
     public Dictionary<int, List<FolderStatusDto>> FoldersByServer { get; } = new();
     public Dictionary<int, Dictionary<string, int>> ThresholdsByServer { get; } = new();
+    public Dictionary<int, Dictionary<string, int>> FolderStaleByServer { get; } = new();
 
     public async Task OnGetAsync() => await Load();
 
@@ -50,6 +51,7 @@ public class IndexModel : PageModel
                 if (!string.IsNullOrWhiteSpace(s.LastReportJson))
                     try { FoldersByServer[s.Id] = JsonSerializer.Deserialize<AgentReportDto>(s.LastReportJson!)?.Folders ?? new(); } catch { }
                 ThresholdsByServer[s.Id] = AvailabilityMonitor.ParseThresholds(s.DiskAlertsJson);
+                FolderStaleByServer[s.Id] = ReportIngestService.ParseFolderStaleDays(s.FolderStaleDaysJson);
             }
         }
     }
@@ -58,9 +60,9 @@ public class IndexModel : PageModel
     public string ProblemSummary(MonitoredServer s)
     {
         if (!FoldersByServer.TryGetValue(s.Id, out var folders)) return UiHelpers.OutcomeText(s.LastOutcome);
-        var stale = UiHelpers.EffectiveStaleDays(s.BackupStaleDays, DefaultBackupStaleDays);
+        var perFolder = FolderStaleByServer.TryGetValue(s.Id, out var pf) ? pf : null;
         var lines = folders.Where(f => f.Outcome != JobOutcome.Ok)
-                           .Select(f => $"{f.Name}: {UiHelpers.FolderReason(f, stale)}")
+                           .Select(f => $"{f.Name}: {UiHelpers.FolderReason(f, UiHelpers.FolderStale(f.Name, perFolder, s.BackupStaleDays, DefaultBackupStaleDays))}")
                            .ToList();
         return lines.Count > 0 ? string.Join("\n", lines) : UiHelpers.OutcomeText(s.LastOutcome);
     }
