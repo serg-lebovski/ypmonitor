@@ -207,10 +207,12 @@ public class DetailsModel : PageModel
         var s = await _db.Servers.FindAsync(Id);
         if (s is not null)
         {
+            // Опорный файл уже двигается при приёме отчёта, так что следующий новый файл
+            // сравнится с текущим. Здесь только снимаем тревогу.
             s.BackupShrinkActive = false;
-            s.PrevBackupSizeBytes = s.BackupShrinkToBytes > 0 ? s.BackupShrinkToBytes : s.PrevBackupSizeBytes;
+            s.BackupShrinkFolder = null;
             await _db.SaveChangesAsync();
-            await _audit.LogAsync(User, "Подтверждено уменьшение объёма бэкапа", s.Name);
+            await _audit.LogAsync(User, "Подтверждено уменьшение файла бэкапа", s.Name);
         }
         await Load();
         FillEditFields();

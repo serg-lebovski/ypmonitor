@@ -64,11 +64,11 @@
 {
     var dropPct = s.BackupShrinkFromBytes > 0 ? (1 - (double)s.BackupShrinkToBytes / s.BackupShrinkFromBytes) * 100 : 0;
     <div class="alert-y alert-err" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
-        <span>⚠️ Объём бэкапа резко уменьшился: было @UiHelpers.Bytes(s.BackupShrinkFromBytes), стало @UiHelpers.Bytes(s.BackupShrinkToBytes) (−@dropPct.ToString("0")%, @UiHelpers.Ago(s.BackupShrinkAt)). Проверьте, всё ли верно.</span>
+        <span>⚠️ Новый файл бэкапа резко меньше предыдущего@(string.IsNullOrWhiteSpace(s.BackupShrinkFolder) ? "" : $" (папка «{s.BackupShrinkFolder}»)"): было @UiHelpers.Bytes(s.BackupShrinkFromBytes), стало @UiHelpers.Bytes(s.BackupShrinkToBytes) (−@dropPct.ToString("0")%, @UiHelpers.Ago(s.BackupShrinkAt)). Проверьте, всё ли верно.</span>
         @if (canEdit)
         {
             <form method="post" asp-page-handler="AckShrink" asp-route-id="@s.Id">
-                <button class="btn btn-sm btn-primary" type="submit">✔️ Архив действительно стал меньше</button>
+                <button class="btn btn-sm btn-primary" type="submit">✔️ Так и должно быть</button>
             </form>
         }
     </div>

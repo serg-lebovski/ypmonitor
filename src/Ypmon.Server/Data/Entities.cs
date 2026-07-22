@@ -194,10 +194,19 @@ public class MonitoredServer
     /// <summary>Активна тревога «объём бэкапа резко уменьшился» (ждёт подтверждения администратора).</summary>
     public bool BackupShrinkActive { get; set; }
 
-    /// <summary>Объёмы до/после падения (для показа) и когда обнаружено.</summary>
+    /// <summary>Размеры предыдущего/нового файла бэкапа (для показа) и когда обнаружено.</summary>
     public long BackupShrinkFromBytes { get; set; }
     public long BackupShrinkToBytes { get; set; }
     public DateTimeOffset? BackupShrinkAt { get; set; }
+
+    /// <summary>Папка, в которой сработала тревога усадки (для показа в баннере/уведомлении).</summary>
+    public string? BackupShrinkFolder { get; set; }
+
+    /// <summary>
+    /// Последний увиденный самый свежий файл в каждой папке (JSON {"папка": {"Name","Size"}}).
+    /// По нему сравниваем НОВЫЙ файл с ПРЕДЫДУЩИМ, а не суммарный объём всей папки.
+    /// </summary>
+    public string? LastBackupFilesJson { get; set; }
 
     public List<Report> Reports { get; set; } = new();
 

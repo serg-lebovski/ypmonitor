@@ -136,7 +136,8 @@ public class TelegramReportService
         var details = offline
             ? $"агент офлайн (последний отчёт: {UiHelpers.Ago(srv.LastSeenAt)})"
             : srv.BackupShrinkActive
-                ? $"объём бэкапа резко уменьшился ({UiHelpers.Bytes(srv.BackupShrinkFromBytes)} → {UiHelpers.Bytes(srv.BackupShrinkToBytes)}) — проверьте"
+                ? $"новый файл бэкапа резко меньше предыдущего{(string.IsNullOrWhiteSpace(srv.BackupShrinkFolder) ? "" : $" (папка «{srv.BackupShrinkFolder}»)")} " +
+                  $"({UiHelpers.Bytes(srv.BackupShrinkFromBytes)} → {UiHelpers.Bytes(srv.BackupShrinkToBytes)}) — проверьте"
                 : ProblemDetails(srv);
 
         var html = $"❌ <b>{name}</b> — ошибка архивации\n{WebUtility.HtmlEncode(details)}";

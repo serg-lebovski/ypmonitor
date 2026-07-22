@@ -187,28 +187,38 @@ public class ReportIngestService
             }
         }
 
-        // Контроль резкого уменьшения объёма бэкапа (> 20% от прошлого) — только по доступным папкам,
-        // чтобы временная недоступность сетевой шары не поднимала ложную тревогу.
-        var currentSize = report.Folders.Where(f => f.Accessible).Sum(f => f.TotalSizeBytes);
-        var shrinkAlarm = false;
-        if (!server.BackupShrinkActive)
+        // Контроль резкого уменьшения бэкапа: сравниваем НОВЫЙ самый свежий файл в папке с ПРЕДЫДУЩИМ
+        // (а не суммарный объём всей папки — он растёт от накопления копий и плохой сигнал).
+        // Тревога срабатывает, когда в папке появился новый файл заметно меньше прежнего.
+        var fileState = ParseBackupFiles(server.LastBackupFilesJson);
+        (string folder, string fromName, long fromSize, string toName, long toSize)? shrink = null;
+        foreach (var f in report.Folders)
         {
-            if (server.PrevBackupSizeBytes > 0 && currentSize > 0 &&
-                currentSize < server.PrevBackupSizeBytes * 0.8)
+            if (!f.Accessible || string.IsNullOrWhiteSpace(f.LastFileName) || f.LastFileSizeBytes <= 0) continue;
+
+            if (fileState.TryGetValue(f.Name, out var prev) &&
+                prev.Name != f.LastFileName &&               // именно НОВЫЙ файл, а не тот же самый
+                prev.Size > 0 &&
+                f.LastFileSizeBytes < prev.Size * 0.8 &&     // новый меньше предыдущего > 20%
+                shrink is null)
             {
-                server.BackupShrinkActive = true;
-                server.BackupShrinkFromBytes = server.PrevBackupSizeBytes;
-                server.BackupShrinkToBytes = currentSize;
-                server.BackupShrinkAt = DateTimeOffset.UtcNow;
-                shrinkAlarm = true;
-                // Опорный объём НЕ обновляем — держим до подтверждения администратором.
+                shrink = (f.Name, prev.Name, prev.Size, f.LastFileName!, f.LastFileSizeBytes);
             }
-            else if (currentSize > 0)
-            {
-                server.PrevBackupSizeBytes = currentSize;   // нормальный ход — двигаем опорную точку
-            }
+            // Опорный файл двигаем всегда: следующий новый файл сравнится с текущим.
+            fileState[f.Name] = new BackupFile(f.LastFileName!, f.LastFileSizeBytes);
         }
-        // Если тревога уже активна — опорный объём заморожен до подтверждения.
+        server.LastBackupFilesJson = JsonSerializer.Serialize(fileState);
+
+        var shrinkAlarm = false;
+        if (shrink is { } sh && !server.BackupShrinkActive)
+        {
+            server.BackupShrinkActive = true;
+            server.BackupShrinkFolder = sh.folder;
+            server.BackupShrinkFromBytes = sh.fromSize;
+            server.BackupShrinkToBytes = sh.toSize;
+            server.BackupShrinkAt = DateTimeOffset.UtcNow;
+            shrinkAlarm = true;
+        }
 
         await _db.SaveChangesAsync();
 
@@ -222,18 +232,37 @@ public class ReportIngestService
                 $"Машина: {report.MachineName}\n" + string.Join("\n", problems));
         }
 
-        // Оповещение о резком уменьшении объёма бэкапа.
-        if (settings is not null && shrinkAlarm)
+        // Оповещение о резком уменьшении нового файла бэкапа.
+        if (settings is not null && shrinkAlarm && shrink is { } s)
         {
-            var pct = server.BackupShrinkFromBytes > 0
-                ? (1 - (double)server.BackupShrinkToBytes / server.BackupShrinkFromBytes) * 100 : 0;
+            var pct = s.fromSize > 0 ? (1 - (double)s.toSize / s.fromSize) * 100 : 0;
             await _alerts.SendAsync(settings,
-                $"YPMon: объём бэкапа резко уменьшился — {server.Client?.Name} / {server.Name}",
-                $"Было {UiHelpers.Bytes(server.BackupShrinkFromBytes)}, стало {UiHelpers.Bytes(server.BackupShrinkToBytes)} " +
-                $"(−{pct:0}%). Проверьте, всё ли верно. Если архив действительно стал меньше — подтвердите на странице сервера.");
+                $"YPMon: новый файл бэкапа резко меньше предыдущего — {server.Client?.Name} / {server.Name}",
+                $"Папка «{s.folder}»: новый файл {s.toName} ({UiHelpers.Bytes(s.toSize)}) меньше предыдущего " +
+                $"{s.fromName} ({UiHelpers.Bytes(s.fromSize)}) на {pct:0}%. Проверьте, всё ли верно. " +
+                $"Если это ожидаемо — подтвердите на странице сервера.");
         }
 
         return Ack(server, "OK");
+    }
+
+    /// <summary>Самый свежий файл папки на момент прошлого отчёта.</summary>
+    public sealed record BackupFile(string Name, long Size);
+
+    /// <summary>Состояние последних файлов по папкам из JSON. Имена папок без учёта регистра.</summary>
+    public static Dictionary<string, BackupFile> ParseBackupFiles(string? json)
+    {
+        var result = new Dictionary<string, BackupFile>(StringComparer.OrdinalIgnoreCase);
+        if (string.IsNullOrWhiteSpace(json)) return result;
+        try
+        {
+            var raw = JsonSerializer.Deserialize<Dictionary<string, BackupFile>>(json!);
+            if (raw is not null)
+                foreach (var (k, v) in raw)
+                    if (v is not null) result[k] = v;
+        }
+        catch { }
+        return result;
     }
 
     /// <summary>Пороги устаревания по папкам из JSON {"имя": дней}. Имена без учёта регистра.</summary>
