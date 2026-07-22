@@ -60,22 +60,37 @@ public static class UpdateInstaller
 
     /// <summary>
     /// Запускает установщик.
-    /// silent=true — тихо, для авто-обновления из службы: служба уже запущена с правами администратора
-    /// (LocalSystem или админ-учётка), поэтому UseShellExecute=false — процесс наследует уже повышенный
-    /// токен без запроса UAC (в сессии службы интерактивный UAC невозможен, из-за чего обновление «зависало»).
-    /// silent=false — интерактивно из окна: UseShellExecute=true, чтобы показать запрос UAC пользователю.
+    ///
+    /// silent=true — авто-обновление из службы. Установщик сам останавливает службу, заменяет файлы
+    /// и запускает её заново. Запускаем его ОТДЕЛЁННО от процесса службы (через `cmd /c start`):
+    /// установщик — не дочерний процесс службы, поэтому её остановка не завершает установщик на
+    /// половине. Раньше установщик стартовал как дочерний, а служба тут же себя останавливала —
+    /// установщик мог погибнуть вместе с ней, оставив службу остановленной на старой версии.
+    /// Агент себя НЕ останавливает: остановкой службы управляет сам установщик.
+    ///
+    /// silent=false — интерактивно из окна: через shell, чтобы показать запрос UAC пользователю.
     /// </summary>
     public static void RunInstaller(string installerPath, bool silent)
     {
-        var args = silent
-            ? "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /NOCANCEL"
-            : "/SILENT /NORESTART";
-        var psi = new ProcessStartInfo(installerPath, args)
+        if (silent)
         {
-            UseShellExecute = !silent,   // служба уже elevated → без UAC; окно → через shell с UAC
-            CreateNoWindow = silent,
-            WindowStyle = silent ? ProcessWindowStyle.Hidden : ProcessWindowStyle.Normal
-        };
-        Process.Start(psi);
+            const string args = "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /NOCANCEL";
+            var psi = new ProcessStartInfo("cmd.exe", $"/c start \"YPMonUpdate\" /b \"{installerPath}\" {args}")
+            {
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                WindowStyle = ProcessWindowStyle.Hidden
+            };
+            Process.Start(psi);
+        }
+        else
+        {
+            var psi = new ProcessStartInfo(installerPath, "/SILENT /NORESTART")
+            {
+                UseShellExecute = true,   // окно → через shell с запросом UAC
+                WindowStyle = ProcessWindowStyle.Normal
+            };
+            Process.Start(psi);
+        }
     }
 }

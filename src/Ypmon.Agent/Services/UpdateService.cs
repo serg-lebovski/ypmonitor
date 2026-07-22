@@ -8,11 +8,10 @@ public class UpdateService : BackgroundService
 {
     private readonly ConfigStore _store;
     private readonly ILogger<UpdateService> _log;
-    private readonly IHostApplicationLifetime _life;
 
-    public UpdateService(ConfigStore store, ILogger<UpdateService> log, IHostApplicationLifetime life)
+    public UpdateService(ConfigStore store, ILogger<UpdateService> log)
     {
-        _store = store; _log = log; _life = life;
+        _store = store; _log = log;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -82,10 +81,12 @@ public class UpdateService : BackgroundService
         try
         {
             var installer = await UpdateInstaller.DownloadAsync(cfg);
-            _log.LogInformation("Установщик {Ver} загружен, запуск тихой установки и перезапуск службы.", info.Version);
+            _log.LogInformation("Установщик {Ver} загружен, запуск тихой установки. Установщик сам остановит " +
+                "службу, заменит файлы и запустит её заново.", info.Version);
             UpdateInstaller.RunInstaller(installer, silent: true);
-            // Останавливаемся, чтобы установщик мог заменить файлы; службу он запустит заново сам.
-            _life.StopApplication();
+            // Себя НЕ останавливаем: остановкой службы управляет установщик (он ждёт фактической
+            // остановки перед заменой файлов). Раньше агент останавливался сам и гонка с установщиком
+            // приводила к тому, что служба оставалась остановленной на старой версии.
         }
         catch (Exception ex)
         {

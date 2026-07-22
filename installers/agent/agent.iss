@@ -105,13 +105,40 @@ begin
   Result := (rc = 0);
 end;
 
-// Перед копированием файлов останавливаем службу, чтобы освободить exe
-function PrepareToInstall(var NeedsRestart: Boolean): String;
+// Служба в указанном состоянии? sc query выводит строку STATE со словом STOPPED/RUNNING
+// (эти слова не переводятся даже на локализованной Windows). find возвращает rc=0, если нашёл.
+function ServiceInState(const State: String): Boolean;
 var rc: Integer;
 begin
-  Exec('sc.exe', 'stop "' + SVC + '"', '', SW_HIDE, ewWaitUntilTerminated, rc);
-  Sleep(2500);
+  Exec('cmd.exe', '/C sc query "' + SVC + '" | find "' + State + '"', '', SW_HIDE, ewWaitUntilTerminated, rc);
+  Result := (rc = 0);
+end;
+
+// Перед копированием файлов останавливаем службу, чтобы освободить exe.
+// Ждём ФАКТИЧЕСКОЙ остановки, а не фиксированную паузу: из-за неё раньше exe мог быть ещё
+// занят, копирование падало, а служба оставалась остановленной на старой версии.
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+var rc, i: Integer;
+begin
   Result := '';
+  if not ServiceExists() then exit;   // свежая установка — службы ещё нет, останавливать нечего
+
+  Exec('sc.exe', 'stop "' + SVC + '"', '', SW_HIDE, ewWaitUntilTerminated, rc);
+  for i := 1 to 30 do
+  begin
+    if ServiceInState('STOPPED') then break;
+    Sleep(1000);
+  end;
+  Sleep(1500);   // даём ОС освободить файловый хендл после выхода процесса
+end;
+
+// Страховка на самый конец установки (выполняется всегда, даже при ошибке/отмене):
+// не оставляем машину без запущенной службы, если установка прервалась до шага запуска.
+procedure DeinitializeSetup();
+var rc: Integer;
+begin
+  if ServiceExists() and (not ServiceInState('RUNNING')) then
+    Exec('sc.exe', 'start "' + SVC + '"', '', SW_HIDE, ewWaitUntilTerminated, rc);
 end;
 
 // Записываем адрес сервера/ключ в config.json через сам агент (--provision).

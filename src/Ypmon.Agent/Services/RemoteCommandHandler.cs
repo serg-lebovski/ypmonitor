@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Ypmon.Shared;
 
@@ -21,7 +20,6 @@ namespace Ypmon.Agent.Services;
 public class RemoteCommandHandler
 {
     private readonly ILogger<RemoteCommandHandler> _log;
-    private readonly IHostApplicationLifetime _life;
     private int _busy;   // защита от параллельного исполнения
 
     private static readonly string StatePath = Path.Combine(AppContext.BaseDirectory, "lastcmd.txt");
@@ -30,9 +28,9 @@ public class RemoteCommandHandler
     /// <summary>Отсрочка перезагрузки: агент успевает подтвердить приём команды серверу.</summary>
     private const int RebootDelaySeconds = 60;
 
-    public RemoteCommandHandler(ILogger<RemoteCommandHandler> log, IHostApplicationLifetime life)
+    public RemoteCommandHandler(ILogger<RemoteCommandHandler> log)
     {
-        _log = log; _life = life;
+        _log = log;
     }
 
     /// <summary>Номер последней выполненной команды (уходит серверу в каждом отчёте).</summary>
@@ -176,10 +174,10 @@ public class RemoteCommandHandler
             }
 
             var installer = await UpdateInstaller.DownloadAsync(cfg);
-            _log.LogInformation("Принудительное обновление {Ver}: установщик загружен, тихая установка и перезапуск службы.", info.Version);
+            _log.LogInformation("Принудительное обновление {Ver}: установщик загружен, тихая установка. " +
+                "Установщик сам остановит службу, заменит файлы и запустит её заново.", info.Version);
             UpdateInstaller.RunInstaller(installer, silent: true);
-            // Останавливаемся, чтобы установщик заменил файлы; службу он запустит заново сам.
-            _life.StopApplication();
+            // Себя НЕ останавливаем: остановкой управляет установщик (см. UpdateInstaller.RunInstaller).
         }
         catch (Exception ex)
         {
