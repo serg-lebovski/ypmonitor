@@ -9,6 +9,20 @@
 <h1 class="page-title">Серверы</h1>
 <div class="muted mb-3" style="font-size:13px">Нажмите на сервер, чтобы открыть настройку мониторинга и параметры.</div>
 
+@if (!string.IsNullOrEmpty(Model.Message))
+{
+    <div class="alert-y alert-ok mb-3">@Model.Message</div>
+}
+
+@if (User.CanEdit() && Model.Clients.Any(c => c.Servers.Any()))
+{
+    <form method="post" asp-page-handler="UpdateAll" class="mb-3"
+          onsubmit="return confirm('Отправить команду на обновление ВСЕМ агентам?\n\nКаждый агент при следующей связи скачает установщик с сервера, обновится и перезапустит службу. Убедитесь, что на сервере выложена нужная версия (Настройки → раздел обновления агента).\n\nПродолжить?')">
+        <button class="btn btn-sm btn-primary" type="submit">⬆️ Обновить все агенты</button>
+        <span class="muted" style="font-size:12px;margin-left:8px">Разошлёт команду обновления всем агентам сразу.</span>
+    </form>
+}
+
 @if (!Model.Clients.Any(c => c.Servers.Any()))
 {
     <div class="card-y muted">Серверов пока нет. Добавьте их на странице <a href="/Clients">Клиенты</a>.</div>
@@ -31,7 +45,7 @@
                     <span class="dot @UiHelpers.DotCss(outcome)"></span>
                     <span style="flex:1"><strong>@s.Name</strong> <span class="muted" style="font-weight:400">@(s.LastMachineName ?? "")</span></span>
                     @if (offline) { <span class="badge-status st-offline">Офлайн</span> }
-                    else { <span class="badge-status @UiHelpers.OutcomeCss(s.LastOutcome)">@UiHelpers.OutcomeText(s.LastOutcome)</span> }
+                    else { <span class="badge-status @UiHelpers.OutcomeCss(s.LastOutcome)" title="@Model.ProblemSummary(s)">@UiHelpers.OutcomeText(s.LastOutcome)</span> }
                     @if (s.BackupShrinkActive) { <span class="badge-status st-warn">⚠️ объём</span> }
                 </summary>
                 <div class="acc-body">

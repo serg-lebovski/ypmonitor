@@ -75,6 +75,31 @@ public static class UiHelpers
         _ => "Нет данных"
     };
 
+    /// <summary>
+    /// Человекочитаемая причина статуса папки для показа в подсказке и текстом.
+    /// Пустая строка — если всё в порядке. staleDays — действующий порог устаревания для сервера.
+    /// </summary>
+    public static string FolderReason(FolderStatusDto f, int staleDays)
+    {
+        if (!f.Accessible)
+            return string.IsNullOrWhiteSpace(f.Message)
+                ? "папка недоступна (не существует или нет доступа)"
+                : f.Message!;
+        if (f.FileCount == 0)
+            return "в папке нет ни одного файла бэкапа";
+        if (staleDays > 0 && f.LastBackupAt is { } last &&
+            (DateTimeOffset.UtcNow - last).TotalDays > staleDays)
+        {
+            var days = (int)Math.Floor((DateTimeOffset.UtcNow - last).TotalDays);
+            return $"нет новых файлов {days} дн. (порог устаревания {staleDays} дн.)";
+        }
+        return string.IsNullOrWhiteSpace(f.Message) ? "" : f.Message!;
+    }
+
+    /// <summary>Действующий порог устаревания сервера: свой, иначе глобальный по умолчанию.</summary>
+    public static int EffectiveStaleDays(int serverStaleDays, int defaultStaleDays)
+        => serverStaleDays > 0 ? serverStaleDays : defaultStaleDays;
+
     public static string Bytes(long b)
     {
         string[] u = { "Б", "КБ", "МБ", "ГБ", "ТБ" };
