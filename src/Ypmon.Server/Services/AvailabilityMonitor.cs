@@ -23,6 +23,7 @@ public class AvailabilityMonitor : BackgroundService
     public const int DefaultDiskFreePercent = 15;
 
     private readonly IServiceProvider _sp;
+    private readonly ServerLogService _logs;
     private readonly ILogger<AvailabilityMonitor> _log;
 
     // Ping: требуем 2 неудачных проверки подряд, чтобы одиночная потеря пакетов не поднимала тревогу.
@@ -30,9 +31,9 @@ public class AvailabilityMonitor : BackgroundService
     // Когда наступает следующая проверка ping (ключи: "s<id>" — сервер, "c<id>" — роутер клиента).
     private readonly Dictionary<string, DateTimeOffset> _nextDue = new();
 
-    public AvailabilityMonitor(IServiceProvider sp, ILogger<AvailabilityMonitor> log)
+    public AvailabilityMonitor(IServiceProvider sp, ServerLogService logs, ILogger<AvailabilityMonitor> log)
     {
-        _sp = sp; _log = log;
+        _sp = sp; _logs = logs; _log = log;
     }
 
     protected override async Task ExecuteAsync(CancellationToken ct)
@@ -104,7 +105,7 @@ public class AvailabilityMonitor : BackgroundService
         var text = offline
             ? $"🔴 <b>{name}</b> — пропала связь с сервером: агент не выходит на связь (последний отчёт: {UiHelpers.Ago(srv.LastSeenAt)})."
             : $"🟢 <b>{name}</b> — связь с сервером восстановлена.";
-        await NotifyAsync(s, srv.Client, tg, topics, text);
+        await NotifyServerAsync(s, srv, AlertKind.Offline, tg, topics, text);
         return true;
     }
 
@@ -130,13 +131,13 @@ public class AvailabilityMonitor : BackgroundService
         if (ok && srv.AlertPingActive)
         {
             srv.AlertPingActive = false;
-            await NotifyAsync(s, srv.Client, tg, topics, $"🟢 <b>{name}</b> — адрес {host} снова отвечает на ping, интернет на адресе восстановлен.");
+            await NotifyServerAsync(s, srv, AlertKind.Ping, tg, topics, $"🟢 <b>{name}</b> — адрес {host} снова отвечает на ping, интернет на адресе восстановлен.");
             return true;
         }
         if (!ok && !srv.AlertPingActive && _pingFails.GetValueOrDefault(key) >= 2)
         {
             srv.AlertPingActive = true;
-            await NotifyAsync(s, srv.Client, tg, topics, $"🌐🔴 <b>{name}</b> — адрес {host} не отвечает на ping: похоже, на адресе пропал интернет.");
+            await NotifyServerAsync(s, srv, AlertKind.Ping, tg, topics, $"🌐🔴 <b>{name}</b> — адрес {host} не отвечает на ping: похоже, на адресе пропал интернет.");
             return true;
         }
         return false;
@@ -234,7 +235,7 @@ public class AvailabilityMonitor : BackgroundService
             {
                 active.Add(d.Name);
                 changed = true;
-                await NotifyAsync(s, srv.Client, tg, topics,
+                await NotifyServerAsync(s, srv, AlertKind.DiskLow, tg, topics,
                     $"💽🔴 <b>{name}</b> — диск {d.Name} почти заполнен: свободно {freePct:0.#}% ({UiHelpers.Bytes(d.FreeBytes)} из {UiHelpers.Bytes(d.TotalBytes)}), порог {minFree}%.");
             }
             // Гистерезис +2%: не дёргаем «восстановилось/упало» на границе порога.
@@ -242,7 +243,7 @@ public class AvailabilityMonitor : BackgroundService
             {
                 active.Remove(d.Name);
                 changed = true;
-                await NotifyAsync(s, srv.Client, tg, topics,
+                await NotifyServerAsync(s, srv, AlertKind.DiskLow, tg, topics,
                     $"💽🟢 <b>{name}</b> — на диске {d.Name} снова достаточно места: свободно {freePct:0.#}% ({UiHelpers.Bytes(d.FreeBytes)}).");
             }
         }
@@ -341,16 +342,16 @@ public class AvailabilityMonitor : BackgroundService
         {
             var name = WebUtility.HtmlEncode(srv.Name);
             if (worsened.Count > 0)
-                await NotifyAsync(s, srv.Client, tg, topics,
+                await NotifyServerAsync(s, srv, AlertKind.DiskHealth, tg, topics,
                     $"🩺🔴 <b>{name}</b> — ухудшились показатели SMART:\n{string.Join("\n", worsened.Select(x => "• " + x))}\nСтоит проверить накопитель и бэкапы.");
             if (tempWorse.Count > 0)
-                await NotifyAsync(s, srv.Client, tg, topics,
+                await NotifyServerAsync(s, srv, AlertKind.DiskHealth, tg, topics,
                     $"🌡️🔴 <b>{name}</b> — перегрев накопителя:\n{string.Join("\n", tempWorse.Select(x => "• " + x))}");
             if (improved.Count > 0)
-                await NotifyAsync(s, srv.Client, tg, topics,
+                await NotifyServerAsync(s, srv, AlertKind.DiskHealth, tg, topics,
                     $"🩺🟢 <b>{name}</b> — здоровье накопителя улучшилось:\n{string.Join("\n", improved.Select(x => "• " + x))}");
             if (tempOk.Count > 0)
-                await NotifyAsync(s, srv.Client, tg, topics,
+                await NotifyServerAsync(s, srv, AlertKind.DiskHealth, tg, topics,
                     $"🌡️🟢 <b>{name}</b> — температура накопителя в норме:\n{string.Join("\n", tempOk.Select(x => "• " + x))}");
         }
 
@@ -395,6 +396,24 @@ public class AvailabilityMonitor : BackgroundService
     }
 
     // --- Доставка ------------------------------------------------------------
+
+    /// <summary>
+    /// Отправка тревоги по конкретному серверу — с учётом тихого режима. Если сервер заглушён
+    /// (snooze) или идёт окно обслуживания, уведомление НЕ отправляется, но факт пишется в журнал,
+    /// чтобы заглушённое не пропало бесследно. Состояние тревоги на сервере при этом отслеживается
+    /// как обычно (флаги уже выставлены вызывающим).
+    /// </summary>
+    private async Task NotifyServerAsync(ServerSettings s, MonitoredServer srv, AlertKind kind,
+        TelegramService tg, TelegramReportService topics, string text)
+    {
+        if (AlertSuppression.IsSuppressed(srv, kind, DateTimeOffset.UtcNow, out var reason))
+        {
+            _logs.Info(LogArea.Notify, $"Тревога заглушена ({reason})", srv.Name, null,
+                System.Text.RegularExpressions.Regex.Replace(text, "<.*?>", ""));
+            return;
+        }
+        await NotifyAsync(s, srv.Client, tg, topics, text);
+    }
 
     private async Task NotifyAsync(ServerSettings s, Client? client, TelegramService tg, TelegramReportService topics, string text)
     {

@@ -60,6 +60,21 @@
     <div class="alert-y alert-ok">@Model.Message</div>
 }
 
+@{ var muteReason = AlertSuppression.MuteReason(s, DateTimeOffset.UtcNow); }
+@if (muteReason is not null)
+{
+    <div class="alert-y" style="background:rgba(138,152,176,.12);border:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+        <span>🔇 Тревоги по серверу сейчас не отправляются — @muteReason@(string.IsNullOrWhiteSpace(s.AlertSnoozeReason) ? "" : $" ({s.AlertSnoozeReason})"). Проблемы всё равно видны здесь и в отчёте.</span>
+        @if (canEdit && s.AlertSnoozeUntil is not null)
+        {
+            <form method="post" asp-page-handler="Snooze" asp-route-id="@s.Id">
+                <input type="hidden" name="hours" value="0" />
+                <button class="btn btn-sm btn-primary" type="submit">Снять заглушку</button>
+            </form>
+        }
+    </div>
+}
+
 @if (s.BackupShrinkActive)
 {
     var dropPct = s.BackupShrinkFromBytes > 0 ? (1 - (double)s.BackupShrinkToBytes / s.BackupShrinkFromBytes) * 100 : 0;
@@ -399,6 +414,76 @@
         @if (canEdit)
         {
             <details class="card-y acc">
+                <summary>🔕 Тихий режим</summary>
+                <div class="acc-body">
+                    <div class="muted mb-2" style="font-size:12px">
+                        Заглушка отключает <strong>отправку</strong> тревог по серверу. Проблемы остаются видны на этой
+                        странице и в отчёте — просто без уведомлений в Telegram/почту.
+                    </div>
+
+                    <div class="mb-1"><strong style="font-size:13px">Заглушить сейчас</strong>
+                        @if (s.AlertSnoozeUntil is { } until && until > DateTimeOffset.UtcNow)
+                        {
+                            <span class="muted" style="font-size:12px"> — активно до @UiHelpers.Omsk(until, "dd.MM HH:mm")</span>
+                        }
+                    </div>
+                    <form method="post" asp-page-handler="Snooze" asp-route-id="@s.Id" class="mb-1">
+                        <input class="form-control mb-2" name="reason" placeholder="Причина (необязательно): плановые работы, знаю про диск…" value="@s.AlertSnoozeReason" />
+                        <div style="display:flex;gap:6px;flex-wrap:wrap">
+                            <button class="btn btn-sm btn-primary" type="submit" name="hours" value="1">1 час</button>
+                            <button class="btn btn-sm btn-primary" type="submit" name="hours" value="4">4 часа</button>
+                            <button class="btn btn-sm btn-primary" type="submit" name="hours" value="24">Сутки</button>
+                            <button class="btn btn-sm btn-primary" type="submit" name="hours" value="72">3 дня</button>
+                            <button class="btn btn-sm btn-primary" type="submit" name="hours" value="168">Неделя</button>
+                            <button class="btn btn-sm btn-y-danger" type="submit" name="hours" value="0">Снять</button>
+                        </div>
+                    </form>
+
+                    <hr style="border-color:var(--border)" />
+                    <div class="mb-1"><strong style="font-size:13px">Окна обслуживания</strong>
+                        <div class="muted" style="font-size:12px">
+                            Повторяющиеся интервалы (по Омску), когда не тревожим по <em>офлайну и ping</em> — под плановые
+                            перезагрузки/обновления. Нехватку места и здоровье диска окна не глушат.
+                        </div></div>
+                    @{ var wins = AlertSuppression.ParseWindows(s.MaintenanceWindowsJson); }
+                    <form method="post" asp-page-handler="SaveWindows" asp-route-id="@s.Id">
+                        <div id="mw-list">
+                            @for (var wi = 0; wi < wins.Count; wi++)
+                            {
+                                var w = wins[wi];
+                                <div class="mw-row" style="border:1px solid var(--border);border-radius:8px;padding:8px;margin-bottom:8px">
+                                    <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:6px">
+                                        @{ var dayNames = new[] { "Вс", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб" }; }
+                                        @for (var d = 0; d < 7; d++)
+                                        {
+                                            var on = w.Days.Contains(d);
+                                            <label class="mw-day" style="font-size:12px;padding:3px 8px;border:1px solid var(--border);border-radius:6px;cursor:pointer;@(on ? "background:var(--card-2);border-color:var(--accent)" : "")">
+                                                <input type="checkbox" class="mw-day-cb" value="@d" @(on ? "checked" : "") style="margin-right:3px" />@dayNames[d]
+                                            </label>
+                                        }
+                                    </div>
+                                    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+                                        <span class="muted" style="font-size:12px">с</span>
+                                        <input class="form-control mw-start" style="max-width:110px" type="time" value="@($"{w.StartMin / 60:00}:{w.StartMin % 60:00}")" />
+                                        <span class="muted" style="font-size:12px">до</span>
+                                        <input class="form-control mw-end" style="max-width:110px" type="time" value="@($"{w.EndMin / 60:00}:{w.EndMin % 60:00}")" />
+                                        <button type="button" class="btn btn-sm btn-y-danger mw-del">Удалить</button>
+                                    </div>
+                                    <input type="hidden" name="mw_days" class="mw-days" value="@string.Join(",", w.Days)" />
+                                    <input type="hidden" name="mw_start" class="mw-start-h" value="@($"{w.StartMin / 60:00}:{w.StartMin % 60:00}")" />
+                                    <input type="hidden" name="mw_end" class="mw-end-h" value="@($"{w.EndMin / 60:00}:{w.EndMin % 60:00}")" />
+                                </div>
+                            }
+                        </div>
+                        <div style="display:flex;gap:6px;flex-wrap:wrap">
+                            <button type="button" class="btn btn-sm btn-primary" id="mw-add">+ Добавить окно</button>
+                            <button class="btn btn-sm btn-primary" type="submit">Сохранить окна</button>
+                        </div>
+                    </form>
+                </div>
+            </details>
+
+            <details class="card-y acc">
                 <summary>📡 Мониторинг и оповещения</summary>
                 <div class="acc-body">
                 <div class="muted mb-2" style="font-size:12px">
@@ -504,5 +589,56 @@
             if (navigator.clipboard) { navigator.clipboard.writeText(el.value).then(done, function () { document.execCommand('copy'); done(); }); }
             else { document.execCommand('copy'); done(); }
         }
+
+        // --- Окна обслуживания: добавление/удаление строк и синхронизация в скрытые поля перед отправкой ---
+        (function () {
+            var list = document.getElementById('mw-list');
+            if (!list) return;
+            var dayNames = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
+
+            function rowHtml() {
+                var days = '';
+                for (var d = 0; d < 7; d++) {
+                    days += '<label class="mw-day" style="font-size:12px;padding:3px 8px;border:1px solid var(--border);border-radius:6px;cursor:pointer">' +
+                            '<input type="checkbox" class="mw-day-cb" value="' + d + '" style="margin-right:3px" />' + dayNames[d] + '</label>';
+                }
+                return '<div class="mw-row" style="border:1px solid var(--border);border-radius:8px;padding:8px;margin-bottom:8px">' +
+                       '<div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:6px">' + days + '</div>' +
+                       '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">' +
+                       '<span class="muted" style="font-size:12px">с</span>' +
+                       '<input class="form-control mw-start" style="max-width:110px" type="time" value="02:00" />' +
+                       '<span class="muted" style="font-size:12px">до</span>' +
+                       '<input class="form-control mw-end" style="max-width:110px" type="time" value="04:00" />' +
+                       '<button type="button" class="btn btn-sm btn-y-danger mw-del">Удалить</button></div>' +
+                       '<input type="hidden" name="mw_days" class="mw-days" />' +
+                       '<input type="hidden" name="mw_start" class="mw-start-h" />' +
+                       '<input type="hidden" name="mw_end" class="mw-end-h" /></div>';
+            }
+
+            document.getElementById('mw-add').addEventListener('click', function () {
+                list.insertAdjacentHTML('beforeend', rowHtml());
+            });
+
+            list.addEventListener('click', function (e) {
+                if (e.target.classList.contains('mw-del')) e.target.closest('.mw-row').remove();
+                // Подсветка выбранных дней.
+                if (e.target.classList.contains('mw-day-cb')) {
+                    var lbl = e.target.closest('.mw-day');
+                    if (e.target.checked) { lbl.style.background = 'var(--card-2)'; lbl.style.borderColor = 'var(--accent)'; }
+                    else { lbl.style.background = ''; lbl.style.borderColor = 'var(--border)'; }
+                }
+            });
+
+            // Перед отправкой переносим состояние видимых контролов в скрытые поля, которые читает сервер.
+            list.closest('form').addEventListener('submit', function () {
+                Array.prototype.forEach.call(list.querySelectorAll('.mw-row'), function (row) {
+                    var days = Array.prototype.slice.call(row.querySelectorAll('.mw-day-cb'))
+                        .filter(function (c) { return c.checked; }).map(function (c) { return c.value; }).join(',');
+                    row.querySelector('.mw-days').value = days;
+                    row.querySelector('.mw-start-h').value = row.querySelector('.mw-start').value;
+                    row.querySelector('.mw-end-h').value = row.querySelector('.mw-end').value;
+                });
+            });
+        })();
     </script>
 }

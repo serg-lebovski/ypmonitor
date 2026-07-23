@@ -86,7 +86,7 @@ public class ReportIngestService
             _logs.Warn(LogArea.Reports, $"Перегрев процессора: {server.Name} — {temp:0.#} °C (порог {limit} °C)",
                 report.MachineName);
             if (settings.CpuTempAlertsEnabled)
-                await NotifyAsync(settings, server.Client,
+                await NotifyAsync(settings, server, AlertKind.CpuOverheat,
                     $"🔥🔴 <b>{name}</b> — перегрев процессора: {temp:0.#} °C (порог {limit} °C).\n"
                     + "Проверьте охлаждение и нагрузку на сервере.");
         }
@@ -96,14 +96,21 @@ public class ReportIngestService
             _logs.Info(LogArea.Reports, $"Температура процессора в норме: {server.Name} — {temp:0.#} °C",
                 report.MachineName);
             if (settings.CpuTempAlertsEnabled)
-                await NotifyAsync(settings, server.Client,
+                await NotifyAsync(settings, server, AlertKind.CpuOverheat,
                     $"🔥🟢 <b>{name}</b> — температура процессора вернулась в норму: {temp:0.#} °C.");
         }
     }
 
-    /// <summary>Сообщение в тему клиента в Telegram (как остальные тревоги мониторинга).</summary>
-    private async Task NotifyAsync(ServerSettings s, Client? client, string text)
+    /// <summary>Сообщение в тему клиента в Telegram — с учётом тихого режима сервера (snooze/окна).</summary>
+    private async Task NotifyAsync(ServerSettings s, MonitoredServer server, AlertKind kind, string text)
     {
+        if (AlertSuppression.IsSuppressed(server, kind, DateTimeOffset.UtcNow, out var reason))
+        {
+            _logs.Info(LogArea.Notify, $"Тревога заглушена ({reason})", server.Name, null,
+                System.Text.RegularExpressions.Regex.Replace(text, "<.*?>", ""));
+            return;
+        }
+        var client = server.Client;
         if (!s.TelegramEnabled || string.IsNullOrWhiteSpace(s.TelegramBotToken) || string.IsNullOrWhiteSpace(s.TelegramChatId))
             return;
         try

@@ -240,11 +240,16 @@ public class TelegramReportService
                   $"({UiHelpers.Bytes(srv.BackupShrinkFromBytes)} → {UiHelpers.Bytes(srv.BackupShrinkToBytes)}) — проверьте"
                 : ProblemDetails(srv);
 
+        // Заглушённый сервер остаётся в отчёте, но помечается — чтобы было видно, что тревоги временно молчат.
+        var mute = AlertSuppression.MuteReason(srv, asOf);
+
         var html = $"❌ <b>{name}</b> — ошибка архивации\n{WebUtility.HtmlEncode(details)}";
         if (lowDisks is not null) html += $"\n💽 мало места: {WebUtility.HtmlEncode(lowDisks)}";
+        if (mute is not null) html += $"\n🔇 {WebUtility.HtmlEncode(mute)}";
         if (link is not null) html += $"\n🔗 <a href=\"{link}\">открыть сервер</a>";
         var plain = $"❌ {srv.Name} — ошибка архивации: {details}"
                     + (lowDisks is not null ? $"; мало места: {lowDisks}" : "")
+                    + (mute is not null ? $"; 🔇 {mute}" : "")
                     + (link is not null ? $" ({link})" : "");
         return (html, plain, true);
     }

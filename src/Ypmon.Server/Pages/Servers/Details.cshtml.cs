@@ -220,6 +220,75 @@ public class DetailsModel : PageModel
         return Page();
     }
 
+    /// <summary>Заглушить тревоги по серверу на заданное число часов (0 = снять заглушку).</summary>
+    public async Task<IActionResult> OnPostSnoozeAsync(int hours, string? reason)
+    {
+        if (!User.CanEdit()) return Forbid();
+        var s = await _db.Servers.FindAsync(Id);
+        if (s is not null)
+        {
+            if (hours <= 0)
+            {
+                s.AlertSnoozeUntil = null;
+                s.AlertSnoozeReason = null;
+                await _audit.LogAsync(User, "Снята заглушка тревог", s.Name);
+                Message = "Заглушка снята — тревоги по серверу снова отправляются.";
+            }
+            else
+            {
+                var h = Math.Clamp(hours, 1, 24 * 30);   // до месяца
+                s.AlertSnoozeUntil = DateTimeOffset.UtcNow.AddHours(h);
+                s.AlertSnoozeReason = string.IsNullOrWhiteSpace(reason) ? null : reason.Trim();
+                await _audit.LogAsync(User, "Заглушены тревоги сервера", $"{s.Name} на {h} ч");
+                Message = $"Тревоги по серверу заглушены до {UiHelpers.Omsk(s.AlertSnoozeUntil.Value, "dd.MM HH:mm")} (Омск).";
+            }
+            await _db.SaveChangesAsync();
+        }
+        await Load();
+        FillEditFields();
+        return Page();
+    }
+
+    /// <summary>Сохранить окна обслуживания. Поля формы: mw_days (напр. "0,1"), mw_start (HH:mm), mw_end — по строкам.</summary>
+    public async Task<IActionResult> OnPostSaveWindowsAsync()
+    {
+        if (!User.CanEdit()) return Forbid();
+        var s = await _db.Servers.FindAsync(Id);
+        if (s is null) return NotFound();
+
+        var windows = new List<MaintWindow>();
+        var days = Request.Form["mw_days"];
+        var starts = Request.Form["mw_start"];
+        var ends = Request.Form["mw_end"];
+        for (var i = 0; i < days.Count; i++)
+        {
+            var dayList = (days[i] ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(d => int.TryParse(d, out var v) ? v : -1).Where(v => v is >= 0 and <= 6).Distinct().ToArray();
+            var start = ParseHm(i < starts.Count ? starts[i] : null);
+            var end = ParseHm(i < ends.Count ? ends[i] : null);
+            if (dayList.Length == 0 || start is null || end is null || start == end) continue;
+            windows.Add(new MaintWindow(dayList, start.Value, end.Value));
+        }
+
+        s.MaintenanceWindowsJson = windows.Count == 0 ? null : AlertSuppression.SerializeWindows(windows);
+        await _db.SaveChangesAsync();
+        await _audit.LogAsync(User, "Изменены окна обслуживания сервера", $"{s.Name}: окон {windows.Count}");
+        await Load();
+        FillEditFields();
+        Message = "Окна обслуживания сохранены.";
+        return Page();
+    }
+
+    /// <summary>«HH:mm» → минуты от полуночи, либо null.</summary>
+    private static int? ParseHm(string? hm)
+    {
+        if (string.IsNullOrWhiteSpace(hm)) return null;
+        var parts = hm.Split(':');
+        if (parts.Length != 2 || !int.TryParse(parts[0], out var h) || !int.TryParse(parts[1], out var m)) return null;
+        if (h is < 0 or > 23 || m is < 0 or > 59) return null;
+        return h * 60 + m;
+    }
+
     public async Task<IActionResult> OnPostDeleteAsync()
     {
         if (!User.CanEdit()) return Forbid();

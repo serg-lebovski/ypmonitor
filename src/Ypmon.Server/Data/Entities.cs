@@ -160,6 +160,17 @@ public class MonitoredServer
     /// <summary>Время последней загрузки машины (от агента 2.8+). По нему считается аптайм в отчёте.</summary>
     public DateTimeOffset? LastBootAt { get; set; }
 
+    // --- Тихий режим (см. AlertSuppression) ---
+
+    /// <summary>Ручная заглушка тревог по этому серверу до указанного момента (UTC). null/прошлое — не заглушено.</summary>
+    public DateTimeOffset? AlertSnoozeUntil { get; set; }
+
+    /// <summary>Кто и зачем заглушил — для подсказки в интерфейсе.</summary>
+    public string? AlertSnoozeReason { get; set; }
+
+    /// <summary>Окна обслуживания (JSON List&lt;MaintWindow&gt;): в это время не тревожим по офлайну/ping.</summary>
+    public string? MaintenanceWindowsJson { get; set; }
+
     /// <summary>Активна тревога «перегрев процессора» — чтобы уведомлять по переходам, а не каждый отчёт.</summary>
     public bool AlertCpuOverheatActive { get; set; }
 
