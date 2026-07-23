@@ -58,22 +58,45 @@ public static class ServiceManager
     {
         var cmd = $"sc.exe create \"{name}\" binPath= \"{ExePath}\" start= auto DisplayName= \"{DisplayName}\"";
         if (!string.IsNullOrWhiteSpace(account))
-            cmd += $" obj= \"{account.Trim()}\" password= \"ПАРОЛЬ\"";
+            cmd += $" obj= \"{QualifyAccount(account, ".\\")}\" password= \"ПАРОЛЬ\"";
         return cmd + "\r\n" + $"sc.exe start \"{name}\"";
     }
 
     /// <summary>
+    /// Локальную учётную запись нужно указывать с областью: просто «Администратор» Windows ищет
+    /// в домене и отвечает «неверное имя или пароль». Доменные (DOMAIN\User, user@domain)
+    /// и встроенные (LocalSystem, NT AUTHORITY\…) оставляем как есть.
+    /// </summary>
+    public static string QualifyAccount(string? account, string localPrefix)
+    {
+        var a = (account ?? "").Trim();
+        if (a.Length == 0) return a;
+        if (a.Contains('\\') || a.Contains('@')) return a;
+        if (a.Equals("LocalSystem", StringComparison.OrdinalIgnoreCase)
+            || a.Equals("LocalService", StringComparison.OrdinalIgnoreCase)
+            || a.Equals("NetworkService", StringComparison.OrdinalIgnoreCase)) return a;
+        return localPrefix + a;
+    }
+
+    /// <summary>
     /// Вариант для Windows Server 2012 / 2012 R2 и старше — нативные командлеты PowerShell
-    /// (запускать в PowerShell от имени администратора). Для служебной учётной записи
-    /// добавьте <c>-Credential (Get-Credential)</c> — пароль спросят интерактивно.
+    /// (запускать в PowerShell от имени администратора). Пароль спросят интерактивно
+    /// в окне <c>Get-Credential</c>.
     /// </summary>
     public static string BuildInstallCommandPowerShell(string name, string? account)
     {
         // BinaryPathName в кавычках — путь к exe может содержать пробелы ("C:\Program Files\...").
         var ps = $"New-Service -Name \"{name}\" -BinaryPathName '\"{ExePath}\"' -DisplayName \"{DisplayName}\" -StartupType Automatic";
         if (!string.IsNullOrWhiteSpace(account))
-            ps += $" -Credential (Get-Credential \"{account.Trim()}\")";
-        return ps + "\r\n" + $"Start-Service \"{name}\"";
+        {
+            // $env:COMPUTERNAME\Пользователь — иначе Get-Credential отдаёт неквалифицированное имя,
+            // и создание службы падает с «неверное имя или пароль».
+            var acc = QualifyAccount(account, "$env:COMPUTERNAME\\");
+            ps += $" -Credential (Get-Credential \"{acc}\")";
+        }
+        // Одной строкой через «;»: New-Service создаёт службу остановленной, и вторую команду
+        // раньше приходилось запускать руками. Оператор «;» работает и в PowerShell 3.0 (Server 2012).
+        return ps + $"; Start-Service \"{name}\"";
     }
 
     /// <summary>
@@ -82,9 +105,10 @@ public static class ServiceManager
     /// </summary>
     public static string Install(string name, string? account, string? password)
     {
+        // Локальную учётку квалифицируем как .\Пользователь — без этого sc.exe ищет её в домене.
         var obj = string.IsNullOrWhiteSpace(account)
             ? ""
-            : $"obj= \"{Bat(account.Trim())}\" password= \"{Bat(password ?? "")}\"";
+            : $"obj= \"{Bat(QualifyAccount(account, ".\\"))}\" password= \"{Bat(password ?? "")}\"";
 
         var script = new StringBuilder();
         script.AppendLine("@echo off");

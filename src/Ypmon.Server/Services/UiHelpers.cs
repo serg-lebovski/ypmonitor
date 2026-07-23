@@ -127,13 +127,20 @@ public static class UiHelpers
         return string.Join(" ", parts);
     }
 
-    public static string Ago(DateTimeOffset? t)
+    public static string Ago(DateTimeOffset? t) => Ago(t, DateTimeOffset.UtcNow);
+
+    /// <summary>То же относительно заданного момента — для отчётов, которые формируются по снимку данных.</summary>
+    public static string Ago(DateTimeOffset? t, DateTimeOffset now)
     {
         if (t is null) return "никогда";
-        var d = DateTimeOffset.UtcNow - t.Value;
+        var d = now - t.Value;
         if (d.TotalSeconds < 60) return "только что";
         if (d.TotalMinutes < 60) return $"{(int)d.TotalMinutes} мин назад";
         if (d.TotalHours < 24) return $"{(int)d.TotalHours} ч назад";
         return $"{(int)d.TotalDays} дн назад";
     }
+
+    /// <summary>Время по Омску (UTC+6) — в журналах показываем его, а не UTC: так понятнее.</summary>
+    public static string Omsk(DateTimeOffset t, string format = "yyyy-MM-dd HH:mm:ss")
+        => t.UtcDateTime.AddHours(6).ToString(format);
 }

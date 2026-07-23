@@ -483,7 +483,8 @@ public class MainForm : Form
         // поэтому даём нативные командлеты New-Service / Start-Service.
         AddFull(t, new Label
         {
-            Text = "Windows Server 2012 / 2012 R2 и старше (нативно для PowerShell):",
+            Text = "Windows Server 2012 / 2012 R2 и старше (нативно для PowerShell, одной строкой —\n" +
+                   "создаёт службу и сразу запускает; пароль спросят в отдельном окне):",
             AutoSize = true, ForeColor = Color.DimGray, Margin = new Padding(3, 8, 3, 3)
         });
         _svcCmdPs = AddCommandBox(t);

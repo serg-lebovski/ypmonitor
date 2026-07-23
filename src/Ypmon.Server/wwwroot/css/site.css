@@ -324,3 +324,42 @@ label { color: var(--muted); font-size: 13px; margin-bottom: 4px; }
 .gs-badge.gs-problem { background: rgba(234,84,85,.15); color: var(--err); }
 .gs-badge.gs-offline { background: rgba(138,152,176,.15); color: var(--muted); }
 .gs-badge.gs-unknown { background: rgba(255,159,67,.15); color: var(--warn); }
+
+/* ===== Настройки: вкладки слева, содержимое справа ===== */
+.set-shell { display: grid; grid-template-columns: 250px 1fr; gap: 18px; align-items: start; }
+@media (max-width: 900px) { .set-shell { grid-template-columns: 1fr; } }
+
+.set-nav {
+    background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+    padding: 8px; position: sticky; top: 74px;
+}
+@media (max-width: 900px) { .set-nav { position: static; display: flex; flex-wrap: wrap; gap: 6px; } }
+
+.set-tab {
+    display: flex; align-items: center; gap: 9px;
+    padding: 9px 11px; border-radius: 9px;
+    color: var(--text); font-size: 14px; text-decoration: none; cursor: pointer;
+    border: 1px solid transparent;
+}
+.set-tab:hover { background: var(--card-2); text-decoration: none; color: var(--text); }
+.set-tab.active { background: var(--card-2); border-color: var(--accent); font-weight: 600; }
+.set-tab .set-ico { width: 20px; text-align: center; flex: 0 0 20px; }
+.set-tab .set-mark { margin-left: auto; font-size: 11px; padding: 1px 7px; border-radius: 999px; }
+
+.set-panel { display: none; }
+.set-panel.active { display: block; }
+.set-panel > .card-y { margin-bottom: 16px; }
+.set-panel h2.set-h { font-size: 19px; font-weight: 700; margin: 0 0 4px; }
+.set-panel .set-sub { color: var(--muted); font-size: 13px; margin-bottom: 14px; }
+
+/* Журнал: строки уровней читаются иконкой и словом, цвет — вспомогательный */
+.log-toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
+.log-chip {
+    font-size: 12px; padding: 4px 10px; border-radius: 999px;
+    border: 1px solid var(--border); color: var(--muted); text-decoration: none;
+}
+.log-chip:hover { border-color: var(--accent); color: var(--text); text-decoration: none; }
+.log-chip.on { border-color: var(--accent); color: var(--text); background: var(--card-2); }
+table.tbl tr.lg-error td { background: rgba(234,84,85,.07); }
+table.tbl tr.lg-warn td { background: rgba(255,159,67,.07); }
+.log-det { color: var(--muted); font-size: 11px; white-space: pre-wrap; max-height: 140px; overflow: auto; margin-top: 4px; }

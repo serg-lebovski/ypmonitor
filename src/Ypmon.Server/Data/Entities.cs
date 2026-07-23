@@ -215,13 +215,20 @@ public class MonitoredServer
     /// порог = 2×интервал + 30 сек (но не меньше 90) — офлайн ловится «сразу», с поправкой на
     /// настроенную агентом частоту; иначе — глобальный порог из настроек.
     /// </summary>
-    public bool IsOffline(int offlineThresholdSeconds)
+    public bool IsOffline(int offlineThresholdSeconds) => IsOffline(offlineThresholdSeconds, DateTimeOffset.UtcNow);
+
+    /// <summary>
+    /// То же, но относительно заданного момента. Нужно там, где данные читаются один раз,
+    /// а используются потом долго (рассылка отчёта идёт минутами): иначе сервер, прочитанный
+    /// в начале рассылки, к её концу «уходит в офлайн» просто из-за хода часов.
+    /// </summary>
+    public bool IsOffline(int offlineThresholdSeconds, DateTimeOffset now)
     {
         if (LastSeenAt is null) return true;
         var threshold = LastHeartbeatIntervalSeconds > 0
             ? Math.Max(90, LastHeartbeatIntervalSeconds * 2 + 30)
             : offlineThresholdSeconds;
-        return (DateTimeOffset.UtcNow - LastSeenAt.Value).TotalSeconds > threshold;
+        return (now - LastSeenAt.Value).TotalSeconds > threshold;
     }
 }
 

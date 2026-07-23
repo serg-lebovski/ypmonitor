@@ -59,9 +59,10 @@ public class TelegramService
         finally { SendGate.Release(); }
     }
 
-    private async Task<JsonElement?> CallAsync(ServerSettings s, string method, Dictionary<string, string> args)
+    private async Task<(JsonElement? result, string? error)> CallAsync(
+        ServerSettings s, string method, Dictionary<string, string> args)
     {
-        if (string.IsNullOrWhiteSpace(s.TelegramBotToken)) return null;
+        if (string.IsNullOrWhiteSpace(s.TelegramBotToken)) return (null, "не задан токен бота");
 
         // Темп выдерживаем только для отправки сообщений — служебные вызовы не ограничиваем.
         var isSend = method is "sendMessage" or "createForumTopic";
@@ -70,8 +71,8 @@ public class TelegramService
         {
             if (isSend) await PaceAsync();
 
-            var (result, retryAfter) = await CallOnceAsync(s, method, args);
-            if (retryAfter is null) return result;   // успех или ошибка, которую повтор не исправит
+            var (result, retryAfter, error) = await CallOnceAsync(s, method, args);
+            if (retryAfter is null) return (result, error);   // успех или ошибка, которую повтор не исправит
 
             // 429: Telegram сам говорит, сколько ждать. Ждём и повторяем — иначе сообщение теряется.
             var delay = TimeSpan.FromSeconds(Math.Clamp(retryAfter.Value, 1, 120));
@@ -81,11 +82,11 @@ public class TelegramService
         }
 
         _log.LogWarning("Telegram {Method}: не отправлено — лимит частоты не снялся за 4 попытки", method);
-        return null;
+        return (null, "лимит частоты Telegram не снялся за 4 попытки");
     }
 
-    /// <summary>Один вызов API. Возвращает результат и, если пришёл 429, — сколько секунд ждать.</summary>
-    private async Task<(JsonElement? result, int? retryAfter)> CallOnceAsync(
+    /// <summary>Один вызов API. Возвращает результат, паузу при 429 и текст ошибки, если она была.</summary>
+    private async Task<(JsonElement? result, int? retryAfter, string? error)> CallOnceAsync(
         ServerSettings s, string method, Dictionary<string, string> args)
     {
         using var http = CreateClient(s);
@@ -105,19 +106,19 @@ public class TelegramService
                     if (root.TryGetProperty("parameters", out var p) &&
                         p.TryGetProperty("retry_after", out var ra) && ra.TryGetInt32(out var rav))
                         after = rav;
-                    return (null, after);
+                    return (null, after, null);
                 }
-                _log.LogWarning("Telegram {Method}: {Desc}", method,
-                    root.TryGetProperty("description", out var d) ? d.GetString() : json);
-                return (null, null);
+                var desc = (root.TryGetProperty("description", out var d) ? d.GetString() : null) ?? json;
+                _log.LogWarning("Telegram {Method}: {Desc}", method, desc);
+                return (null, null, desc);
             }
             // Клонируем результат, т.к. doc будет освобождён.
-            return (root.TryGetProperty("result", out var result) ? result.Clone() : (JsonElement?)null, null);
+            return (root.TryGetProperty("result", out var result) ? result.Clone() : (JsonElement?)null, null, null);
         }
         catch (Exception ex)
         {
             _log.LogWarning(ex, "Telegram {Method} — ошибка вызова", method);
-            return (null, null);
+            return (null, null, ex.Message);
         }
     }
 
@@ -132,14 +133,25 @@ public class TelegramService
             ["disable_web_page_preview"] = disablePreview ? "true" : "false"
         };
         if (threadId is { } t) args["message_thread_id"] = t.ToString();
-        var res = await CallAsync(s, "sendMessage", args);
-        return (res is not null, res is null ? "см. журнал сервера" : null);
+        var (res, error) = await CallAsync(s, "sendMessage", args);
+        return (res is not null, res is null ? (error ?? "см. журнал сервера") : null);
     }
+
+    /// <summary>
+    /// Тема удалена или закрыта в Telegram: сообщение в неё уже не отправить,
+    /// сохранённый message_thread_id клиента нужно завести заново.
+    /// </summary>
+    public static bool IsTopicGone(string? error) =>
+        error is not null &&
+        (error.Contains("thread not found", StringComparison.OrdinalIgnoreCase)
+         || error.Contains("TOPIC_DELETED", StringComparison.OrdinalIgnoreCase)
+         || error.Contains("TOPIC_CLOSED", StringComparison.OrdinalIgnoreCase)
+         || error.Contains("topic was closed", StringComparison.OrdinalIgnoreCase));
 
     /// <summary>Создаёт тему (forum topic) и возвращает её message_thread_id.</summary>
     public async Task<long?> CreateForumTopicAsync(ServerSettings s, string chatId, string name)
     {
-        var res = await CallAsync(s, "createForumTopic", new Dictionary<string, string>
+        var (res, _) = await CallAsync(s, "createForumTopic", new Dictionary<string, string>
         {
             ["chat_id"] = chatId,
             ["name"] = name
@@ -152,7 +164,7 @@ public class TelegramService
     /// <summary>Список недавних чатов (для определения chat_id группы) через getUpdates.</summary>
     public async Task<string> DiscoverChatsAsync(ServerSettings s)
     {
-        var res = await CallAsync(s, "getUpdates", new Dictionary<string, string> { ["timeout"] = "0" });
+        var (res, _) = await CallAsync(s, "getUpdates", new Dictionary<string, string> { ["timeout"] = "0" });
         if (res is not { ValueKind: JsonValueKind.Array } arr)
             return "Не удалось получить обновления. Проверьте токен/прокси и напишите что-нибудь в группу.";
 

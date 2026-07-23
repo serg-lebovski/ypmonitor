@@ -42,6 +42,16 @@ public class SettingsModel : PageModel
     [BindProperty(SupportsGet = true, Name = "logLevel")] public string LogLevel { get; set; } = "";
     [BindProperty(SupportsGet = true, Name = "logArea")] public string LogAreaFilter { get; set; } = "";
     [BindProperty(SupportsGet = true, Name = "logQ")] public string LogQuery { get; set; } = "";
+
+    /// <summary>Открытая вкладка настроек — чтобы после сохранения страница возвращалась в тот же раздел.</summary>
+    [BindProperty(SupportsGet = true, Name = "tab")] public string Tab { get; set; } = "";
+
+    /// <summary>Поиск шёл только по последним записям (SQL-поиск регистрозависим для кириллицы).</summary>
+    public bool LogSearchLimited { get; set; }
+
+    /// <summary>Идёт ли прямо сейчас рассылка отчёта — блокирует повторное нажатие кнопки.</summary>
+    public bool ReportRunning => TelegramReportService.IsRunning;
+
     public string? Message { get; set; }
     public bool IsError { get; set; }
 
@@ -72,7 +82,9 @@ public class SettingsModel : PageModel
         Users = await _db.Users.OrderBy(u => u.Username).ToListAsync();
         if (IsAdmin)
         {
-            AuditLog = await _db.Audit.OrderByDescending(a => a.At).Take(200).ToListAsync();
+            // Сортируем по Id, а не по At: sqlite не умеет DateTimeOffset в ORDER BY,
+            // а Id растёт вместе со временем — порядок тот же.
+            AuditLog = await _db.Audit.OrderByDescending(a => a.Id).Take(200).ToListAsync();
             await LoadServerLogs();
         }
         HttpPort = _cfg.GetValue<int?>("Server:HttpPort") ?? 8080;
@@ -113,14 +125,20 @@ public class SettingsModel : PageModel
             q = q.Where(l => l.Area == area);
         if (!string.IsNullOrWhiteSpace(LogQuery))
         {
+            // SQL LIKE регистрозависим для кириллицы (и в sqlite, и в postgres), поэтому ищем в памяти
+            // по свежему окну записей — «ошибка» иначе не находила бы «Ошибка».
             var term = LogQuery.Trim();
-            q = q.Where(l => EF.Functions.Like(l.Message, $"%{term}%")
-                          || (l.Who != null && EF.Functions.Like(l.Who, $"%{term}%"))
-                          || (l.Ip != null && EF.Functions.Like(l.Ip, $"%{term}%")));
+            var window = await q.OrderByDescending(l => l.Id).Take(3000).ToListAsync();
+            bool Hit(string? v) => v is not null && v.Contains(term, StringComparison.OrdinalIgnoreCase);
+            var found = window.Where(l => Hit(l.Message) || Hit(l.Who) || Hit(l.Ip) || Hit(l.Details)).ToList();
+            LogSearchLimited = window.Count >= 3000;
+            ServerLogTotal = found.Count;
+            ServerLogs = found.Take(300).ToList();
+            return;
         }
 
         ServerLogTotal = await q.CountAsync();
-        ServerLogs = await q.OrderByDescending(l => l.At).Take(300).ToListAsync();
+        ServerLogs = await q.OrderByDescending(l => l.Id).Take(300).ToListAsync();
     }
 
     /// <summary>Резервная копия БД: делает дамп и сразу отдаёт его на скачивание.</summary>
@@ -318,6 +336,15 @@ public class SettingsModel : PageModel
     public async Task<IActionResult> OnPostSendReportNowAsync()
     {
         if (!IsAdmin) return Forbid();
+
+        // Повторное нажатие во время рассылки прислало бы клиентам второй такой же отчёт.
+        if (TelegramReportService.IsRunning)
+        {
+            await Load();
+            IsError = true;
+            Message = "Рассылка уже идёт — дождитесь её завершения. Ход виден в разделе «Журнал».";
+            return Page();
+        }
 
         // Рассылка идёт в фоне: Telegram ограничивает бота ~20 сообщениями в минуту, поэтому
         // отчёт по сотне клиентов занимает минуты — синхронно страница отвалилась бы по таймауту.

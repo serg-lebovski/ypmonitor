@@ -4,6 +4,26 @@
     ViewData["Title"] = "Настройки";
     var isAdmin = User.IsInRole("Admin");
     var s = Model.Settings;
+
+    // Разделы настроек. Раньше всё лежало одной длинной «гармошкой» — нужное приходилось искать.
+    var tabs = new List<(string Id, string Icon, string Name)>();
+    if (isAdmin && Model.UpdateConfigured) tabs.Add(("update", "🔄", "Обновление сервера"));
+    if (isAdmin)
+    {
+        tabs.Add(("telegram", "🤖", "Telegram и отчёты"));
+        tabs.Add(("alerts", "🔔", "Оповещения"));
+        tabs.Add(("logs", "📋", "Журнал"));
+    }
+    tabs.Add(("server", "🖥️", "Сервер и база"));
+    tabs.Add(("agent", "⬇️", "Установщик агента"));
+    if (isAdmin) tabs.Add(("users", "👥", "Пользователи"));
+    tabs.Add(("profile", "👤", "Мой профиль"));
+
+    var cur = tabs.Any(t => t.Id == Model.Tab) ? Model.Tab : tabs[0].Id;
+    string Panel(string id) => "set-panel" + (id == cur ? " active" : "");
+
+    var updAvailable = Model.UpdateStatus?.UpdateAvailable == true;
+    var logProblems = Model.ServerLogs.Count(l => l.Level is "Error" or "Warning");
 }
 
 <h1 class="page-title">Настройки</h1>
@@ -13,508 +33,599 @@
     <div class="alert-y @(Model.IsError ? "alert-err" : "alert-ok")" style="white-space:pre-wrap">@Model.Message</div>
 }
 
-<div class="dash-grid">
-    <div>
-        @if (isAdmin && Model.UpdateConfigured)
+<div class="set-shell">
+    <nav class="set-nav">
+        @foreach (var t in tabs)
         {
-            var us = Model.UpdateStatus;
-            <details class="card-y acc">
-                <summary>🔄 Обновление сервера</summary>
-                <div class="acc-body">
-                    <div class="muted mb-2" style="font-size:13px">Обновление берётся из git-репозитория. Сначала «Проверить», затем «Установить».</div>
-                    <div class="kv"><span class="k">Текущая ревизия</span><span class="v mono">@(us?.CurrentShort ?? "—")</span></div>
-                    <div class="kv"><span class="k">В репозитории</span><span class="v mono">@(us?.RemoteShort ?? "—")</span></div>
-                    <div class="kv"><span class="k">Проверено</span><span class="v mono">@(us?.LastChecked?.ToLocalTime().ToString("yyyy-MM-dd HH:mm") ?? "—")</span></div>
-                    @if (us?.State == "updating")
-                    {
-                        <div class="alert-y alert-ok mt-2">Идёт обновление… Сервер скоро перезапустится, обновите страницу через пару минут.</div>
-                    }
-                    else if (us?.State == "error")
-                    {
-                        <div class="alert-y alert-err mt-2">@(us.Message ?? "Ошибка обновления.")</div>
-                    }
-                    else if (us?.UpdateAvailable == true)
-                    {
-                        <div class="alert-y alert-ok mt-2">Доступно обновление: +@us.Behind коммит(ов).</div>
-                        @if (Model.UpdateChangelog.Length > 0)
-                        {
-                            <div class="mono" style="font-size:12px;max-height:160px;overflow:auto;background:var(--card-2);padding:8px;border-radius:6px;margin:6px 0">
-                                @foreach (var line in Model.UpdateChangelog)
-                                {
-                                    <div>@line</div>
-                                }
-                            </div>
-                        }
-                    }
-                    else if (us is not null)
-                    {
-                        <div class="muted mt-2" style="font-size:13px">Установлена актуальная версия.</div>
-                    }
-                    <div class="mt-2" style="display:flex;gap:8px;flex-wrap:wrap">
-                        <form method="post" asp-page-handler="CheckUpdate">
-                            <button class="btn btn-primary" type="submit">Проверить обновления</button>
-                        </form>
-                        @if (us?.UpdateAvailable == true && us.State != "updating")
-                        {
-                            <form method="post" asp-page-handler="ApplyUpdate"
-                                  onsubmit="return confirm('Установить обновление? Сервер пересоберётся и перезапустится на 1–3 минуты.')">
-                                <button class="btn btn-y-danger" type="submit">Установить обновление</button>
-                            </form>
-                        }
-                    </div>
-                </div>
-            </details>
-        }
-
-        @if (isAdmin)
-        {
-            <details class="card-y acc">
-                <summary>🤖 Telegram-бот</summary>
-                <div class="acc-body">
-                    <form method="post" asp-page-handler="SaveTelegram">
-                        <div class="form-check mb-2">
-                            <input class="form-check-input" type="checkbox" name="TelegramEnabled" value="true" id="te" @(s.TelegramEnabled ? "checked" : "") />
-                            <label class="form-check-label" for="te">Использовать Telegram</label>
-                        </div>
-                        <div class="mb-2"><label>Bot Token</label>
-                            <input class="form-control" name="TelegramBotToken" value="@s.TelegramBotToken" /></div>
-                        <div class="mb-2"><label>ID группы (супергруппа с включёнными Темами, напр. -1001234567890)</label>
-                            <input class="form-control" name="TelegramChatId" value="@s.TelegramChatId" /></div>
-                        <div class="mb-2"><label>Публичный адрес сервера для ссылок (напр. http://10.10.20.25:8080)</label>
-                            <input class="form-control" name="PublicBaseUrl" value="@s.PublicBaseUrl" /></div>
-                        <div class="row">
-                            <div class="col-md-7 mb-2"><div class="form-check" style="margin-top:30px">
-                                <input class="form-check-input" type="checkbox" name="DailyReportEnabled" value="true" id="dre" @(s.DailyReportEnabled ? "checked" : "") />
-                                <label class="form-check-label" for="dre">Ежедневный отчёт в темы клиентов</label>
-                            </div></div>
-                            <div class="col-md-5 mb-2"><label>Час отчёта (по Омску, UTC+6)</label>
-                                <input class="form-control" type="number" min="0" max="23" name="DailyReportHourOmsk" value="@s.DailyReportHourOmsk" /></div>
-                        </div>
-                        <button class="btn btn-primary" type="submit">💾 Сохранить настройки бота</button>
-                    </form>
-                    <form method="post" asp-page-handler="SendReportNow" class="mt-2">
-                        <button class="btn btn-primary w-100" type="submit">📨 Разослать отчёт по клиентам сейчас</button>
-                    </form>
-                    <div class="muted mt-1" style="font-size:12px">Немедленно разошлёт актуальный отчёт по архивации во все темы клиентов — для проверки в реальном времени.</div>
-                    <div class="mt-2" style="display:flex;gap:8px;flex-wrap:wrap">
-                        <form method="post" asp-page-handler="DiscoverChats"><button class="btn btn-sm btn-primary" type="submit">Определить chat_id</button></form>
-                        <form method="post" asp-page-handler="CreateTopics"><button class="btn btn-sm btn-primary" type="submit">Создать темы клиентов</button></form>
-                    </div>
-                    <div class="muted mt-2" style="font-size:12px">Кнопки действий используют уже сохранённые настройки — сначала сохраните.</div>
-                </div>
-            </details>
-
-            <details class="card-y acc">
-                <summary>🚫 Обход блокировки телеграмма</summary>
-                <div class="acc-body">
-                    <form method="post" asp-page-handler="SaveWireGuard" enctype="multipart/form-data">
-                        <h4 style="font-size:16px">WireGuard / AmneziaWG <span class="muted" style="font-size:12px">(рабочий способ для бота)</span></h4>
-                        <div class="muted mb-2" style="font-size:13px">
-                            Бот ходит в Telegram через userspace-туннель (SOCKS5) без прав root.
-                            Статус: <strong style="color:@(Model.WireGuardRunning ? "var(--ok)" : "var(--unknown)")">@Model.WireGuardStatus</strong>.
-                        </div>
-
-                        <details class="acc" style="margin-bottom:10px">
-                            <summary style="font-size:13px">❓ Какой конфиг сюда вставлять</summary>
-                            <div class="muted" style="font-size:12px;padding:8px 4px;line-height:1.5">
-                                Нужен конфиг <strong>AmneziaWG</strong> (или обычного WireGuard) от VPN-сервера, который <em>не заблокирован</em>
-                                в вашей стране. Именно через него бот достучится до Telegram.
-                                <ol style="margin:6px 0 0 18px;padding:0">
-                                    <li>В приложении <strong>AmneziaVPN</strong> откройте нужный сервер → «Настройки подключения»
-                                        → протокол <strong>AmneziaWG</strong> → «Экспорт конфигурации» / «Показать конфиг».</li>
-                                    <li>Скопируйте весь текст от <span class="code mono">[Interface]</span> до конца <span class="code mono">[Peer]</span>
-                                        и вставьте в поле ниже (или загрузите файл <span class="code mono">.conf</span>).</li>
-                                    <li>Отметьте галочку «Использовать…», нажмите «Сохранить и применить», затем «Проверить» —
-                                        покажется внешний IP через туннель (должен отличаться от IP сервера).</li>
-                                </ol>
-                                Конфиг должен содержать секции <span class="code mono">[Interface]</span> (с <span class="code mono">PrivateKey</span>,
-                                <span class="code mono">Address</span> и параметрами обфускации <span class="code mono">Jc, S1, H1…</span>)
-                                и <span class="code mono">[Peer]</span> (с <span class="code mono">PublicKey</span>,
-                                <span class="code mono">Endpoint</span> — адрес:порт незаблокированного сервера).
-                                Обычный WireGuard тоже подойдёт, но его чаще режет DPI — надёжнее AmneziaWG.
-                            </div>
-                        </details>
-
-                        <div class="form-check mb-2">
-                            <input class="form-check-input" type="checkbox" name="wgEnabled" value="true" id="wge" @(s.WireGuardEnabled ? "checked" : "") />
-                            <label class="form-check-label" for="wge">Использовать WireGuard для доступа бота к Telegram</label>
-                        </div>
-                        <div class="mb-2"><label>Конфиг (вставьте текст — это заменит текущий; смена VPN-сервера Amnezia = просто вставьте новый)</label>
-                            <textarea class="form-control mono" name="wgConfigText" rows="8" spellcheck="false"
-                                      placeholder="[Interface]&#10;Address = ...&#10;PrivateKey = ...&#10;Jc = ...&#10;&#10;[Peer]&#10;PublicKey = ...&#10;Endpoint = 1.2.3.4:51820">@s.WireGuardConfig</textarea></div>
-                        <div class="mb-2"><label>…или загрузите файл <span class="code mono">.conf</span> (имеет приоритет над полем выше)</label>
-                            <input class="form-control" type="file" name="wgFile" accept=".conf,text/plain" /></div>
-                        @if (!string.IsNullOrWhiteSpace(s.WireGuardConfig))
-                        {
-                            <div class="muted mb-2" style="font-size:12px">Сейчас загружен конфиг на @(s.WireGuardConfig!.Length) симв. Изменения в поле/файле заменят его.</div>
-                        }
-
-                        <button class="btn btn-primary" type="submit">Сохранить и применить</button>
-                    </form>
-                    <div class="mt-2" style="display:flex;gap:8px;flex-wrap:wrap">
-                        <form method="post" asp-page-handler="CheckWireGuard">
-                            <button class="btn btn-sm btn-primary" type="submit">Проверить WireGuard (показать внешний IP)</button>
-                        </form>
-                        @if (!string.IsNullOrWhiteSpace(s.WireGuardConfig))
-                        {
-                            <form method="post" asp-page-handler="DeleteWireGuard"
-                                  onsubmit="return confirm('Удалить конфигурацию WireGuard и остановить туннель?')">
-                                <button class="btn btn-sm btn-y-danger" type="submit">Удалить туннель WireGuard</button>
-                            </form>
-                        }
-                    </div>
-                </div>
-            </details>
-
-            <details class="card-y acc">
-                <summary>🔔 Оповещения и обслуживание</summary>
-                <div class="acc-body">
-                    <form method="post" asp-page-handler="SaveSettings">
-                        <div class="row">
-                            <div class="col-md-6 mb-3"><label>Порог «офлайн», сек</label>
-                                <input class="form-control" name="OfflineThresholdSeconds" type="number" value="@s.OfflineThresholdSeconds" /></div>
-                            <div class="col-md-6 mb-3"><label>Хранить историю, дней</label>
-                                <input class="form-control" name="ReportRetentionDays" type="number" value="@s.ReportRetentionDays" /></div>
-                        </div>
-                        <div class="mb-3"><label>Порог по умолчанию: нет новых бэкапов N дней → тревога</label>
-                            <input class="form-control" name="DefaultBackupStaleDays" type="number" min="0" value="@s.DefaultBackupStaleDays" />
-                            <div class="muted" style="font-size:12px">Применяется к серверам, где не задан свой порог.</div></div>
-                        <div class="mb-3"><label>Игнорировать ошибки Windows (по одному правилу в строке: код события или источник)</label>
-                            <textarea class="form-control mono" name="WindowsErrorIgnore" rows="3" placeholder="например:&#10;10016&#10;DistributedCOM">@s.WindowsErrorIgnore</textarea></div>
-                        <div class="form-check mb-3">
-                            <input class="form-check-input" type="checkbox" name="AlertsEnabled" value="true" id="ae" @(s.AlertsEnabled ? "checked" : "") />
-                            <label class="form-check-label" for="ae">Включить оповещения при проблемах</label>
-                        </div>
-
-                        <h4 style="font-size:16px">E-mail (SMTP)</h4>
-                        <div class="form-check mb-2">
-                            <input class="form-check-input" type="checkbox" name="EmailEnabled" value="true" id="ee" @(s.EmailEnabled ? "checked" : "") />
-                            <label class="form-check-label" for="ee">Использовать e-mail</label>
-                        </div>
-                        <div class="row">
-                            <div class="col-md-8 mb-2"><label>SMTP хост</label>
-                                <input class="form-control" name="SmtpHost" value="@s.SmtpHost" /></div>
-                            <div class="col-md-4 mb-2"><label>Порт</label>
-                                <input class="form-control" name="SmtpPort" type="number" value="@s.SmtpPort" /></div>
-                        </div>
-                        <div class="form-check mb-2">
-                            <input class="form-check-input" type="checkbox" name="SmtpUseSsl" value="true" id="ssl" @(s.SmtpUseSsl ? "checked" : "") />
-                            <label class="form-check-label" for="ssl">SSL/TLS</label>
-                        </div>
-                        <div class="row">
-                            <div class="col-md-6 mb-2"><label>Логин SMTP</label>
-                                <input class="form-control" name="SmtpUser" value="@s.SmtpUser" /></div>
-                            <div class="col-md-6 mb-2"><label>Пароль SMTP</label>
-                                <input class="form-control" type="password" name="SmtpPassword" value="@s.SmtpPassword" /></div>
-                        </div>
-                        <div class="row">
-                            <div class="col-md-6 mb-2"><label>От кого</label>
-                                <input class="form-control" name="EmailFrom" value="@s.EmailFrom" /></div>
-                            <div class="col-md-6 mb-2"><label>Кому — оповещения о проблемах (через запятую)</label>
-                                <input class="form-control" name="EmailTo" value="@s.EmailTo" /></div>
-                        </div>
-                        <div class="mb-3"><label>📦 Отчёт об архивации — куда отправлять (общий адрес, через запятую)</label>
-                            <input class="form-control" name="ArchiveReportEmailTo" value="@s.ArchiveReportEmailTo" placeholder="напр. admin@company.ru" />
-                            <div class="muted" style="font-size:12px">Сюда дублируется сводный отчёт об архивации по всем клиентам (по расписанию и по кнопке «Разослать отчёт»).</div></div>
-
-                        <h4 style="font-size:16px">🩺 Здоровье дисков (SMART)</h4>
-                        <div class="form-check mb-2">
-                            <input class="form-check-input" type="checkbox" name="SmartAlertsEnabled" value="true" id="smart" @(s.SmartAlertsEnabled ? "checked" : "") />
-                            <label class="form-check-label" for="smart">Слать уведомления по SMART (ухудшение здоровья, перегрев)</label>
-                        </div>
-                        <div class="form-check mb-2">
-                            <input class="form-check-input" type="checkbox" name="SmartAlertOnWarning" value="true" id="smartwarn" @(s.SmartAlertOnWarning ? "checked" : "") />
-                            <label class="form-check-label" for="smartwarn">Тревожить и на статус «Предупреждение» (иначе только на «Неисправен»)</label>
-                        </div>
-                        <div class="mb-3"><label>Порог температуры накопителя, °C (0 = не следить)</label>
-                            <input class="form-control" style="max-width:140px" type="number" min="0" max="120" name="SmartTempThresholdC" value="@s.SmartTempThresholdC" />
-                            <div class="muted" style="font-size:12px">Тревога при превышении, возврат в норму — с запасом 3 °C. Температуру шлёт агент 2.5+ (если её отдаёт WMI накопителя).</div></div>
-
-                        <h4 style="font-size:16px">🔥 Перегрев процессора</h4>
-                        <div class="form-check mb-2">
-                            <input class="form-check-input" type="checkbox" name="CpuTempAlertsEnabled" value="true" id="cputemp" @(s.CpuTempAlertsEnabled ? "checked" : "") />
-                            <label class="form-check-label" for="cputemp">Слать уведомления о перегреве процессора</label>
-                        </div>
-                        <div class="mb-3"><label>Порог температуры процессора, °C (0 = не следить)</label>
-                            <input class="form-control" style="max-width:140px" type="number" min="0" max="120" name="CpuTempThresholdC" value="@s.CpuTempThresholdC" />
-                            <div class="muted" style="font-size:12px">
-                                При превышении агент 2.6+ шлёт отчёт немедленно, не дожидаясь расписания, и сервер сразу пишет в бота.
-                                Возврат в норму — с запасом 5 °C. Свой такой же порог есть у агента (по умолчанию оба 90 °C).
-                                <br />Датчик доступен не на всех машинах: на серверном железе и в виртуалках ACPI-термозоны часто нет — тогда в карточке сервера будет «нет данных».
-                            </div></div>
-
-                        <button class="btn btn-primary" type="submit">Сохранить</button>
-                        <button class="btn btn-primary" type="submit" asp-page-handler="TestAlert" formnovalidate>Отправить тест</button>
-                    </form>
-                </div>
-            </details>
-
-            <details class="card-y acc">
-                <summary>🧾 Журнал действий</summary>
-                <div class="acc-body">
-                    <div class="muted mb-2" style="font-size:12px">Кто и когда менял настройки, пользователей, серверы и ключи.</div>
-                    @if (!Model.AuditLog.Any())
-                    {
-                        <div class="muted">Пока нет записей.</div>
-                    }
-                    else
-                    {
-                        <table class="tbl">
-                            <thead><tr><th>Когда (UTC)</th><th>Кто</th><th>Действие</th></tr></thead>
-                            <tbody>
-                            @foreach (var a in Model.AuditLog)
-                            {
-                                <tr>
-                                    <td class="mono" style="white-space:nowrap">@a.At.UtcDateTime.ToString("yyyy-MM-dd HH:mm")</td>
-                                    <td>@a.Username</td>
-                                    <td>@a.Action@(string.IsNullOrWhiteSpace(a.Details) ? "" : $" — {a.Details}")</td>
-                                </tr>
-                            }
-                            </tbody>
-                        </table>
-                        <div class="muted" style="font-size:12px;margin-top:8px">Показаны последние @Model.AuditLog.Count действий.</div>
-                    }
-                </div>
-            </details>
-
-            <details class="card-y acc" @(Model.ServerLogs.Any() && (!string.IsNullOrEmpty(Model.LogLevel) || !string.IsNullOrEmpty(Model.LogAreaFilter) || !string.IsNullOrWhiteSpace(Model.LogQuery)) ? "open" : null)>
-                <summary>📋 Журнал сервера</summary>
-                <div class="acc-body">
-                    <div class="muted mb-2" style="font-size:12px">
-                        Вход в систему, приём отчётов от агентов, отказы в доступе и ошибки.
-                        Хранится @Ypmon.Server.Services.ServerLogWriter.RetentionDays дней, старые записи удаляются автоматически.
-                        Heartbeat агентов (раз в минуту) не пишется, иначе журнал состоял бы только из него.
-                    </div>
-
-                    <form method="get" class="row mb-2">
-                        <div class="col-md-3 mb-2">
-                            <label>Уровень</label>
-                            <select class="form-control" name="logLevel">
-                                <option value="" selected="@(Model.LogLevel == "")">все</option>
-                                <option value="Information" selected="@(Model.LogLevel == "Information")">информация</option>
-                                <option value="Warning" selected="@(Model.LogLevel == "Warning")">предупреждения</option>
-                                <option value="Error" selected="@(Model.LogLevel == "Error")">ошибки</option>
-                            </select>
-                        </div>
-                        <div class="col-md-3 mb-2">
-                            <label>Раздел</label>
-                            <select class="form-control" name="logArea">
-                                <option value="" selected="@(Model.LogAreaFilter == "")">все</option>
-                                <option value="Auth" selected="@(Model.LogAreaFilter == "Auth")">аутентификация</option>
-                                <option value="Reports" selected="@(Model.LogAreaFilter == "Reports")">отчёты</option>
-                                <option value="Notify" selected="@(Model.LogAreaFilter == "Notify")">оповещения</option>
-                                <option value="System" selected="@(Model.LogAreaFilter == "System")">система</option>
-                            </select>
-                        </div>
-                        <div class="col-md-4 mb-2">
-                            <label>Поиск</label>
-                            <input class="form-control" name="logQ" value="@Model.LogQuery" placeholder="текст, логин или IP" />
-                        </div>
-                        <div class="col-md-2 mb-2" style="display:flex;align-items:flex-end;gap:6px">
-                            <button class="btn btn-primary" type="submit">Показать</button>
-                            <a class="btn" href="/Settings">Сброс</a>
-                        </div>
-                    </form>
-
-                    @if (!Model.ServerLogs.Any())
-                    {
-                        <div class="muted">Записей нет.</div>
-                    }
-                    else
-                    {
-                        <table class="tbl">
-                            <thead><tr><th>Когда (UTC)</th><th>Уровень</th><th>Раздел</th><th>Событие</th><th>Кто / откуда</th></tr></thead>
-                            <tbody>
-                            @foreach (var l in Model.ServerLogs)
-                            {
-                                var (icon, word) = l.Level switch
-                                {
-                                    "Error" => ("❌", "ошибка"),
-                                    "Warning" => ("⚠️", "предупр."),
-                                    _ => ("ℹ️", "инфо"),
-                                };
-                                var areaWord = l.Area switch
-                                {
-                                    Ypmon.Server.Data.LogArea.Auth => "аутентификация",
-                                    Ypmon.Server.Data.LogArea.Reports => "отчёты",
-                                    Ypmon.Server.Data.LogArea.Notify => "оповещения",
-                                    _ => "система",
-                                };
-                                <tr>
-                                    <td class="mono" style="white-space:nowrap">@l.At.UtcDateTime.ToString("yyyy-MM-dd HH:mm:ss")</td>
-                                    <td style="white-space:nowrap">@icon @word</td>
-                                    <td style="white-space:nowrap">@areaWord</td>
-                                    <td>
-                                        @l.Message
-                                        @if (!string.IsNullOrWhiteSpace(l.Details))
-                                        {
-                                            <div class="muted mono" style="font-size:11px;white-space:pre-wrap;max-height:120px;overflow:auto">@l.Details</div>
-                                        }
-                                    </td>
-                                    <td class="mono" style="white-space:nowrap;font-size:12px">
-                                        @l.Who@(string.IsNullOrWhiteSpace(l.Ip) ? "" : (string.IsNullOrWhiteSpace(l.Who) ? l.Ip : $" ({l.Ip})"))
-                                    </td>
-                                </tr>
-                            }
-                            </tbody>
-                        </table>
-                        <div class="muted" style="font-size:12px;margin-top:8px">
-                            Показано @Model.ServerLogs.Count из @Model.ServerLogTotal подходящих записей (самые свежие).
-                        </div>
-                    }
-                </div>
-            </details>
-        }
-
-        <details class="card-y acc">
-            <summary>⬇️ Установщик агента</summary>
-            <div class="acc-body">
-                @if (Model.AgentInstallerExists)
+            <a class="set-tab @(t.Id == cur ? "active" : "")" data-tab="@t.Id" href="/Settings?tab=@t.Id">
+                <span class="set-ico">@t.Icon</span>
+                <span>@t.Name</span>
+                @if (t.Id == "update" && updAvailable)
                 {
-                    <div class="muted mb-2" style="font-size:13px">Установщик ставит агента в <span class="code mono">C:\Program Files\ypmonitor</span> и регистрирует службу.</div>
-                    <div class="kv"><span class="k">Версия</span><span class="v mono">@(Model.AgentInstallerVersion ?? "—")</span></div>
-                    <div class="kv"><span class="k">Размер</span><span class="v mono">@($"{Model.AgentInstallerSize / 1024.0 / 1024.0:0.0} МБ")</span></div>
-                    <div class="kv"><span class="k">Обновлён</span><span class="v mono">@(Model.AgentInstallerDate?.ToString("yyyy-MM-dd HH:mm") ?? "—")</span></div>
-                    <a class="btn btn-primary mt-2" href="/agent-installer" download>Скачать установщик агента</a>
+                    <span class="set-mark st-warn badge-status">есть</span>
+                }
+                @if (t.Id == "logs" && logProblems > 0)
+                {
+                    <span class="set-mark st-err badge-status">@logProblems</span>
+                }
+            </a>
+        }
+    </nav>
+
+    <div class="set-main">
+
+    @if (isAdmin && Model.UpdateConfigured)
+    {
+        var us = Model.UpdateStatus;
+        <section class="@Panel("update")" data-tab="update">
+            <div class="card-y">
+                <h2 class="set-h">🔄 Обновление сервера</h2>
+                <div class="set-sub">Обновление берётся из git-репозитория. Сначала «Проверить», затем «Установить».</div>
+                <div class="kv"><span class="k">Текущая ревизия</span><span class="v mono">@(us?.CurrentShort ?? "—")</span></div>
+                <div class="kv"><span class="k">В репозитории</span><span class="v mono">@(us?.RemoteShort ?? "—")</span></div>
+                <div class="kv"><span class="k">Проверено</span><span class="v mono">@(us?.LastChecked?.ToLocalTime().ToString("yyyy-MM-dd HH:mm") ?? "—")</span></div>
+                @if (us?.State == "updating")
+                {
+                    <div class="alert-y alert-ok mt-2">Идёт обновление… Сервер скоро перезапустится, обновите страницу через пару минут.</div>
+                }
+                else if (us?.State == "error")
+                {
+                    <div class="alert-y alert-err mt-2">@(us.Message ?? "Ошибка обновления.")</div>
+                }
+                else if (updAvailable)
+                {
+                    <div class="alert-y alert-ok mt-2">Доступно обновление: +@us!.Behind коммит(ов).</div>
+                    @if (Model.UpdateChangelog.Length > 0)
+                    {
+                        <div class="mono" style="font-size:12px;max-height:220px;overflow:auto;background:var(--card-2);padding:8px;border-radius:6px;margin:6px 0">
+                            @foreach (var line in Model.UpdateChangelog)
+                            {
+                                <div>@line</div>
+                            }
+                        </div>
+                    }
+                }
+                else if (us is not null)
+                {
+                    <div class="muted mt-2" style="font-size:13px">Установлена актуальная версия.</div>
+                }
+                <div class="mt-2" style="display:flex;gap:8px;flex-wrap:wrap">
+                    <form method="post" asp-page-handler="CheckUpdate" asp-route-tab="update">
+                        <button class="btn btn-primary" type="submit">Проверить обновления</button>
+                    </form>
+                    @if (updAvailable && us!.State != "updating")
+                    {
+                        <form method="post" asp-page-handler="ApplyUpdate" asp-route-tab="update"
+                              onsubmit="return confirm('Установить обновление? Сервер пересоберётся и перезапустится на 1–3 минуты.')">
+                            <button class="btn btn-y-danger" type="submit">Установить обновление</button>
+                        </form>
+                    }
+                </div>
+            </div>
+        </section>
+    }
+
+    @if (isAdmin)
+    {
+        <section class="@Panel("telegram")" data-tab="telegram">
+            <div class="card-y">
+                <h2 class="set-h">🤖 Telegram-бот</h2>
+                <div class="set-sub">Отчёты уходят в тему клиента внутри группы — по одному сообщению на клиента.</div>
+                <form method="post" asp-page-handler="SaveTelegram" asp-route-tab="telegram">
+                    <div class="form-check mb-2">
+                        <input class="form-check-input" type="checkbox" name="TelegramEnabled" value="true" id="te" @(s.TelegramEnabled ? "checked" : "") />
+                        <label class="form-check-label" for="te">Использовать Telegram</label>
+                    </div>
+                    <div class="mb-2"><label>Bot Token</label>
+                        <input class="form-control" name="TelegramBotToken" value="@s.TelegramBotToken" /></div>
+                    <div class="mb-2"><label>ID группы (супергруппа с включёнными Темами, напр. -1001234567890)</label>
+                        <input class="form-control" name="TelegramChatId" value="@s.TelegramChatId" /></div>
+                    <div class="mb-2"><label>Публичный адрес сервера для ссылок (напр. http://10.10.20.25:8080)</label>
+                        <input class="form-control" name="PublicBaseUrl" value="@s.PublicBaseUrl" /></div>
+                    <div class="row">
+                        <div class="col-md-7 mb-2"><div class="form-check" style="margin-top:30px">
+                            <input class="form-check-input" type="checkbox" name="DailyReportEnabled" value="true" id="dre" @(s.DailyReportEnabled ? "checked" : "") />
+                            <label class="form-check-label" for="dre">Ежедневный отчёт в темы клиентов</label>
+                        </div></div>
+                        <div class="col-md-5 mb-2"><label>Час отчёта (по Омску, UTC+6)</label>
+                            <input class="form-control" type="number" min="0" max="23" name="DailyReportHourOmsk" value="@s.DailyReportHourOmsk" /></div>
+                    </div>
+                    <button class="btn btn-primary" type="submit">💾 Сохранить настройки бота</button>
+                </form>
+
+                <hr style="border-color:var(--border)" />
+                @if (Model.ReportRunning)
+                {
+                    <div class="alert-y alert-ok">📨 Рассылка отчёта идёт прямо сейчас. Повторный запуск заблокирован, чтобы клиенты не получили два отчёта.</div>
                 }
                 else
                 {
-                    <div class="alert-y alert-err">Установщик не загружен на сервер.</div>
-                }
-            </div>
-        </details>
-
-        <details class="card-y acc">
-            <summary>🖥️ Параметры сервера</summary>
-            <div class="acc-body">
-                <div class="muted mb-2" style="font-size:13px">Порт и БД задаются в <span class="code mono">appsettings.json</span> / переменных окружения.</div>
-                <div class="kv"><span class="k">Порт веб-интерфейса</span><span class="v mono">@Model.HttpPort</span></div>
-                <div class="kv"><span class="k">Порт приёма отчётов (локально)</span><span class="v mono">@Ypmon.Server.Services.ServerPorts.ReportsPort</span></div>
-                <div class="kv"><span class="k">Адрес</span><span class="v mono">@($"{Request.Scheme}://{Request.Host}")</span></div>
-                <div class="kv"><span class="k">База данных</span><span class="v mono">@Model.DbProvider</span></div>
-
-                @if (isAdmin)
-                {
-                    <hr style="border-color:var(--border)" />
-                    <div class="mb-2"><strong style="font-size:14px">🌐 Внешний адрес сервера</strong>
-                        <div class="muted" style="font-size:12px">Под каким адресом сервер доступен снаружи — для удалённых агентов (не в одной сети с сервером). Локальным агентам он не нужен.</div></div>
-                    <form method="post" asp-page-handler="SaveServerAddress">
-                        <div class="row">
-                            <div class="col-md-8 mb-2"><label>Внешний IP / хост</label>
-                                <input class="form-control mono" name="externalAddress" value="@s.ExternalAddress" placeholder="напр. 203.0.113.5 или mon.company.ru" /></div>
-                            <div class="col-md-4 mb-2"><label>Внешний порт</label>
-                                <input class="form-control mono" type="number" min="1" max="65535" name="externalPort" value="@(s.ExternalPort > 0 ? s.ExternalPort : 8081)" /></div>
-                        </div>
-                        <div class="muted mb-2" style="font-size:12px">Порт по умолчанию 8081 (порт приёма отчётов). Укажите другой, только если снаружи он проброшен на иной порт.</div>
-                        <button class="btn btn-primary" type="submit">Сохранить внешний адрес</button>
+                    <form method="post" asp-page-handler="SendReportNow" asp-route-tab="telegram">
+                        <button class="btn btn-primary w-100" type="submit">📨 Разослать отчёт по клиентам сейчас</button>
                     </form>
-
-                    <hr style="border-color:var(--border)" />
-                    <div class="mb-2"><strong style="font-size:14px">💾 Резервное копирование базы</strong>
-                        <div class="muted" style="font-size:12px">
-                            @if (Model.DbProvider == "postgres")
-                            {
-                                <text>Дамп PostgreSQL (<span class="code mono">pg_dump</span>, обычный SQL, сжат gzip). Внутри — клиенты, серверы, отчёты, события, настройки и журнал действий.</text>
-                            }
-                            else
-                            {
-                                <text>Копия файла базы SQLite (согласованный снимок, сервер останавливать не нужно).</text>
-                            }
-                        </div>
-                    </div>
-                    @if (Model.BackupAvailable)
-                    {
-                        <form method="post" asp-page-handler="Backup">
-                            <button class="btn btn-primary" type="submit">Создать и скачать резервную копию</button>
-                        </form>
-                        <div class="muted mt-2" style="font-size:12px">
-                            Большая база может выгружаться несколько секунд — дождитесь начала загрузки.
-                            @if (Model.DbProvider == "postgres")
-                            {
-                                <text><br />Восстановление: <span class="code mono">gunzip -c ypmon-….sql.gz | docker exec -i ypmon-postgres psql -U admin_yp -d ypmon</span></text>
-                            }
-                        </div>
-                    }
-                    else
-                    {
-                        <div class="alert-y alert-err">На сервере нет утилиты <span class="mono">pg_dump</span>. Обновите сервер (раздел «Обновление сервера») — она устанавливается при пересборке образа.</div>
-                    }
                 }
+                <div class="muted mt-1" style="font-size:12px">
+                    Отчёт формируется по состоянию на момент запуска, затем рассылается с паузами
+                    (Telegram пропускает от бота ~20 сообщений в минуту). Сотня клиентов занимает несколько минут;
+                    итог пишется в раздел <a href="/Settings?tab=logs">«Журнал»</a>.
+                </div>
+                <div class="mt-2" style="display:flex;gap:8px;flex-wrap:wrap">
+                    <form method="post" asp-page-handler="DiscoverChats" asp-route-tab="telegram"><button class="btn btn-sm btn-primary" type="submit">Определить chat_id</button></form>
+                    <form method="post" asp-page-handler="CreateTopics" asp-route-tab="telegram"><button class="btn btn-sm btn-primary" type="submit">Создать темы клиентов</button></form>
+                </div>
+                <div class="muted mt-2" style="font-size:12px">Кнопки действий используют уже сохранённые настройки — сначала сохраните.</div>
             </div>
-        </details>
-    </div>
 
-    <div class="panel">
-        <details class="card-y acc">
-            <summary>👤 Мой профиль</summary>
-            <div class="acc-body">
-                <form method="post" asp-page-handler="SaveProfile">
-                    <div class="mb-2"><label>Отображаемое имя</label>
-                        <input class="form-control" name="displayName" value="@User.Identity?.Name" /></div>
-                    <div class="mb-2"><label>Логин</label>
-                        <input class="form-control" name="username" value="@User.Identity?.Name" /></div>
-                    <div class="mb-3"><label>Новый пароль (если меняете)</label>
-                        <input class="form-control" type="password" name="newPassword" placeholder="оставьте пустым" /></div>
-                    <button class="btn btn-primary w-100" type="submit">Сохранить профиль</button>
+            <div class="card-y">
+                <h2 class="set-h">🚫 Обход блокировки Telegram</h2>
+                <div class="set-sub">
+                    Бот ходит в Telegram через userspace-туннель (SOCKS5) без прав root.
+                    Статус: <strong style="color:@(Model.WireGuardRunning ? "var(--ok)" : "var(--unknown)")">@Model.WireGuardStatus</strong>.
+                </div>
+                <form method="post" asp-page-handler="SaveWireGuard" asp-route-tab="telegram" enctype="multipart/form-data">
+                    <details class="acc" style="margin-bottom:10px">
+                        <summary style="font-size:13px">❓ Какой конфиг сюда вставлять</summary>
+                        <div class="muted" style="font-size:12px;padding:8px 4px;line-height:1.5">
+                            Нужен конфиг <strong>AmneziaWG</strong> (или обычного WireGuard) от VPN-сервера, который <em>не заблокирован</em>
+                            в вашей стране. Именно через него бот достучится до Telegram.
+                            <ol style="margin:6px 0 0 18px;padding:0">
+                                <li>В приложении <strong>AmneziaVPN</strong> откройте нужный сервер → «Настройки подключения»
+                                    → протокол <strong>AmneziaWG</strong> → «Экспорт конфигурации» / «Показать конфиг».</li>
+                                <li>Скопируйте весь текст от <span class="code mono">[Interface]</span> до конца <span class="code mono">[Peer]</span>
+                                    и вставьте в поле ниже (или загрузите файл <span class="code mono">.conf</span>).</li>
+                                <li>Отметьте галочку «Использовать…», нажмите «Сохранить и применить», затем «Проверить» —
+                                    покажется внешний IP через туннель (должен отличаться от IP сервера).</li>
+                            </ol>
+                            Конфиг должен содержать секции <span class="code mono">[Interface]</span> (с <span class="code mono">PrivateKey</span>,
+                            <span class="code mono">Address</span> и параметрами обфускации <span class="code mono">Jc, S1, H1…</span>)
+                            и <span class="code mono">[Peer]</span> (с <span class="code mono">PublicKey</span>,
+                            <span class="code mono">Endpoint</span> — адрес:порт незаблокированного сервера).
+                            Обычный WireGuard тоже подойдёт, но его чаще режет DPI — надёжнее AmneziaWG.
+                        </div>
+                    </details>
+
+                    <div class="form-check mb-2">
+                        <input class="form-check-input" type="checkbox" name="wgEnabled" value="true" id="wge" @(s.WireGuardEnabled ? "checked" : "") />
+                        <label class="form-check-label" for="wge">Использовать WireGuard для доступа бота к Telegram</label>
+                    </div>
+                    <div class="mb-2"><label>Конфиг (вставьте текст — это заменит текущий; смена VPN-сервера Amnezia = просто вставьте новый)</label>
+                        <textarea class="form-control mono" name="wgConfigText" rows="8" spellcheck="false"
+                                  placeholder="[Interface]&#10;Address = ...&#10;PrivateKey = ...&#10;Jc = ...&#10;&#10;[Peer]&#10;PublicKey = ...&#10;Endpoint = 1.2.3.4:51820">@s.WireGuardConfig</textarea></div>
+                    <div class="mb-2"><label>…или загрузите файл <span class="code mono">.conf</span> (имеет приоритет над полем выше)</label>
+                        <input class="form-control" type="file" name="wgFile" accept=".conf,text/plain" /></div>
+                    @if (!string.IsNullOrWhiteSpace(s.WireGuardConfig))
+                    {
+                        <div class="muted mb-2" style="font-size:12px">Сейчас загружен конфиг на @(s.WireGuardConfig!.Length) симв. Изменения в поле/файле заменят его.</div>
+                    }
+                    <button class="btn btn-primary" type="submit">Сохранить и применить</button>
+                </form>
+                <div class="mt-2" style="display:flex;gap:8px;flex-wrap:wrap">
+                    <form method="post" asp-page-handler="CheckWireGuard" asp-route-tab="telegram">
+                        <button class="btn btn-sm btn-primary" type="submit">Проверить WireGuard (показать внешний IP)</button>
+                    </form>
+                    @if (!string.IsNullOrWhiteSpace(s.WireGuardConfig))
+                    {
+                        <form method="post" asp-page-handler="DeleteWireGuard" asp-route-tab="telegram"
+                              onsubmit="return confirm('Удалить конфигурацию WireGuard и остановить туннель?')">
+                            <button class="btn btn-sm btn-y-danger" type="submit">Удалить туннель WireGuard</button>
+                        </form>
+                    }
+                </div>
+            </div>
+        </section>
+
+        <section class="@Panel("alerts")" data-tab="alerts">
+            <div class="card-y">
+                <h2 class="set-h">🔔 Оповещения и обслуживание</h2>
+                @if (!s.AlertsEnabled)
+                {
+                    <div class="alert-y alert-err">
+                        Оповещения выключены: тревоги (агент офлайн, мало места, перегрев, усадка бэкапа) не отправляются.
+                        Ежедневный отчёт при этом продолжает уходить.
+                    </div>
+                }
+                <form method="post" asp-page-handler="SaveSettings" asp-route-tab="alerts">
+                    <div class="row">
+                        <div class="col-md-6 mb-3"><label>Порог «офлайн», сек</label>
+                            <input class="form-control" name="OfflineThresholdSeconds" type="number" value="@s.OfflineThresholdSeconds" /></div>
+                        <div class="col-md-6 mb-3"><label>Хранить историю, дней</label>
+                            <input class="form-control" name="ReportRetentionDays" type="number" value="@s.ReportRetentionDays" /></div>
+                    </div>
+                    <div class="mb-3"><label>Порог по умолчанию: нет новых бэкапов N дней → тревога</label>
+                        <input class="form-control" name="DefaultBackupStaleDays" type="number" min="0" value="@s.DefaultBackupStaleDays" />
+                        <div class="muted" style="font-size:12px">Применяется к серверам, где не задан свой порог.</div></div>
+                    <div class="mb-3"><label>Игнорировать ошибки Windows (по одному правилу в строке: код события или источник)</label>
+                        <textarea class="form-control mono" name="WindowsErrorIgnore" rows="3" placeholder="например:&#10;10016&#10;DistributedCOM">@s.WindowsErrorIgnore</textarea></div>
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" name="AlertsEnabled" value="true" id="ae" @(s.AlertsEnabled ? "checked" : "") />
+                        <label class="form-check-label" for="ae">Включить оповещения при проблемах</label>
+                    </div>
+
+                    <h4 style="font-size:16px">E-mail (SMTP)</h4>
+                    <div class="form-check mb-2">
+                        <input class="form-check-input" type="checkbox" name="EmailEnabled" value="true" id="ee" @(s.EmailEnabled ? "checked" : "") />
+                        <label class="form-check-label" for="ee">Использовать e-mail</label>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-8 mb-2"><label>SMTP хост</label>
+                            <input class="form-control" name="SmtpHost" value="@s.SmtpHost" /></div>
+                        <div class="col-md-4 mb-2"><label>Порт</label>
+                            <input class="form-control" name="SmtpPort" type="number" value="@s.SmtpPort" /></div>
+                    </div>
+                    <div class="form-check mb-2">
+                        <input class="form-check-input" type="checkbox" name="SmtpUseSsl" value="true" id="ssl" @(s.SmtpUseSsl ? "checked" : "") />
+                        <label class="form-check-label" for="ssl">SSL/TLS</label>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-2"><label>Логин SMTP</label>
+                            <input class="form-control" name="SmtpUser" value="@s.SmtpUser" /></div>
+                        <div class="col-md-6 mb-2"><label>Пароль SMTP</label>
+                            <input class="form-control" type="password" name="SmtpPassword" value="@s.SmtpPassword" /></div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-2"><label>От кого</label>
+                            <input class="form-control" name="EmailFrom" value="@s.EmailFrom" /></div>
+                        <div class="col-md-6 mb-2"><label>Кому — оповещения о проблемах (через запятую)</label>
+                            <input class="form-control" name="EmailTo" value="@s.EmailTo" /></div>
+                    </div>
+                    <div class="mb-3"><label>📦 Отчёт об архивации — куда отправлять (общий адрес, через запятую)</label>
+                        <input class="form-control" name="ArchiveReportEmailTo" value="@s.ArchiveReportEmailTo" placeholder="напр. admin@company.ru" />
+                        <div class="muted" style="font-size:12px">Сюда дублируется сводный отчёт об архивации по всем клиентам (по расписанию и по кнопке «Разослать отчёт»).</div></div>
+
+                    <h4 style="font-size:16px">🩺 Здоровье дисков (SMART)</h4>
+                    <div class="form-check mb-2">
+                        <input class="form-check-input" type="checkbox" name="SmartAlertsEnabled" value="true" id="smart" @(s.SmartAlertsEnabled ? "checked" : "") />
+                        <label class="form-check-label" for="smart">Слать уведомления по SMART (ухудшение здоровья, перегрев)</label>
+                    </div>
+                    <div class="form-check mb-2">
+                        <input class="form-check-input" type="checkbox" name="SmartAlertOnWarning" value="true" id="smartwarn" @(s.SmartAlertOnWarning ? "checked" : "") />
+                        <label class="form-check-label" for="smartwarn">Тревожить и на статус «Предупреждение» (иначе только на «Неисправен»)</label>
+                    </div>
+                    <div class="mb-3"><label>Порог температуры накопителя, °C (0 = не следить)</label>
+                        <input class="form-control" style="max-width:140px" type="number" min="0" max="120" name="SmartTempThresholdC" value="@s.SmartTempThresholdC" />
+                        <div class="muted" style="font-size:12px">Тревога при превышении, возврат в норму — с запасом 3 °C. Температуру шлёт агент 2.5+ (если её отдаёт WMI накопителя).</div></div>
+
+                    <h4 style="font-size:16px">🔥 Перегрев процессора</h4>
+                    <div class="form-check mb-2">
+                        <input class="form-check-input" type="checkbox" name="CpuTempAlertsEnabled" value="true" id="cputemp" @(s.CpuTempAlertsEnabled ? "checked" : "") />
+                        <label class="form-check-label" for="cputemp">Слать уведомления о перегреве процессора</label>
+                    </div>
+                    <div class="mb-3"><label>Порог температуры процессора, °C (0 = не следить)</label>
+                        <input class="form-control" style="max-width:140px" type="number" min="0" max="120" name="CpuTempThresholdC" value="@s.CpuTempThresholdC" />
+                        <div class="muted" style="font-size:12px">
+                            При превышении агент 2.6+ шлёт отчёт немедленно, не дожидаясь расписания, и сервер сразу пишет в бота.
+                            Возврат в норму — с запасом 5 °C. Свой такой же порог есть у агента (по умолчанию оба 90 °C).
+                            <br />Датчик доступен не на всех машинах: на серверном железе и в виртуалках ACPI-термозоны часто нет — тогда в карточке сервера будет «нет данных».
+                        </div></div>
+
+                    <button class="btn btn-primary" type="submit">Сохранить</button>
+                    <button class="btn btn-primary" type="submit" asp-page-handler="TestAlert" asp-route-tab="alerts" formnovalidate>Отправить тест</button>
                 </form>
             </div>
-        </details>
+        </section>
+
+        <section class="@Panel("logs")" data-tab="logs">
+            <div class="card-y">
+                <h2 class="set-h">📋 Журнал сервера</h2>
+                <div class="set-sub">
+                    Вход в систему, приём отчётов от агентов, рассылки, отказы в доступе и ошибки.
+                    Время — по Омску (UTC+6). Хранится @Ypmon.Server.Services.ServerLogWriter.RetentionDays дней, старое удаляется само.
+                    Heartbeat агентов (раз в минуту) не пишется, иначе журнал состоял бы только из него.
+                </div>
+
+                <div class="log-toolbar">
+                    <a class="log-chip @(Model.LogLevel == "" && Model.LogAreaFilter == "" && Model.LogQuery == "" ? "on" : "")" href="/Settings?tab=logs">Все</a>
+                    <a class="log-chip @(Model.LogLevel == "Error" ? "on" : "")" href="/Settings?tab=logs&logLevel=Error">❌ Только ошибки</a>
+                    <a class="log-chip @(Model.LogLevel == "Warning" ? "on" : "")" href="/Settings?tab=logs&logLevel=Warning">⚠️ Предупреждения</a>
+                    <a class="log-chip @(Model.LogAreaFilter == "Notify" ? "on" : "")" href="/Settings?tab=logs&logArea=Notify">📨 Отчёты и оповещения</a>
+                    <a class="log-chip @(Model.LogAreaFilter == "Auth" ? "on" : "")" href="/Settings?tab=logs&logArea=Auth">🔑 Входы</a>
+                </div>
+
+                <form method="get" class="row mb-2">
+                    <input type="hidden" name="tab" value="logs" />
+                    <div class="col-md-3 mb-2">
+                        <label>Уровень</label>
+                        <select class="form-control" name="logLevel">
+                            <option value="" selected="@(Model.LogLevel == "")">все</option>
+                            <option value="Information" selected="@(Model.LogLevel == "Information")">информация</option>
+                            <option value="Warning" selected="@(Model.LogLevel == "Warning")">предупреждения</option>
+                            <option value="Error" selected="@(Model.LogLevel == "Error")">ошибки</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3 mb-2">
+                        <label>Раздел</label>
+                        <select class="form-control" name="logArea">
+                            <option value="" selected="@(Model.LogAreaFilter == "")">все</option>
+                            <option value="Auth" selected="@(Model.LogAreaFilter == "Auth")">аутентификация</option>
+                            <option value="Reports" selected="@(Model.LogAreaFilter == "Reports")">отчёты</option>
+                            <option value="Notify" selected="@(Model.LogAreaFilter == "Notify")">оповещения</option>
+                            <option value="System" selected="@(Model.LogAreaFilter == "System")">система</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4 mb-2">
+                        <label>Поиск</label>
+                        <input class="form-control" name="logQ" value="@Model.LogQuery" placeholder="текст, логин, IP или имя клиента" />
+                    </div>
+                    <div class="col-md-2 mb-2" style="display:flex;align-items:flex-end;gap:6px">
+                        <button class="btn btn-primary" type="submit">Показать</button>
+                        <a class="btn" href="/Settings?tab=logs">Сброс</a>
+                    </div>
+                </form>
+
+                @if (!Model.ServerLogs.Any())
+                {
+                    <div class="muted">Записей нет.</div>
+                }
+                else
+                {
+                    <div style="overflow-x:auto">
+                    <table class="tbl">
+                        <thead><tr><th>Когда (Омск)</th><th>Уровень</th><th>Раздел</th><th>Событие</th><th>Кто / откуда</th></tr></thead>
+                        <tbody>
+                        @foreach (var l in Model.ServerLogs)
+                        {
+                            var (icon, word, rowCls) = l.Level switch
+                            {
+                                "Error" => ("❌", "ошибка", "lg-error"),
+                                "Warning" => ("⚠️", "предупр.", "lg-warn"),
+                                _ => ("ℹ️", "инфо", ""),
+                            };
+                            var areaWord = l.Area switch
+                            {
+                                Ypmon.Server.Data.LogArea.Auth => "аутентификация",
+                                Ypmon.Server.Data.LogArea.Reports => "отчёты",
+                                Ypmon.Server.Data.LogArea.Notify => "оповещения",
+                                _ => "система",
+                            };
+                            <tr class="@rowCls">
+                                <td class="mono" style="white-space:nowrap">@UiHelpers.Omsk(l.At)</td>
+                                <td style="white-space:nowrap">@icon @word</td>
+                                <td style="white-space:nowrap">@areaWord</td>
+                                <td>
+                                    @l.Message
+                                    @if (!string.IsNullOrWhiteSpace(l.Details))
+                                    {
+                                        <div class="log-det mono">@l.Details</div>
+                                    }
+                                </td>
+                                <td class="mono" style="white-space:nowrap;font-size:12px">
+                                    @l.Who@(string.IsNullOrWhiteSpace(l.Ip) ? "" : (string.IsNullOrWhiteSpace(l.Who) ? l.Ip : $" ({l.Ip})"))
+                                </td>
+                            </tr>
+                        }
+                        </tbody>
+                    </table>
+                    </div>
+                    <div class="muted" style="font-size:12px;margin-top:8px">
+                        Показано @Model.ServerLogs.Count из @Model.ServerLogTotal подходящих записей (самые свежие).
+                        @if (Model.LogSearchLimited)
+                        {
+                            <text>Поиск шёл по последним 3000 записям — сузьте период фильтрами уровня и раздела.</text>
+                        }
+                    </div>
+                }
+            </div>
+
+            <div class="card-y">
+                <h2 class="set-h">🧾 Журнал действий</h2>
+                <div class="set-sub">Кто и когда менял настройки, пользователей, серверы и ключи. Время — по Омску.</div>
+                @if (!Model.AuditLog.Any())
+                {
+                    <div class="muted">Пока нет записей.</div>
+                }
+                else
+                {
+                    <div style="overflow-x:auto">
+                    <table class="tbl">
+                        <thead><tr><th>Когда (Омск)</th><th>Кто</th><th>Действие</th></tr></thead>
+                        <tbody>
+                        @foreach (var a in Model.AuditLog)
+                        {
+                            <tr>
+                                <td class="mono" style="white-space:nowrap">@UiHelpers.Omsk(a.At, "yyyy-MM-dd HH:mm")</td>
+                                <td>@a.Username</td>
+                                <td>@a.Action@(string.IsNullOrWhiteSpace(a.Details) ? "" : $" — {a.Details}")</td>
+                            </tr>
+                        }
+                        </tbody>
+                    </table>
+                    </div>
+                    <div class="muted" style="font-size:12px;margin-top:8px">Показаны последние @Model.AuditLog.Count действий.</div>
+                }
+            </div>
+        </section>
+    }
+
+    <section class="@Panel("server")" data-tab="server">
+        <div class="card-y">
+            <h2 class="set-h">🖥️ Параметры сервера</h2>
+            <div class="set-sub">Порт и БД задаются в <span class="code mono">appsettings.json</span> / переменных окружения.</div>
+            <div class="kv"><span class="k">Порт веб-интерфейса</span><span class="v mono">@Model.HttpPort</span></div>
+            <div class="kv"><span class="k">Порт приёма отчётов (локально)</span><span class="v mono">@Ypmon.Server.Services.ServerPorts.ReportsPort</span></div>
+            <div class="kv"><span class="k">Адрес</span><span class="v mono">@($"{Request.Scheme}://{Request.Host}")</span></div>
+            <div class="kv"><span class="k">База данных</span><span class="v mono">@Model.DbProvider</span></div>
+        </div>
 
         @if (isAdmin)
         {
-            <details class="card-y acc">
-                <summary>👥 Пользователи</summary>
-                <div class="acc-body">
-                    <div class="muted mb-2" style="font-size:12px">
-                        <strong>Администратор</strong> — полный доступ. <strong>Инженер</strong> — клиенты и серверы
-                        (просмотр, добавление, редактирование), без настроек сервера. <strong>Мониторинг</strong> — только просмотр.
+            <div class="card-y">
+                <h2 class="set-h">🌐 Внешний адрес сервера</h2>
+                <div class="set-sub">Под каким адресом сервер доступен снаружи — для удалённых агентов (не в одной сети с сервером). Локальным агентам он не нужен.</div>
+                <form method="post" asp-page-handler="SaveServerAddress" asp-route-tab="server">
+                    <div class="row">
+                        <div class="col-md-8 mb-2"><label>Внешний IP / хост</label>
+                            <input class="form-control mono" name="externalAddress" value="@s.ExternalAddress" placeholder="напр. 203.0.113.5 или mon.company.ru" /></div>
+                        <div class="col-md-4 mb-2"><label>Внешний порт</label>
+                            <input class="form-control mono" type="number" min="1" max="65535" name="externalPort" value="@(s.ExternalPort > 0 ? s.ExternalPort : 8081)" /></div>
                     </div>
-                    @foreach (var u in Model.Users)
+                    <div class="muted mb-2" style="font-size:12px">Порт по умолчанию 8081 (порт приёма отчётов). Укажите другой, только если снаружи он проброшен на иной порт.</div>
+                    <button class="btn btn-primary" type="submit">Сохранить внешний адрес</button>
+                </form>
+            </div>
+
+            <div class="card-y">
+                <h2 class="set-h">💾 Резервное копирование базы</h2>
+                <div class="set-sub">
+                    @if (Model.DbProvider == "postgres")
                     {
-                        <details class="card-y acc" style="background:var(--card-2)">
-                            <summary>
-                                <span style="flex:1">@u.Username</span>
-                                <span class="badge-status">@UiHelpers.RoleName(u.Role)</span>
-                            </summary>
-                            <div class="acc-body">
-                                <form method="post" asp-page-handler="EditUser" asp-route-userId="@u.Id">
-                                    <div class="row">
-                                        <div class="col-md-6 mb-2"><label>Имя</label>
-                                            <input class="form-control" name="displayName" value="@u.DisplayName" /></div>
-                                        <div class="col-md-6 mb-2"><label>Роль</label>
-                                            <select class="form-select" name="role">
-                                                <option value="Admin" selected="@(u.Role == UserRole.Admin)">Администратор</option>
-                                                <option value="Engineer" selected="@(u.Role == UserRole.Engineer)">Инженер</option>
-                                                <option value="Viewer" selected="@(u.Role == UserRole.Viewer)">Мониторинг</option>
-                                            </select></div>
-                                    </div>
-                                    <div class="mb-2"><label>Новый пароль (если меняете)</label>
-                                        <input class="form-control" type="password" name="newPassword" placeholder="оставьте пустым" /></div>
-                                    <div style="display:flex;gap:8px">
-                                        <button class="btn btn-sm btn-primary" type="submit">Сохранить</button>
-                                        <button class="btn btn-sm btn-y-danger" type="submit"
-                                                asp-page-handler="DeleteUser" asp-route-userId="@u.Id" formnovalidate
-                                                onclick="return confirm('Удалить пользователя?')">Удалить</button>
-                                    </div>
-                                </form>
-                            </div>
-                        </details>
+                        <text>Дамп PostgreSQL (<span class="code mono">pg_dump</span>, обычный SQL, сжат gzip). Внутри — клиенты, серверы, отчёты, события, настройки и журнал действий.</text>
                     }
-                    <hr style="border-color:var(--border)" />
-                    <h4 style="font-size:15px">Новый пользователь</h4>
-                    <form method="post" asp-page-handler="AddUser">
-                        <div class="mb-2"><input class="form-control" name="username" placeholder="Логин" /></div>
-                        <div class="mb-2"><input class="form-control" name="displayName" placeholder="Имя" /></div>
-                        <div class="mb-2"><input class="form-control" type="password" name="password" placeholder="Пароль" /></div>
-                        <div class="mb-2"><select class="form-select" name="role">
+                    else
+                    {
+                        <text>Копия файла базы SQLite (согласованный снимок, сервер останавливать не нужно).</text>
+                    }
+                </div>
+                @if (Model.BackupAvailable)
+                {
+                    <form method="post" asp-page-handler="Backup" asp-route-tab="server">
+                        <button class="btn btn-primary" type="submit">Создать и скачать резервную копию</button>
+                    </form>
+                    <div class="muted mt-2" style="font-size:12px">
+                        Большая база может выгружаться несколько секунд — дождитесь начала загрузки.
+                        @if (Model.DbProvider == "postgres")
+                        {
+                            <text><br />Восстановление: <span class="code mono">gunzip -c ypmon-….sql.gz | docker exec -i ypmon-postgres psql -U admin_yp -d ypmon</span></text>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <div class="alert-y alert-err">На сервере нет утилиты <span class="mono">pg_dump</span>. Обновите сервер (раздел «Обновление сервера») — она устанавливается при пересборке образа.</div>
+                }
+            </div>
+        }
+    </section>
+
+    <section class="@Panel("agent")" data-tab="agent">
+        <div class="card-y">
+            <h2 class="set-h">⬇️ Установщик агента</h2>
+            @if (Model.AgentInstallerExists)
+            {
+                <div class="set-sub">Установщик ставит агента в <span class="code mono">C:\Program Files\ypmonitor</span> и регистрирует службу.</div>
+                <div class="kv"><span class="k">Версия</span><span class="v mono">@(Model.AgentInstallerVersion ?? "—")</span></div>
+                <div class="kv"><span class="k">Размер</span><span class="v mono">@($"{Model.AgentInstallerSize / 1024.0 / 1024.0:0.0} МБ")</span></div>
+                <div class="kv"><span class="k">Обновлён</span><span class="v mono">@(Model.AgentInstallerDate?.ToString("yyyy-MM-dd HH:mm") ?? "—")</span></div>
+                <a class="btn btn-primary mt-2" href="/agent-installer" download>Скачать установщик агента</a>
+            }
+            else
+            {
+                <div class="alert-y alert-err">Установщик не загружен на сервер.</div>
+            }
+        </div>
+    </section>
+
+    @if (isAdmin)
+    {
+        <section class="@Panel("users")" data-tab="users">
+            <div class="card-y">
+                <h2 class="set-h">👥 Пользователи</h2>
+                <div class="set-sub">
+                    <strong>Администратор</strong> — полный доступ. <strong>Инженер</strong> — клиенты и серверы
+                    (просмотр, добавление, редактирование), без настроек сервера. <strong>Мониторинг</strong> — только просмотр.
+                </div>
+                @foreach (var u in Model.Users)
+                {
+                    <details class="card-y acc" style="background:var(--card-2)">
+                        <summary>
+                            <span style="flex:1">@u.Username</span>
+                            <span class="badge-status">@UiHelpers.RoleName(u.Role)</span>
+                        </summary>
+                        <div class="acc-body">
+                            <form method="post" asp-page-handler="EditUser" asp-route-userId="@u.Id" asp-route-tab="users">
+                                <div class="row">
+                                    <div class="col-md-6 mb-2"><label>Имя</label>
+                                        <input class="form-control" name="displayName" value="@u.DisplayName" /></div>
+                                    <div class="col-md-6 mb-2"><label>Роль</label>
+                                        <select class="form-select" name="role">
+                                            <option value="Admin" selected="@(u.Role == UserRole.Admin)">Администратор</option>
+                                            <option value="Engineer" selected="@(u.Role == UserRole.Engineer)">Инженер</option>
+                                            <option value="Viewer" selected="@(u.Role == UserRole.Viewer)">Мониторинг</option>
+                                        </select></div>
+                                </div>
+                                <div class="mb-2"><label>Новый пароль (если меняете)</label>
+                                    <input class="form-control" type="password" name="newPassword" placeholder="оставьте пустым" /></div>
+                                <div style="display:flex;gap:8px">
+                                    <button class="btn btn-sm btn-primary" type="submit">Сохранить</button>
+                                    <button class="btn btn-sm btn-y-danger" type="submit"
+                                            asp-page-handler="DeleteUser" asp-route-userId="@u.Id" asp-route-tab="users" formnovalidate
+                                            onclick="return confirm('Удалить пользователя?')">Удалить</button>
+                                </div>
+                            </form>
+                        </div>
+                    </details>
+                }
+                <hr style="border-color:var(--border)" />
+                <h4 style="font-size:15px">Новый пользователь</h4>
+                <form method="post" asp-page-handler="AddUser" asp-route-tab="users">
+                    <div class="row">
+                        <div class="col-md-4 mb-2"><input class="form-control" name="username" placeholder="Логин" /></div>
+                        <div class="col-md-4 mb-2"><input class="form-control" name="displayName" placeholder="Имя" /></div>
+                        <div class="col-md-4 mb-2"><input class="form-control" type="password" name="password" placeholder="Пароль" /></div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-4 mb-2"><select class="form-select" name="role">
                             <option value="Admin">Администратор</option>
                             <option value="Engineer">Инженер</option>
                             <option value="Viewer">Мониторинг</option>
                         </select></div>
-                        <button class="btn btn-primary w-100" type="submit">Добавить</button>
-                    </form>
+                        <div class="col-md-4 mb-2"><button class="btn btn-primary w-100" type="submit">Добавить</button></div>
+                    </div>
+                </form>
+            </div>
+        </section>
+    }
+
+    <section class="@Panel("profile")" data-tab="profile">
+        <div class="card-y">
+            <h2 class="set-h">👤 Мой профиль</h2>
+            <form method="post" asp-page-handler="SaveProfile" asp-route-tab="profile">
+                <div class="row">
+                    <div class="col-md-6 mb-2"><label>Отображаемое имя</label>
+                        <input class="form-control" name="displayName" value="@User.Identity?.Name" /></div>
+                    <div class="col-md-6 mb-2"><label>Логин</label>
+                        <input class="form-control" name="username" value="@User.Identity?.Name" /></div>
                 </div>
-            </details>
-        }
+                <div class="mb-3" style="max-width:360px"><label>Новый пароль (если меняете)</label>
+                    <input class="form-control" type="password" name="newPassword" placeholder="оставьте пустым" /></div>
+                <button class="btn btn-primary" type="submit">Сохранить профиль</button>
+            </form>
+        </div>
+    </section>
+
     </div>
 </div>
+
+@section Scripts {
+<script>
+// Переключение разделов настроек без перезагрузки; адрес страницы обновляется,
+// чтобы ссылку на раздел можно было сохранить, а форма вернулась в него после сохранения.
+(function () {
+    var tabs = document.querySelectorAll('.set-tab');
+    var panels = document.querySelectorAll('.set-panel');
+    if (!tabs.length) return;
+
+    function show(id) {
+        var found = false;
+        panels.forEach(function (p) {
+            var on = p.getAttribute('data-tab') === id;
+            p.classList.toggle('active', on);
+            if (on) found = true;
+        });
+        if (!found) return false;
+        tabs.forEach(function (t) { t.classList.toggle('active', t.getAttribute('data-tab') === id); });
+        var url = new URL(location.href);
+        url.searchParams.set('tab', id);
+        history.replaceState(null, '', url);
+        return true;
+    }
+
+    tabs.forEach(function (t) {
+        t.addEventListener('click', function (e) {
+            // Ctrl/⌘+клик — открыть раздел в новой вкладке браузера, как обычную ссылку.
+            if (e.ctrlKey || e.metaKey || e.shiftKey) return;
+            if (show(t.getAttribute('data-tab'))) { e.preventDefault(); window.scrollTo(0, 0); }
+        });
+    });
+})();
+</script>
+}

@@ -39,10 +39,30 @@ public class TelegramReportService
     }
 
     /// <summary>
-    /// Отправляет отчёт по всем клиентам: в группу Telegram (каждый сервер — отдельным сообщением),
+    /// Рассылка идёт минутами (пауза между сообщениями из-за лимита Telegram). Второй запуск
+    /// в это время дал бы клиентам по два одинаковых отчёта, поэтому одновременно идёт только одна.
+    /// </summary>
+    private static readonly SemaphoreSlim RunGate = new(1, 1);
+
+    /// <summary>Идёт ли рассылка прямо сейчас (для подписи на кнопке в настройках).</summary>
+    public static bool IsRunning => RunGate.CurrentCount == 0;
+
+    /// <summary>
+    /// Отправляет отчёт по всем клиентам: в группу Telegram (одно сообщение на клиента),
     /// а также, если настроено, — на почту (общую и клиента) и в личные сообщения клиенту.
     /// </summary>
     public async Task<string> SendReportAsync()
+    {
+        if (!await RunGate.WaitAsync(0))
+            return "Рассылка отчёта уже идёт — дождитесь её завершения (обычно несколько минут).";
+        try { return await SendReportCoreAsync(); }
+        finally { RunGate.Release(); }
+    }
+
+    /// <summary>Готовый к отправке отчёт по одному клиенту.</summary>
+    private sealed record ClientReport(Client Client, string Html, string Plain, int Problems);
+
+    private async Task<string> SendReportCoreAsync()
     {
         var s = await _db.Settings.FirstOrDefaultAsync();
         if (s is null) return "Настройки не найдены.";
@@ -52,17 +72,23 @@ public class TelegramReportService
 
         var clients = await _db.Clients.Include(c => c.Servers).OrderBy(c => c.Name).ToListAsync();
         var date = OmskNow().ToString("yyyy-MM-dd");
+
+        // Момент снимка. Весь отчёт считается «по состоянию на» него: рассылка занимает минуты,
+        // и если сравнивать с текущим временем, серверы в конце очереди ложно становятся «офлайн».
+        var asOf = DateTimeOffset.UtcNow;
+
         int sent = 0, problems = 0, emails = 0, dms = 0, failed = 0;
         var globalPlain = new StringBuilder($"Отчёт по архивации за {date}\n");
+        var failedClients = new List<string>();
 
+        // --- Фаза 1: формируем тексты по единому снимку данных (быстро, без обращений к Telegram).
+        var planned = new List<ClientReport>();
         foreach (var client in clients)
         {
             var servers = client.Servers.OrderBy(x => x.Name).ToList();
             var clientPlain = new StringBuilder($"Клиент: {client.Name} — отчёт по архивации за {date}\n");
             var clientHtml = new StringBuilder($"📅 <b>{WebUtility.HtmlEncode(client.Name)}</b> — отчёт по архивации за {date}\n");
             var clientProblems = 0;
-
-            long? topic = groupEnabled ? await EnsureTopicAsync(s, client) : null;
 
             if (servers.Count == 0)
             {
@@ -72,35 +98,64 @@ public class TelegramReportService
 
             foreach (var srv in servers)
             {
-                var (html, plain, problem) = BuildServerLines(s, srv);
+                var (html, plain, problem) = BuildServerLines(s, srv, asOf);
                 if (problem) { problems++; clientProblems++; }
                 clientPlain.AppendLine(plain);
                 clientHtml.Append('\n').Append(html);
                 globalPlain.AppendLine($"[{client.Name}] {plain}");
             }
 
-            // Одно сообщение на клиента (заголовок + все серверы), а не по сообщению на сервер.
-            // Telegram ограничивает бота ~20 сообщениями в минуту в группу: при сотне клиентов
-            // и сотнях серверов отчёт упирался в лимит и доходил лишь первыми сообщениями.
+            planned.Add(new ClientReport(client, clientHtml.ToString(), clientPlain.ToString(), clientProblems));
+        }
+
+        _logs.Info(LogArea.Notify, "Начата рассылка отчёта по архивации", null, null,
+            $"Клиентов: {planned.Count}. Сообщения идут с паузой (лимит Telegram ~20 в минуту), рассылка займёт около "
+            + $"{Math.Max(1, planned.Count * 4 / 60)} мин.");
+
+        // --- Фаза 2: отправка. Здесь уже идут паузы, но тексты зафиксированы и не «стареют».
+        foreach (var item in planned)
+        {
+            var client = item.Client;
+
+            // Одно сообщение на клиента (заголовок + все серверы), а не по сообщению на сервер:
+            // Telegram ограничивает бота ~20 сообщениями в минуту в группу.
             if (groupEnabled)
             {
-                foreach (var chunk in SplitForTelegram(clientHtml.ToString()))
+                var topic = await EnsureTopicAsync(s, client);
+                foreach (var chunk in SplitForTelegram(item.Html))
                 {
-                    var (okSent, _) = await _tg.SendMessageAsync(s, s.TelegramChatId!, chunk, topic, disablePreview: true);
-                    if (okSent) sent++; else failed++;
+                    var (okSent, err) = await _tg.SendMessageAsync(s, s.TelegramChatId!, chunk, topic, disablePreview: true);
+
+                    // Тему клиента могли удалить в Telegram — тогда заводим её заново и повторяем.
+                    if (!okSent && TelegramService.IsTopicGone(err) && client.TelegramTopicId is not null)
+                    {
+                        _logs.Warn(LogArea.Notify, "Тема клиента в Telegram недоступна — создаём заново", null, null,
+                            $"{client.Name}: {err}");
+                        client.TelegramTopicId = null;
+                        await _db.SaveChangesAsync();
+                        topic = await EnsureTopicAsync(s, client);
+                        (okSent, err) = await _tg.SendMessageAsync(s, s.TelegramChatId!, chunk, topic, disablePreview: true);
+                    }
+
+                    if (okSent) sent++;
+                    else
+                    {
+                        failed++;
+                        failedClients.Add($"{client.Name}: {err ?? "причина неизвестна"}");
+                    }
                 }
             }
 
             // Дубль отчёта на почту клиента.
             if (!string.IsNullOrWhiteSpace(client.ReportEmail))
             {
-                var subj = $"YPMon: архивация {client.Name} за {date}" + (clientProblems > 0 ? $" — проблемы ({clientProblems})" : " — успешно");
-                if (await _alerts.SendEmailToAsync(s, client.ReportEmail, subj, clientPlain.ToString())) emails++;
+                var subj = $"YPMon: архивация {client.Name} за {date}" + (item.Problems > 0 ? $" — проблемы ({item.Problems})" : " — успешно");
+                if (await _alerts.SendEmailToAsync(s, client.ReportEmail, subj, item.Plain)) emails++;
             }
             // Личные сообщения клиенту от бота.
             if (botReady && !string.IsNullOrWhiteSpace(client.ReportTelegramChatId))
             {
-                var (okDm, _) = await _tg.SendMessageAsync(s, client.ReportTelegramChatId!, clientHtml.ToString(), null, disablePreview: true);
+                var (okDm, _) = await _tg.SendMessageAsync(s, client.ReportTelegramChatId!, item.Html, null, disablePreview: true);
                 if (okDm) dms++;
             }
         }
@@ -118,7 +173,7 @@ public class TelegramReportService
         // Явная запись в журнал сервера — чтобы было видно в интерфейсе, а не только в docker logs.
         if (failed > 0)
             _logs.Warn(LogArea.Notify, "Отчёт по архивации доставлен не полностью", null, null,
-                $"{summary}\nЧасть сообщений не ушла — обычно это лимит частоты Telegram. Проверьте раздел «Журнал сервера».");
+                $"{summary}\nНе доставлено:\n" + string.Join("\n", failedClients.Take(50)));
         else
             _logs.Info(LogArea.Notify, "Отчёт по архивации разослан", null, null, summary);
 
@@ -155,10 +210,10 @@ public class TelegramReportService
     }
 
     /// <summary>Строки по серверу: HTML (для Telegram) и plain (для e-mail), + признак проблемы.</summary>
-    private (string html, string plain, bool problem) BuildServerLines(ServerSettings s, MonitoredServer srv)
+    private (string html, string plain, bool problem) BuildServerLines(ServerSettings s, MonitoredServer srv, DateTimeOffset asOf)
     {
         var name = WebUtility.HtmlEncode(srv.Name);
-        var offline = srv.IsOffline(s.OfflineThresholdSeconds);
+        var offline = srv.IsOffline(s.OfflineThresholdSeconds, asOf);
         var ok = !offline && srv.LastOutcome == JobOutcome.Ok && !srv.BackupShrinkActive;
         var link = BuildLink(s, srv);
 
@@ -179,7 +234,7 @@ public class TelegramReportService
         }
 
         var details = offline
-            ? $"агент офлайн (последний отчёт: {UiHelpers.Ago(srv.LastSeenAt)})"
+            ? $"агент офлайн (последний отчёт: {UiHelpers.Ago(srv.LastSeenAt, asOf)})"
             : srv.BackupShrinkActive
                 ? $"новый файл бэкапа резко меньше предыдущего{(string.IsNullOrWhiteSpace(srv.BackupShrinkFolder) ? "" : $" (папка «{srv.BackupShrinkFolder}»)")} " +
                   $"({UiHelpers.Bytes(srv.BackupShrinkFromBytes)} → {UiHelpers.Bytes(srv.BackupShrinkToBytes)}) — проверьте"
