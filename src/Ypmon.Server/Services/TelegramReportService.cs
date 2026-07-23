@@ -13,11 +13,13 @@ public class TelegramReportService
     private readonly AppDbContext _db;
     private readonly TelegramService _tg;
     private readonly AlertService _alerts;
+    private readonly ServerLogService _logs;
     private readonly ILogger<TelegramReportService> _log;
 
-    public TelegramReportService(AppDbContext db, TelegramService tg, AlertService alerts, ILogger<TelegramReportService> log)
+    public TelegramReportService(AppDbContext db, TelegramService tg, AlertService alerts,
+        ServerLogService logs, ILogger<TelegramReportService> log)
     {
-        _db = db; _tg = tg; _alerts = alerts; _log = log;
+        _db = db; _tg = tg; _alerts = alerts; _logs = logs; _log = log;
     }
 
     /// <summary>Гарантирует, что у клиента есть тема в группе; создаёт при необходимости.</summary>
@@ -50,7 +52,7 @@ public class TelegramReportService
 
         var clients = await _db.Clients.Include(c => c.Servers).OrderBy(c => c.Name).ToListAsync();
         var date = OmskNow().ToString("yyyy-MM-dd");
-        int sent = 0, problems = 0, emails = 0, dms = 0;
+        int sent = 0, problems = 0, emails = 0, dms = 0, failed = 0;
         var globalPlain = new StringBuilder($"Отчёт по архивации за {date}\n");
 
         foreach (var client in clients)
@@ -61,12 +63,9 @@ public class TelegramReportService
             var clientProblems = 0;
 
             long? topic = groupEnabled ? await EnsureTopicAsync(s, client) : null;
-            if (groupEnabled)
-                await _tg.SendMessageAsync(s, s.TelegramChatId!, $"📅 <b>Отчёт по архивации за {date}</b>", topic);
 
             if (servers.Count == 0)
             {
-                if (groupEnabled) await _tg.SendMessageAsync(s, s.TelegramChatId!, "У клиента нет серверов.", topic);
                 clientPlain.AppendLine("У клиента нет серверов.");
                 clientHtml.Append("\nУ клиента нет серверов.");
             }
@@ -78,10 +77,17 @@ public class TelegramReportService
                 clientPlain.AppendLine(plain);
                 clientHtml.Append('\n').Append(html);
                 globalPlain.AppendLine($"[{client.Name}] {plain}");
-                if (groupEnabled)
+            }
+
+            // Одно сообщение на клиента (заголовок + все серверы), а не по сообщению на сервер.
+            // Telegram ограничивает бота ~20 сообщениями в минуту в группу: при сотне клиентов
+            // и сотнях серверов отчёт упирался в лимит и доходил лишь первыми сообщениями.
+            if (groupEnabled)
+            {
+                foreach (var chunk in SplitForTelegram(clientHtml.ToString()))
                 {
-                    var (okSent, _) = await _tg.SendMessageAsync(s, s.TelegramChatId!, html, topic, disablePreview: true);
-                    if (okSent) sent++;
+                    var (okSent, _) = await _tg.SendMessageAsync(s, s.TelegramChatId!, chunk, topic, disablePreview: true);
+                    if (okSent) sent++; else failed++;
                 }
             }
 
@@ -106,7 +112,46 @@ public class TelegramReportService
             if (await _alerts.SendEmailToAsync(s, s.ArchiveReportEmailTo, subj, globalPlain.ToString())) emails++;
         }
 
-        return $"Отчёт отправлен: сообщений {sent}, писем {emails}, личных {dms}, с проблемами {problems}.";
+        var summary = $"Отчёт отправлен: сообщений {sent}, писем {emails}, личных {dms}, с проблемами {problems}"
+                    + (failed > 0 ? $", НЕ доставлено {failed}" : "") + ".";
+
+        // Явная запись в журнал сервера — чтобы было видно в интерфейсе, а не только в docker logs.
+        if (failed > 0)
+            _logs.Warn(LogArea.Notify, "Отчёт по архивации доставлен не полностью", null, null,
+                $"{summary}\nЧасть сообщений не ушла — обычно это лимит частоты Telegram. Проверьте раздел «Журнал сервера».");
+        else
+            _logs.Info(LogArea.Notify, "Отчёт по архивации разослан", null, null, summary);
+
+        return summary;
+    }
+
+    /// <summary>
+    /// Режет сообщение по строкам на куски под лимит Telegram (4096 символов, берём с запасом).
+    /// Разрыв только по границе строк, чтобы не порвать HTML-разметку внутри строки.
+    /// </summary>
+    private static List<string> SplitForTelegram(string text, int max = 3500)
+    {
+        var parts = new List<string>();
+        var sb = new StringBuilder();
+        foreach (var line in text.Split('\n'))
+        {
+            // Одна строка длиннее лимита — отправим как есть отдельным куском (редкий случай).
+            if (line.Length >= max)
+            {
+                if (sb.Length > 0) { parts.Add(sb.ToString()); sb.Clear(); }
+                parts.Add(line[..Math.Min(line.Length, max)]);
+                continue;
+            }
+            if (sb.Length + line.Length + 1 > max)
+            {
+                parts.Add(sb.ToString());
+                sb.Clear();
+            }
+            if (sb.Length > 0) sb.Append('\n');
+            sb.Append(line);
+        }
+        if (sb.Length > 0) parts.Add(sb.ToString());
+        return parts.Count == 0 ? new List<string> { text } : parts;
     }
 
     /// <summary>Строки по серверу: HTML (для Telegram) и plain (для e-mail), + признак проблемы.</summary>

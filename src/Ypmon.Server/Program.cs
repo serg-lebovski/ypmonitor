@@ -476,6 +476,54 @@ app.MapGet("/api/agent/download", async (HttpContext ctx, AppDbContext db) =>
     return Results.File(agentInstaller, "application/octet-stream", "YpmonAgent-Setup.exe");
 });
 
+// Быстрый поиск сервера для строки поиска в шапке. Путь НЕ под /api — иначе он попал бы
+// в агентский контур (порт отчётов, без фильтра по IP). Здесь нужен обычный вход в интерфейс.
+app.MapGet("/search/servers", async (string? q, AppDbContext db) =>
+{
+    var term = (q ?? "").Trim();
+    if (term.Length < 1) return Results.Json(Array.Empty<object>());
+
+    var settings = await db.Settings.FirstOrDefaultAsync();
+    var threshold = settings?.OfflineThresholdSeconds ?? 300;
+
+    // Фильтруем в памяти, а не через LIKE: в SQL он регистрозависим для кириллицы
+    // (и в sqlite, и в postgres), из-за чего «серв» не находил бы «Сервер».
+    // Серверов сотни — выборка дешёвая.
+    bool Match(string? v) => v is not null && v.Contains(term, StringComparison.OrdinalIgnoreCase);
+    var servers = (await db.Servers.Include(s => s.Client).ToListAsync())
+        .Where(s => Match(s.Name) || Match(s.LastMachineName) || Match(s.IpAddress) || Match(s.Client?.Name))
+        .OrderBy(s => s.Name).Take(15).ToList();
+
+    var items = servers.Select(s =>
+    {
+        var offline = s.IsOffline(threshold);
+        // Статус тот же, что на дашборде: офлайн → проблема усадки → итог последнего отчёта.
+        var status = offline ? "offline"
+                   : s.BackupShrinkActive ? "problem"
+                   : s.LastOutcome switch
+                     {
+                         JobOutcome.Ok => "ok",
+                         JobOutcome.Warning => "problem",
+                         JobOutcome.Error => "problem",
+                         _ => "unknown"
+                     };
+        var label = offline ? "Офлайн"
+                  : s.BackupShrinkActive ? "Объём упал"
+                  : UiHelpers.OutcomeText(s.LastOutcome);
+        return new
+        {
+            id = s.Id,
+            name = s.Name,
+            client = s.Client?.Name ?? "",
+            machine = s.LastMachineName ?? "",
+            ip = s.IpAddress ?? "",
+            status,
+            label
+        };
+    });
+    return Results.Json(items);
+}).RequireAuthorization();
+
 // Скачивание установщика из веб-интерфейса (для авторизованного администратора, без API-ключа).
 app.MapGet("/agent-installer", (HttpContext ctx) =>
 {

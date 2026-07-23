@@ -20,12 +20,13 @@ public class SettingsModel : PageModel
     private readonly WireGuardProxyService _wg;
     private readonly AuditService _audit;
     private readonly BackupService _backup;
+    private readonly IServiceScopeFactory _scopes;
     public SettingsModel(AppDbContext db, IConfiguration cfg, AlertService alerts, IWebHostEnvironment env,
         ServerUpdateService upd, TelegramService tg, TelegramReportService report, WireGuardProxyService wg, AuditService audit,
-        BackupService backup)
+        BackupService backup, IServiceScopeFactory scopes)
     {
         _db = db; _cfg = cfg; _alerts = alerts; _env = env; _upd = upd; _tg = tg; _report = report; _wg = wg; _audit = audit;
-        _backup = backup;
+        _backup = backup; _scopes = scopes;
     }
 
     public bool WireGuardRunning { get; set; }
@@ -317,9 +318,25 @@ public class SettingsModel : PageModel
     public async Task<IActionResult> OnPostSendReportNowAsync()
     {
         if (!IsAdmin) return Forbid();
-        Message = await _report.SendReportAsync();
+
+        // Рассылка идёт в фоне: Telegram ограничивает бота ~20 сообщениями в минуту, поэтому
+        // отчёт по сотне клиентов занимает минуты — синхронно страница отвалилась бы по таймауту.
+        _ = Task.Run(async () =>
+        {
+            using var scope = _scopes.CreateScope();
+            var report = scope.ServiceProvider.GetRequiredService<TelegramReportService>();
+            try { await report.SendReportAsync(); }
+            catch (Exception ex)
+            {
+                scope.ServiceProvider.GetRequiredService<ServerLogService>()
+                     .Error(LogArea.Notify, "Ручная рассылка отчёта завершилась ошибкой", null, null, ex.ToString());
+            }
+        });
+
         await _audit.LogAsync(User, "Ручная рассылка отчёта об архивации");
         await Load();
+        Message = "Рассылка запущена в фоне. Из-за ограничений Telegram она занимает несколько минут; " +
+                  "результат появится в разделе «Журнал сервера».";
         return Page();
     }
 

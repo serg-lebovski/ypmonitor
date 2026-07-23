@@ -277,3 +277,50 @@ label { color: var(--muted); font-size: 13px; margin-bottom: 4px; }
 .cell { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; flex: 1 1 130px; }
 .cell-l { color: var(--muted); font-size: 12px; margin-bottom: 2px; }
 .cell-v { font-size: 14px; }
+
+/* ===== Постоянная строка поиска сервера в шапке ===== */
+.topbar {
+    position: sticky; top: 0; z-index: 40;
+    padding: 10px 16px;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+}
+.gsearch { position: relative; max-width: 620px; }
+.gsearch input {
+    width: 100%; padding: 9px 12px;
+    background: var(--card); color: var(--text);
+    border: 1px solid var(--border); border-radius: 10px; outline: none;
+}
+.gsearch input:focus { border-color: var(--accent); }
+.gsearch input::placeholder { color: var(--muted); }
+
+.gsearch-drop {
+    position: absolute; left: 0; right: 0; top: calc(100% + 6px);
+    background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+    max-height: 380px; overflow-y: auto; z-index: 50;
+    box-shadow: 0 10px 28px rgba(0,0,0,.45);
+}
+.gs-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 12px; cursor: pointer;
+    border-bottom: 1px solid var(--border);
+}
+.gs-item:last-child { border-bottom: none; }
+.gs-item:hover, .gs-active { background: var(--card-2); }
+.gs-empty { padding: 10px 12px; color: var(--muted); font-size: 13px; }
+
+.gs-text { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.gs-name { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gs-sub { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Индикатор состояния: кружок + подпись словом (не только цветом) */
+.gs-dot { width: 10px; height: 10px; border-radius: 50%; flex: 0 0 10px; }
+.gs-badge { font-size: 12px; white-space: nowrap; padding: 2px 8px; border-radius: 999px; }
+.gs-dot.gs-ok { background: var(--ok); }
+.gs-dot.gs-problem { background: var(--err); }
+.gs-dot.gs-offline { background: var(--muted); }
+.gs-dot.gs-unknown { background: var(--warn); }
+.gs-badge.gs-ok { background: rgba(40,199,111,.15); color: var(--ok); }
+.gs-badge.gs-problem { background: rgba(234,84,85,.15); color: var(--err); }
+.gs-badge.gs-offline { background: rgba(138,152,176,.15); color: var(--muted); }
+.gs-badge.gs-unknown { background: rgba(255,159,67,.15); color: var(--warn); }
