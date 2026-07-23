@@ -56,15 +56,25 @@ public class DailyReportScheduler : BackgroundService
 
         var omsk = TelegramReportService.OmskNow();
         var today = DateOnly.FromDateTime(omsk);
+        var todayKey = today.ToString("yyyy-MM-dd");
         var hour = Math.Clamp(s.DailyReportHourOmsk, 0, 23);
 
-        // Отправляем только в течение заданного часа (иначе рестарт после 10:00 слал бы повтор).
-        if (omsk.Hour == hour && _lastSentOmsk < today)
+        if (omsk.Hour != hour || _lastSentOmsk >= today) return;
+
+        // Отметка о рассылке хранится в БД: раньше она жила только в памяти, и обновление
+        // сервера внутри часа отчёта (например, кнопкой в 10:35) рассылало отчёт заново — всем.
+        if (s.LastDailyReportDate == todayKey)
         {
             _lastSentOmsk = today;
-            var report = scope.ServiceProvider.GetRequiredService<TelegramReportService>();
-            var result = await report.SendReportAsync();
-            _log.LogInformation("Ежедневный отчёт Telegram: {Result}", result);
+            return;
         }
+
+        _lastSentOmsk = today;
+        s.LastDailyReportDate = todayKey;
+        await db.SaveChangesAsync();   // помечаем ДО отправки: рестарт в середине не должен давать повтор
+
+        var report = scope.ServiceProvider.GetRequiredService<TelegramReportService>();
+        var result = await report.SendReportAsync();
+        _log.LogInformation("Ежедневный отчёт Telegram: {Result}", result);
     }
 }

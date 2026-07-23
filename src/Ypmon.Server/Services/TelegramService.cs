@@ -67,26 +67,50 @@ public class TelegramService
         // Темп выдерживаем только для отправки сообщений — служебные вызовы не ограничиваем.
         var isSend = method is "sendMessage" or "createForumTopic";
 
-        for (var attempt = 1; attempt <= 4; attempt++)
+        const int attempts = 4;
+        string? lastError = null;
+
+        for (var attempt = 1; attempt <= attempts; attempt++)
         {
             if (isSend) await PaceAsync();
 
-            var (result, retryAfter, error) = await CallOnceAsync(s, method, args);
-            if (retryAfter is null) return (result, error);   // успех или ошибка, которую повтор не исправит
+            var (result, retryAfter, error, transient) = await CallOnceAsync(s, method, args);
+            if (result is not null) return (result, null);
+            lastError = error;
 
-            // 429: Telegram сам говорит, сколько ждать. Ждём и повторяем — иначе сообщение теряется.
-            var delay = TimeSpan.FromSeconds(Math.Clamp(retryAfter.Value, 1, 120));
-            _log.LogWarning("Telegram {Method}: лимит частоты, повтор через {Sec} с (попытка {Attempt}/4)",
-                method, delay.TotalSeconds, attempt);
-            await Task.Delay(delay);
+            if (retryAfter is { } ra)
+            {
+                // 429: Telegram сам говорит, сколько ждать. Ждём и повторяем — иначе сообщение теряется.
+                var delay = TimeSpan.FromSeconds(Math.Clamp(ra, 1, 120));
+                _log.LogWarning("Telegram {Method}: лимит частоты, повтор через {Sec} с (попытка {Attempt}/{Total})",
+                    method, delay.TotalSeconds, attempt, attempts);
+                await Task.Delay(delay);
+                continue;
+            }
+
+            // Сбой сети/таймаут туннеля до Telegram. Раньше такое сообщение молча терялось —
+            // именно так пропадали отчёты по отдельным клиентам. Повторяем с нарастающей паузой.
+            if (transient && attempt < attempts)
+            {
+                var delay = TimeSpan.FromSeconds(5 * attempt);
+                _log.LogWarning("Telegram {Method}: сбой связи ({Error}), повтор через {Sec} с (попытка {Attempt}/{Total})",
+                    method, error, delay.TotalSeconds, attempt, attempts);
+                await Task.Delay(delay);
+                continue;
+            }
+
+            return (null, error);   // ошибка, которую повтор не исправит
         }
 
-        _log.LogWarning("Telegram {Method}: не отправлено — лимит частоты не снялся за 4 попытки", method);
-        return (null, "лимит частоты Telegram не снялся за 4 попытки");
+        _log.LogWarning("Telegram {Method}: не отправлено за {Total} попыток — {Error}", method, attempts, lastError);
+        return (null, lastError ?? $"не отправлено за {attempts} попыток");
     }
 
-    /// <summary>Один вызов API. Возвращает результат, паузу при 429 и текст ошибки, если она была.</summary>
-    private async Task<(JsonElement? result, int? retryAfter, string? error)> CallOnceAsync(
+    /// <summary>
+    /// Один вызов API. Возвращает результат, паузу при 429, текст ошибки и признак того,
+    /// что сбой временный (сеть/таймаут) — такой имеет смысл повторить.
+    /// </summary>
+    private async Task<(JsonElement? result, int? retryAfter, string? error, bool transient)> CallOnceAsync(
         ServerSettings s, string method, Dictionary<string, string> args)
     {
         using var http = CreateClient(s);
@@ -106,21 +130,36 @@ public class TelegramService
                     if (root.TryGetProperty("parameters", out var p) &&
                         p.TryGetProperty("retry_after", out var ra) && ra.TryGetInt32(out var rav))
                         after = rav;
-                    return (null, after, null);
+                    return (null, after, null, false);
                 }
                 var desc = (root.TryGetProperty("description", out var d) ? d.GetString() : null) ?? json;
                 _log.LogWarning("Telegram {Method}: {Desc}", method, desc);
-                return (null, null, desc);
+                // 5xx на стороне Telegram лечится повтором, ошибки запроса (400/403) — нет.
+                var serverSide = root.TryGetProperty("error_code", out var ec2) && ec2.TryGetInt32(out var c2) && c2 >= 500;
+                return (null, null, desc, serverSide);
             }
             // Клонируем результат, т.к. doc будет освобождён.
-            return (root.TryGetProperty("result", out var result) ? result.Clone() : (JsonElement?)null, null, null);
+            return (root.TryGetProperty("result", out var result) ? result.Clone() : (JsonElement?)null, null, null, false);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or TimeoutException or IOException)
+        {
+            // Туннель до Telegram может подвисать: HttpClient.Timeout, обрыв соединения, отказ SOCKS.
+            _log.LogWarning("Telegram {Method} — сбой связи: {Error}", method, Short(ex));
+            return (null, null, Short(ex), true);
         }
         catch (Exception ex)
         {
             _log.LogWarning(ex, "Telegram {Method} — ошибка вызова", method);
-            return (null, null, ex.Message);
+            return (null, null, ex.Message, false);
         }
     }
+
+    /// <summary>Короткое описание сбоя для журнала — без многоэтажного стека вложенных исключений.</summary>
+    private static string Short(Exception ex) => ex switch
+    {
+        TaskCanceledException or TimeoutException => "таймаут соединения с Telegram",
+        _ => ex.Message.Length > 160 ? ex.Message[..160] : ex.Message,
+    };
 
     public async Task<(bool ok, string? error)> SendMessageAsync(ServerSettings s, string chatId, string text,
         long? threadId = null, bool disablePreview = false)

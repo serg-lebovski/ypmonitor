@@ -364,6 +364,12 @@ public class ServerSettings
     /// <summary>Час ежедневного отчёта по омскому времени (UTC+6). По умолчанию 10.</summary>
     public int DailyReportHourOmsk { get; set; } = 10;
 
+    /// <summary>
+    /// Дата (по Омску, «гггг-мм-дд») последней автоматической рассылки. Хранится в БД, а не в памяти:
+    /// перезапуск сервера в час отчёта иначе рассылал его всем клиентам повторно.
+    /// </summary>
+    public string? LastDailyReportDate { get; set; }
+
     // --- WireGuard для доступа бота к Telegram (userspace wireproxy → SOCKS5) ---
     public bool WireGuardEnabled { get; set; }
 
