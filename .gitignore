@@ -35,3 +35,6 @@ installers/**/*.exe
 # Локальные данные разработки (ключи DataProtection, sqlite-база)
 src/Ypmon.Server/Data/keys/
 src/Ypmon.Server/data/
+
+# Заметки для Claude Code — только локально, не в общий репозиторий
+CLAUDE.md
