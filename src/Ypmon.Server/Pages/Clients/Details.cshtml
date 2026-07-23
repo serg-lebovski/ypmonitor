@@ -134,6 +134,30 @@
     @if (canEdit)
     {
         <div class="panel">
+            <details class="card-y acc" open>
+                <summary>📄 Отчёт для клиента</summary>
+                <div class="acc-body">
+                    <div class="muted mb-2" style="font-size:12px">
+                        PDF по всем серверам клиента: состояние архивации, место на дисках,
+                        наработка накопителей и перезагрузки за период.
+                    </div>
+                    <form method="post" asp-page-handler="Report" asp-route-id="@Model.Id">
+                        <div class="mb-2">
+                            <select class="form-select" name="period">
+                                <option value="30d">За последние 30 дней</option>
+                                <option value="this-month">За текущий месяц</option>
+                                <option value="prev-month">За прошлый месяц</option>
+                            </select>
+                        </div>
+                        <button class="btn btn-primary w-100" type="submit">Получить отчёт (PDF)</button>
+                    </form>
+                    <div class="muted mt-2" style="font-size:12px">
+                        Наработка накопителей и история перезагрузок приходят от агента 2.8 и выше —
+                        на серверах со старым агентом эти разделы будут пустыми, пока он не обновится.
+                    </div>
+                </div>
+            </details>
+
             <details class="card-y acc">
                 <summary>✏️ Изменить клиента</summary>
                 <div class="acc-body">

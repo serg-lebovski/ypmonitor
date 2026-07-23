@@ -68,6 +68,11 @@ public class MaintenanceService : BackgroundService
                 @"DELETE FROM ""Reports"" WHERE ""ReceivedAt"" < {0}", new object[] { cutoff }, ct);
             await db.Database.ExecuteSqlRawAsync(
                 @"DELETE FROM ""Events"" WHERE ""ReceivedAt"" < {0}", new object[] { cutoff }, ct);
+            // История перезагрузок нужна для отчётов клиенту — держим её дольше обычной истории,
+            // но не вечно, иначе таблица растёт без конца.
+            var rebootCutoff = DateTimeOffset.UtcNow.AddDays(-Math.Max(400, settings.ReportRetentionDays));
+            await db.Database.ExecuteSqlRawAsync(
+                @"DELETE FROM ""Reboots"" WHERE ""At"" < {0}", new object[] { rebootCutoff }, ct);
         }
     }
 }

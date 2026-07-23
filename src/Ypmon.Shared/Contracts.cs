@@ -77,6 +77,31 @@ public class PhysicalDiskDto
 
     /// <summary>Объём накопителя, байт.</summary>
     public long SizeBytes { get; set; }
+
+    // --- Наработка и износ (агент 2.8+). Нужны для отчёта клиенту: «диску 6 лет, планируйте замену».
+    //     Любое поле может быть null: на виртуальных дисках и части контроллеров данных нет.
+
+    /// <summary>Наработка, часов включённого состояния (SMART / счётчик надёжности).</summary>
+    public int? PowerOnHours { get; set; }
+
+    /// <summary>Износ SSD, % израсходованного ресурса (0 — новый, 100 — ресурс выработан).</summary>
+    public int? WearPercent { get; set; }
+
+    /// <summary>Переназначенные сектора (атрибут SMART 05) — растущее значение означает деградацию.</summary>
+    public int? ReallocatedSectors { get; set; }
+}
+
+/// <summary>Загрузка или выключение машины (журнал System). Агент 2.8+.</summary>
+public class RebootEventDto
+{
+    /// <summary>Когда произошло (UTC).</summary>
+    public DateTimeOffset At { get; set; }
+
+    /// <summary>Startup — включение, Shutdown — штатное выключение, Unexpected — аварийное, Initiated — перезагрузка по команде.</summary>
+    public string Kind { get; set; } = "";
+
+    /// <summary>Кто инициировал и по какой причине (событие 1074), если известно.</summary>
+    public string? Reason { get; set; }
 }
 
 /// <summary>Ошибка/предупреждение из журнала событий Windows.</summary>
@@ -142,6 +167,18 @@ public class AgentReportDto
     /// дошла и исполнена, и перестаёт её выдавать. 0 — агент команд не выполнял (или он старой версии).
     /// </summary>
     public long LastCommandId { get; set; }
+
+    /// <summary>
+    /// Время последней загрузки машины (UTC). По нему считается аптайм в отчёте клиенту.
+    /// null — агент старой версии или данные недоступны.
+    /// </summary>
+    public DateTimeOffset? LastBootAt { get; set; }
+
+    /// <summary>
+    /// Загрузки/выключения за последние недели (журнал System). Присылается в полном отчёте,
+    /// сервер накапливает историю и сам отбрасывает уже известные записи.
+    /// </summary>
+    public List<RebootEventDto> Reboots { get; set; } = new();
 }
 
 /// <summary>

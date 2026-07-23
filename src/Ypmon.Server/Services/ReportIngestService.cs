@@ -23,6 +23,50 @@ public class ReportIngestService
     }
 
     /// <summary>
+    /// История перезагрузок. Агент каждый полный отчёт присылает окно за последние недели —
+    /// добавляем только те записи, которых ещё нет. Совпадением считаем событие того же вида
+    /// в пределах минуты: часы машины и сервера могут расходиться на секунды.
+    /// </summary>
+    private async Task SaveRebootsAsync(MonitoredServer server, List<RebootEventDto> reboots)
+    {
+        if (reboots.Count == 0) return;
+
+        // Сравнение дат делаем в памяти: sqlite не транслирует DateTimeOffset в SQL.
+        // Агент присылает окно за 45 дней, поэтому хватает свежего среза записей.
+        var oldest = reboots.Min(r => r.At).AddMinutes(-5);
+        var known = (await _db.Reboots
+                .Where(r => r.ServerId == server.Id)
+                .OrderByDescending(r => r.Id)
+                .Take(500)
+                .ToListAsync())
+            .Where(r => r.At >= oldest)
+            .ToList();
+
+        var added = 0;
+        foreach (var r in reboots.OrderBy(r => r.At))
+        {
+            if (r.At == default) continue;
+            var dup = known.Any(k => k.Kind == r.Kind && Math.Abs((k.At - r.At).TotalSeconds) < 60);
+            if (dup) continue;
+
+            var entity = new RebootEvent
+            {
+                ServerId = server.Id,
+                At = r.At,
+                Kind = string.IsNullOrWhiteSpace(r.Kind) ? "Startup" : r.Kind,
+                Reason = string.IsNullOrWhiteSpace(r.Reason) ? null : r.Reason
+            };
+            _db.Reboots.Add(entity);
+            known.Add(entity);
+            added++;
+        }
+
+        if (added > 0)
+            _logs.Info(LogArea.Reports, "Получена история перезагрузок", server.Name, null,
+                $"Новых записей: {added}.");
+    }
+
+    /// <summary>
     /// Перегрев процессора. Проверяем прямо при приёме отчёта, а не в фоновом мониторе:
     /// агент при перегреве шлёт отчёт вне расписания, и тревога должна уйти сразу.
     /// Уведомляем по переходам (с гистерезисом 5 °C), чтобы не спамить каждым отчётом.
@@ -88,6 +132,7 @@ public class ReportIngestService
         {
             server.LastSeenAt = DateTimeOffset.UtcNow;
             server.LastReportedAt = report.ReportedAt;
+            if (report.LastBootAt is { } hbBoot) server.LastBootAt = hbBoot;
             if (report.Disks.Count > 0)
                 server.LastDisksJson = JsonSerializer.Serialize(report.Disks);
             // Температура приходит и в heartbeat — перегрев ловим раз в минуту, а не раз в 6 часов.
@@ -151,6 +196,8 @@ public class ReportIngestService
             server.LastDisksJson = JsonSerializer.Serialize(report.Disks);
         if (report.PhysicalDisks.Count > 0)
             server.LastPhysicalDisksJson = JsonSerializer.Serialize(report.PhysicalDisks);
+        if (report.LastBootAt is { } boot) server.LastBootAt = boot;
+        await SaveRebootsAsync(server, report.Reboots);
         await CheckCpuTemperatureAsync(server, settings, report);
         _commands.MarkExecuted(server, report.LastCommandId);
         _commands.MarkReportReceived(server);   // полный отчёт получен — запрос закрыт

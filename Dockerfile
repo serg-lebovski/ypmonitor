@@ -18,7 +18,10 @@ WORKDIR /app
 # curl нужен для healthcheck; wireproxy — userspace-WireGuard для доступа бота к Telegram;
 # postgresql-client-16 (из репозитория PGDG) даёт pg_dump для резервных копий БД.
 # Клиент должен быть не старше сервера (postgres:16), поэтому берём именно 16-ю версию.
+# libfontconfig1 + шрифт DejaVu нужны генератору PDF (QuestPDF/SkiaSharp): без шрифта
+# с кириллицей отчёт для клиента выйдет пустыми квадратами.
 RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates gnupg \
+       libfontconfig1 fonts-dejavu-core \
     && ( curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
            | gpg --dearmor -o /usr/share/keyrings/pgdg.gpg \
          && echo "deb [signed-by=/usr/share/keyrings/pgdg.gpg] http://apt.postgresql.org/pub/repos/apt bookworm-pgdg main" \

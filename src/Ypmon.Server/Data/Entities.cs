@@ -157,6 +157,9 @@ public class MonitoredServer
     /// <summary>Последняя температура процессора, °C (от агента). null — датчик недоступен или агент старый.</summary>
     public double? LastCpuTemperatureC { get; set; }
 
+    /// <summary>Время последней загрузки машины (от агента 2.8+). По нему считается аптайм в отчёте.</summary>
+    public DateTimeOffset? LastBootAt { get; set; }
+
     /// <summary>Активна тревога «перегрев процессора» — чтобы уведомлять по переходам, а не каждый отчёт.</summary>
     public bool AlertCpuOverheatActive { get; set; }
 
@@ -321,6 +324,26 @@ public class ServerLog
 
     /// <summary>Подробности: текст исключения, детали запроса.</summary>
     public string? Details { get; set; }
+}
+
+/// <summary>
+/// Загрузка/выключение машины клиента. Накапливается из полных отчётов агента 2.8+:
+/// агент присылает окно за последние недели, сервер добавляет только новые записи.
+/// Нужна для отчёта клиенту: сколько раз сервер перезагружался и были ли аварийные выключения.
+/// </summary>
+public class RebootEvent
+{
+    public long Id { get; set; }
+    public int ServerId { get; set; }
+    public MonitoredServer? Server { get; set; }
+
+    public DateTimeOffset At { get; set; }
+
+    /// <summary>Startup / Shutdown / Unexpected / Initiated.</summary>
+    public string Kind { get; set; } = "";
+
+    /// <summary>Кто инициировал и почему (если Windows сообщила).</summary>
+    public string? Reason { get; set; }
 }
 
 /// <summary>Глобальные настройки сервера (одна запись, key/value-подход не нужен).</summary>

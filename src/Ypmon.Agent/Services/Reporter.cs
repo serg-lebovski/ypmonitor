@@ -124,13 +124,22 @@ public class Reporter : BackgroundService
             HeartbeatIntervalSeconds = Math.Max(15, cfg.HeartbeatIntervalSeconds),
             ReportIntervalSeconds = Math.Max(60, cfg.ReportIntervalSeconds),
             // Номер последней выполненной команды — по нему сервер снимает её с очереди.
-            LastCommandId = RemoteCommandHandler.LastExecutedId
+            LastCommandId = RemoteCommandHandler.LastExecutedId,
+            // Аптайм — дёшево, шлём всегда; история перезагрузок — только в полном отчёте.
+            LastBootAt = CollectLastBoot(),
+            Reboots = heartbeat ? new() : CollectReboots()
         };
     }
 
     /// <summary>Здоровье физических накопителей (SMART) — только на Windows, best-effort.</summary>
     private static List<PhysicalDiskDto> CollectPhysicalDisks()
         => OperatingSystem.IsWindows() ? PhysicalDiskCollector.Collect() : new();
+
+    private static DateTimeOffset? CollectLastBoot()
+        => OperatingSystem.IsWindows() ? RebootHistoryCollector.LastBootAt() : null;
+
+    private static List<RebootEventDto> CollectReboots()
+        => OperatingSystem.IsWindows() ? RebootHistoryCollector.Collect() : new();
 
     /// <summary>Локальные (несъёмные) диски: буква, метка, объём, свободно.</summary>
     public static List<DiskStatusDto> CollectDisks()

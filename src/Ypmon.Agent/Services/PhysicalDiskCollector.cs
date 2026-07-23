@@ -20,8 +20,10 @@ public static class PhysicalDiskCollector
             var scope = new ManagementScope(@"\\.\root\Microsoft\Windows\Storage");
             scope.Connect();
 
-            // Температуры — из счётчиков надёжности (по возможности), сопоставляем по DeviceId.
-            var temps = CollectTemperatures(scope);
+            // Счётчики надёжности (температура, наработка, износ) — сопоставляем по DeviceId.
+            var counters = CollectCounters(scope);
+            // Переназначенные сектора берём из «сырых» атрибутов SMART: в счётчиках надёжности их нет.
+            var smart = SmartAttributes.Collect();
 
             var q = new ObjectQuery("SELECT DeviceId, FriendlyName, SerialNumber, HealthStatus, Size FROM MSFT_PhysicalDisk");
             using var searcher = new ManagementObjectSearcher(scope, q);
@@ -32,16 +34,23 @@ public static class PhysicalDiskCollector
                 var deviceId = mo["DeviceId"]?.ToString();
                 long size = 0; try { size = Convert.ToInt64(mo["Size"]); } catch { }
 
-                int? temp = null;
-                if (deviceId is not null && temps.TryGetValue(deviceId, out var tv)) temp = tv;
+                DiskCounters? c = null;
+                if (deviceId is not null) counters.TryGetValue(deviceId, out c);
+
+                SmartValues? sm = null;
+                if (deviceId is not null && int.TryParse(deviceId, out var idx)) smart.TryGetValue(idx, out sm);
 
                 list.Add(new PhysicalDiskDto
                 {
                     Name = string.IsNullOrWhiteSpace(name) ? "Накопитель" : name,
                     Serial = string.IsNullOrWhiteSpace(serial) ? null : serial,
                     Health = HealthText(mo["HealthStatus"]),
-                    TemperatureC = temp,
-                    SizeBytes = size
+                    TemperatureC = c?.TemperatureC,
+                    SizeBytes = size,
+                    // Наработка: счётчик надёжности точнее, но есть не везде — тогда берём атрибут SMART 09.
+                    PowerOnHours = c?.PowerOnHours ?? sm?.PowerOnHours,
+                    WearPercent = c?.WearPercent,
+                    ReallocatedSectors = sm?.ReallocatedSectors
                 });
             }
         }
@@ -49,23 +58,28 @@ public static class PhysicalDiskCollector
         return list;
     }
 
-    private static Dictionary<string, int> CollectTemperatures(ManagementScope scope)
+    /// <summary>Показания счётчика надёжности накопителя.</summary>
+    private sealed record DiskCounters(int? TemperatureC, int? PowerOnHours, int? WearPercent);
+
+    private static Dictionary<string, DiskCounters> CollectCounters(ManagementScope scope)
     {
-        var result = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var result = new Dictionary<string, DiskCounters>(StringComparer.OrdinalIgnoreCase);
         try
         {
-            var q = new ObjectQuery("SELECT DeviceId, Temperature FROM MSFT_StorageReliabilityCounter");
+            var q = new ObjectQuery("SELECT DeviceId, Temperature, PowerOnHours, Wear FROM MSFT_StorageReliabilityCounter");
             using var searcher = new ManagementObjectSearcher(scope, q);
             foreach (ManagementObject mo in searcher.Get())
             {
                 var id = mo["DeviceId"]?.ToString();
                 if (id is null) continue;
-                try
-                {
-                    var t = Convert.ToInt32(mo["Temperature"]);
-                    if (t > 0 && t < 200) result[id] = t;   // отсеиваем явный мусор
-                }
-                catch { }
+
+                int? temp = null, poh = null, wear = null;
+                try { var t = Convert.ToInt32(mo["Temperature"]); if (t > 0 && t < 200) temp = t; } catch { }
+                // Наработка бывает заведомо мусорной (0 или абсурдные значения) — 60 лет заведомо больше правды.
+                try { var h = Convert.ToInt32(mo["PowerOnHours"]); if (h > 0 && h < 525_600) poh = h; } catch { }
+                try { var w = Convert.ToInt32(mo["Wear"]); if (w >= 0 && w <= 100) wear = w; } catch { }
+
+                result[id] = new DiskCounters(temp, poh, wear);
             }
         }
         catch { }

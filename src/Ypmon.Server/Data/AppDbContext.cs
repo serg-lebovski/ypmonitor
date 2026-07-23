@@ -14,6 +14,7 @@ public class AppDbContext : DbContext
     public DbSet<ServerSettings> Settings => Set<ServerSettings>();
     public DbSet<AuditEntry> Audit => Set<AuditEntry>();
     public DbSet<ServerLog> Logs => Set<ServerLog>();
+    public DbSet<RebootEvent> Reboots => Set<RebootEvent>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -42,5 +43,12 @@ public class AppDbContext : DbContext
 
         b.Entity<AuditEntry>().HasIndex(a => a.At);
         b.Entity<ServerLog>().HasIndex(l => l.At);
+
+        b.Entity<RebootEvent>()
+            .HasOne(r => r.Server)
+            .WithMany()
+            .HasForeignKey(r => r.ServerId)
+            .OnDelete(DeleteBehavior.Cascade);
+        b.Entity<RebootEvent>().HasIndex(r => new { r.ServerId, r.At });
     }
 }

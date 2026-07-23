@@ -11,7 +11,11 @@ public class DetailsModel : PageModel
     private readonly AppDbContext _db;
     private readonly IWebHostEnvironment _env;
     private readonly AuditService _audit;
-    public DetailsModel(AppDbContext db, IWebHostEnvironment env, AuditService audit) { _db = db; _env = env; _audit = audit; }
+    private readonly ClientReportPdfService _pdf;
+    public DetailsModel(AppDbContext db, IWebHostEnvironment env, AuditService audit, ClientReportPdfService pdf)
+    {
+        _db = db; _env = env; _audit = audit; _pdf = pdf;
+    }
 
     public Client? Client { get; set; }
     public int OfflineThreshold { get; set; } = 300;
@@ -67,6 +71,30 @@ public class DetailsModel : PageModel
             if (System.IO.File.Exists(verFile))
                 AgentInstallerVersion = (await System.IO.File.ReadAllTextAsync(verFile)).Trim();
         }
+    }
+
+    /// <summary>
+    /// Отчёт по обслуживанию для клиента (PDF) — по всем его серверам за выбранный период.
+    /// Отдаём файл сразу на скачивание: хранить его на сервере незачем.
+    /// </summary>
+    public async Task<IActionResult> OnPostReportAsync(string? period)
+    {
+        var omskNow = DateTimeOffset.UtcNow.AddHours(6);
+        // Границы периода считаем по Омску, но храним в UTC — как и всё остальное время в базе.
+        var (from, to) = period switch
+        {
+            "prev-month" => (Month(omskNow.AddMonths(-1)), Month(omskNow).AddSeconds(-1)),
+            "this-month" => (Month(omskNow), omskNow),
+            _ => (omskNow.AddDays(-30), omskNow),
+        };
+
+        var result = await _pdf.BuildAsync(Id, from.AddHours(-6), to.AddHours(-6));
+        if (result is null) return NotFound();
+
+        await _audit.LogAsync(User, "Сформирован отчёт по клиенту", $"клиент #{Id}, период {period ?? "30 дней"}");
+        return File(result.Value.pdf, "application/pdf", result.Value.fileName);
+
+        static DateTimeOffset Month(DateTimeOffset t) => new(t.Year, t.Month, 1, 0, 0, 0, t.Offset);
     }
 
     public async Task<IActionResult> OnPostSaveClientAsync()
