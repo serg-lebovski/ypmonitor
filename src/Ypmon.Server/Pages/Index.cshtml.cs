@@ -98,10 +98,13 @@ public class IndexModel : PageModel
     private async Task BuildArchiveDaysAsync()
     {
         var since = DateTimeOffset.UtcNow.Date.AddDays(-13);   // 14 дней включая сегодня
-        var rows = await _db.Reports
+        // Фильтр по дате — в памяти: sqlite не транслирует сравнение DateTimeOffset в WHERE.
+        // Тянем только два столбца; таблицу ограничивает срок хранения истории.
+        var rows = (await _db.Reports
+                .Select(r => new { r.ReceivedAt, r.Outcome })
+                .ToListAsync())
             .Where(r => r.ReceivedAt >= since)
-            .Select(r => new { r.ReceivedAt, r.Outcome })
-            .ToListAsync();
+            .ToList();
 
         int max = 1;
         for (int i = 0; i < 14; i++)

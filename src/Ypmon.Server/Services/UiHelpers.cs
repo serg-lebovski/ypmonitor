@@ -76,6 +76,26 @@ public static class UiHelpers
     };
 
     /// <summary>
+    /// Единое вычисление статуса сервера для плитки/строки дашборда. Используется и при первичной
+    /// отрисовке, и в realtime-эндпоинте — чтобы страница и живое обновление не расходились.
+    /// status: ok|problem|offline|unknown; cls — класс плитки; ico/word — иконка и подпись.
+    /// </summary>
+    public static (string status, string cls, string ico, string word) TileStatus(MonitoredServer s, int offlineThreshold)
+    {
+        if (s.IsOffline(offlineThreshold))
+            return ("offline", "t-off", "⏸", "Офлайн");
+        if (s.BackupShrinkActive)
+            return ("problem", "t-warn", "⚠", "Объём упал");
+        return s.LastOutcome switch
+        {
+            JobOutcome.Ok => ("ok", "t-ok", "✔", "В норме"),
+            JobOutcome.Warning => ("problem", "t-warn", "⚠", "Предупреждение"),
+            JobOutcome.Error => ("problem", "t-err", "✖", "Ошибка"),
+            _ => ("unknown", "t-unk", "…", "Нет данных")
+        };
+    }
+
+    /// <summary>
     /// Человекочитаемая причина статуса папки для показа в подсказке и текстом.
     /// Пустая строка — если всё в порядке. staleDays — действующий порог устаревания для сервера.
     /// </summary>

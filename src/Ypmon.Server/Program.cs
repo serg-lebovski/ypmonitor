@@ -565,6 +565,54 @@ app.MapGet("/search/servers", async (string? q, AppDbContext db) =>
     return Results.Json(items);
 }).RequireAuthorization();
 
+// Живое состояние дашборда для точечного обновления блоков без перезагрузки страницы.
+// Вне /api (это UI-эндпоинт), под авторизацией. Считает статусы теми же помощниками, что и страница.
+app.MapGet("/dash/state", async (AppDbContext db) =>
+{
+    var settings = await db.Settings.FirstOrDefaultAsync();
+    var threshold = settings?.OfflineThresholdSeconds ?? 300;
+    var now = DateTimeOffset.UtcNow;
+
+    var clients = await db.Clients.Include(c => c.Servers).OrderBy(c => c.Name).ToListAsync();
+    var servers = clients.SelectMany(c => c.Servers).ToList();
+
+    int ok = 0, problem = 0, offline = 0;
+    var srvMap = new Dictionary<string, object>();
+    foreach (var s in servers)
+    {
+        var (status, cls, ico, word) = UiHelpers.TileStatus(s, threshold);
+        if (status == "offline") offline++;
+        else if (status == "ok") ok++;
+        else if (status == "problem") problem++;
+        srvMap[s.Id.ToString()] = new
+        {
+            status, cls, ico, word,
+            ago = UiHelpers.Ago(s.LastSeenAt, now),
+            dot = UiHelpers.DotCss(s.IsOffline(threshold) ? JobOutcome.Unknown : s.LastOutcome),
+            badgeCss = s.IsOffline(threshold) ? "st-offline" : UiHelpers.OutcomeCss(s.LastOutcome),
+            badgeText = s.IsOffline(threshold) ? "Офлайн" : UiHelpers.OutcomeText(s.LastOutcome),
+            shrink = s.BackupShrinkActive,
+            muted = AlertSuppression.MuteReason(s, now) is not null
+        };
+    }
+
+    var clientMap = clients.ToDictionary(c => c.Id.ToString(), c =>
+    {
+        var off = c.Servers.Count(x => x.IsOffline(threshold));
+        var prob = c.Servers.Count(x => !x.IsOffline(threshold) && x.LastOutcome >= JobOutcome.Warning);
+        var shr = c.Servers.Count(x => x.BackupShrinkActive);
+        return (object)new { off, prob, shrink = shr, allOk = off == 0 && prob == 0 && shr == 0 && c.Servers.Count > 0 };
+    });
+
+    return Results.Json(new
+    {
+        at = now.UtcDateTime.AddHours(6).ToString("HH:mm:ss"),
+        counts = new { total = servers.Count, ok, problem, offline },
+        servers = srvMap,
+        clients = clientMap
+    });
+}).RequireAuthorization();
+
 // Скачивание установщика из веб-интерфейса (для авторизованного администратора, без API-ключа).
 app.MapGet("/agent-installer", (HttpContext ctx) =>
 {
