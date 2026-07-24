@@ -178,6 +178,7 @@ using (var scope = app.Services.CreateScope())
                     db.Database.ExecuteSqlRaw("ALTER TABLE \"Servers\" ADD COLUMN IF NOT EXISTS \"AlertSnoozeUntil\" timestamptz;");
                     db.Database.ExecuteSqlRaw("ALTER TABLE \"Servers\" ADD COLUMN IF NOT EXISTS \"AlertSnoozeReason\" text;");
                     db.Database.ExecuteSqlRaw("ALTER TABLE \"Servers\" ADD COLUMN IF NOT EXISTS \"MaintenanceWindowsJson\" text;");
+                    db.Database.ExecuteSqlRaw("ALTER TABLE \"Servers\" ADD COLUMN IF NOT EXISTS \"FolderBackupTypesJson\" text;");
                 }
                 else
                 {
@@ -244,6 +245,7 @@ using (var scope = app.Services.CreateScope())
                     try { db.Database.ExecuteSqlRaw("ALTER TABLE \"Servers\" ADD COLUMN \"AlertSnoozeUntil\" TEXT;"); } catch { }
                     try { db.Database.ExecuteSqlRaw("ALTER TABLE \"Servers\" ADD COLUMN \"AlertSnoozeReason\" TEXT;"); } catch { }
                     try { db.Database.ExecuteSqlRaw("ALTER TABLE \"Servers\" ADD COLUMN \"MaintenanceWindowsJson\" TEXT;"); } catch { }
+                    try { db.Database.ExecuteSqlRaw("ALTER TABLE \"Servers\" ADD COLUMN \"FolderBackupTypesJson\" TEXT;"); } catch { }
                 }
             }
             catch (Exception ex) { logger.LogWarning("Обновление схемы: {Msg}", ex.Message); }

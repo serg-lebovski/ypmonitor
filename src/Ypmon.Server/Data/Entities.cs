@@ -97,6 +97,14 @@ public class MonitoredServer
     /// </summary>
     public string? FolderStaleDaysJson { get; set; }
 
+    /// <summary>
+    /// Тип задания архивации по папкам (JSON {"имя папки": "Full"|"Incremental"|"Differential"}).
+    /// Для инкрементных/дифференциальных папок сервер не тревожит об «усадке» файла: там размеры
+    /// заведомо «двугорбые» (большие полные + мелкие инкременты), сравнение соседних файлов ложно.
+    /// Нет значения → Full (прежнее поведение). Задаётся на сервере, синхронизируется в агент.
+    /// </summary>
+    public string? FolderBackupTypesJson { get; set; }
+
     // --- Команды агенту (см. RemoteCommandService) ---
     // Агент забирает команду сам, отвечая на heartbeat; входящих соединений к нему нет.
 

@@ -527,11 +527,13 @@
                             </div>
                         }
                     }
-                    <div class="mb-2" style="margin-top:14px"><strong style="font-size:13px">Пороги устаревания по папкам</strong>
+                    <div class="mb-2" style="margin-top:14px"><strong style="font-size:13px">Задания архивации по папкам</strong>
                         <div class="muted" style="font-size:12px">
-                            Через сколько дней без новых файлов папка считается проблемной. 0 = общий порог сервера
-                            (@(s.BackupStaleDays > 0 ? s.BackupStaleDays + " дн." : $"по умолчанию {Model.DefaultBackupStaleDays} дн.")).
-                            Для еженедельного бэкапа поставьте 8, для ежемесячного — 35.
+                            <strong>Тип:</strong> для инкрементных/дифференциальных заданий сервер не тревожит об «усадке»
+                            файла (там размеры заведомо разные). <strong>Порог устаревания:</strong> через сколько дней
+                            без новых файлов папка проблемная; 0 = общий порог сервера
+                            (@(s.BackupStaleDays > 0 ? s.BackupStaleDays + " дн." : $"по умолчанию {Model.DefaultBackupStaleDays} дн.")),
+                            для еженедельного поставьте 8, для ежемесячного — 35.
                         </div></div>
                     @{ var monFolders = Model.Report?.Folders ?? new List<Ypmon.Shared.FolderStatusDto>(); }
                     @if (!monFolders.Any())
@@ -543,11 +545,17 @@
                         foreach (var f in monFolders)
                         {
                             var cur = Model.FolderStaleDays.TryGetValue(f.Name, out var fv) ? fv : 0;
-                            <div class="mb-2" style="display:flex;align-items:center;gap:8px">
-                                <span style="flex:1;overflow:hidden;text-overflow:ellipsis" title="@f.Path">@f.Name</span>
-                                <input class="form-control" style="max-width:90px" type="number" min="0" max="3650"
-                                       name="fs_@f.Name" value="@cur" />
-                                <span class="muted" style="font-size:12px">дн. (0 = общий)</span>
+                            var ftype = Model.FolderTypes.TryGetValue(f.Name, out var tv) ? tv : "Full";
+                            <div class="mb-2" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                                <span style="flex:1 1 140px;overflow:hidden;text-overflow:ellipsis" title="@f.Path">@f.Name</span>
+                                <select class="form-select" style="max-width:150px" name="ft_@f.Name">
+                                    <option value="Full" selected="@(ftype == "Full")">Полный</option>
+                                    <option value="Incremental" selected="@(ftype == "Incremental")">Инкрементный</option>
+                                    <option value="Differential" selected="@(ftype == "Differential")">Дифференциальный</option>
+                                </select>
+                                <input class="form-control" style="max-width:80px" type="number" min="0" max="3650"
+                                       name="fs_@f.Name" value="@cur" title="Порог устаревания, дней" />
+                                <span class="muted" style="font-size:12px">дн.</span>
                             </div>
                         }
                     }

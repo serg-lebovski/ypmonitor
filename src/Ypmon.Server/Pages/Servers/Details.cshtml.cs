@@ -44,6 +44,7 @@ public class DetailsModel : PageModel
 
     // Пороги устаревания по папкам (имя папки → дней; 0/нет = наследует порог сервера).
     public Dictionary<string, int> FolderStaleDays { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public Dictionary<string, string> FolderTypes { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
     // Здоровье физических накопителей (SMART) — показывается свёрнутым списком.
     public List<PhysicalDiskDto> PhysicalDisks { get; set; } = new();
@@ -89,6 +90,7 @@ public class DetailsModel : PageModel
         }
         DiskThresholds = AvailabilityMonitor.ParseThresholds(Server.DiskAlertsJson);
         FolderStaleDays = ReportIngestService.ParseFolderStaleDays(Server.FolderStaleDaysJson);
+        FolderTypes = ReportIngestService.ParseFolderTypes(Server.FolderBackupTypesJson);
         // Сортируем по Id (автоинкремент ⇒ тот же порядок, что ReceivedAt): sqlite не умеет
         // ORDER BY по DateTimeOffset, а провайдер sqlite в проекте поддерживается.
         History = await _db.Reports.Where(r => r.ServerId == Id)
@@ -164,6 +166,17 @@ public class DetailsModel : PageModel
                 folderDict[folder] = Math.Clamp(v, 1, 3650);
         }
         s.FolderStaleDaysJson = folderDict.Count == 0 ? null : JsonSerializer.Serialize(folderDict);
+
+        // Тип задания по папкам: поля формы ft_<имя папки>, значение — Full/Incremental/Differential.
+        // Full не храним (это значение по умолчанию), чтобы JSON не разрастался.
+        var typeDict = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var key in Request.Form.Keys.Where(k => k.StartsWith("ft_", StringComparison.Ordinal)))
+        {
+            var folder = key[3..];
+            var val = Request.Form[key].ToString();
+            if (val is "Incremental" or "Differential") typeDict[folder] = val;
+        }
+        s.FolderBackupTypesJson = typeDict.Count == 0 ? null : JsonSerializer.Serialize(typeDict);
 
         // Чистим состояния тревог по дискам, для которых порог убрали, — иначе «висящая» тревога
         // не даст уведомлению сработать после повторного включения порога.

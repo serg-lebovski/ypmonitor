@@ -245,12 +245,19 @@ public class ReportIngestService
         // (а не суммарный объём всей папки — он растёт от накопления копий и плохой сигнал).
         // Тревога срабатывает, когда в папке появился новый файл заметно меньше прежнего.
         var fileState = ParseBackupFiles(server.LastBackupFilesJson);
+        var folderTypes = ParseFolderTypes(server.FolderBackupTypesJson);
         (string folder, string fromName, long fromSize, string toName, long toSize)? shrink = null;
         foreach (var f in report.Folders)
         {
             if (!f.Accessible || string.IsNullOrWhiteSpace(f.LastFileName) || f.LastFileSizeBytes <= 0) continue;
 
-            if (fileState.TryGetValue(f.Name, out var prev) &&
+            // Для инкрементных/дифференциальных заданий размеры файлов заведомо «двугорбые»
+            // (большой полный + мелкие инкременты), поэтому сравнение соседних файлов не имеет
+            // смысла — контроль усадки для таких папок отключаем (опорный файл всё равно двигаем).
+            var full = !folderTypes.TryGetValue(f.Name, out var t) || t == "Full";
+
+            if (full &&
+                fileState.TryGetValue(f.Name, out var prev) &&
                 prev.Name != f.LastFileName &&               // именно НОВЫЙ файл, а не тот же самый
                 prev.Size > 0 &&
                 f.LastFileSizeBytes < prev.Size * 0.8 &&     // новый меньше предыдущего > 20%
@@ -314,6 +321,22 @@ public class ReportIngestService
             if (raw is not null)
                 foreach (var (k, v) in raw)
                     if (v is not null) result[k] = v;
+        }
+        catch { }
+        return result;
+    }
+
+    /// <summary>Тип задания по папкам из JSON {"имя": "Full"|"Incremental"|"Differential"}. Имена без учёта регистра.</summary>
+    public static Dictionary<string, string> ParseFolderTypes(string? json)
+    {
+        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (string.IsNullOrWhiteSpace(json)) return result;
+        try
+        {
+            var raw = JsonSerializer.Deserialize<Dictionary<string, string>>(json!);
+            if (raw is not null)
+                foreach (var (k, v) in raw)
+                    if (v is "Full" or "Incremental" or "Differential") result[k] = v;
         }
         catch { }
         return result;
