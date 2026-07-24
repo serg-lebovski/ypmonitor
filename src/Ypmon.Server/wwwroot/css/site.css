@@ -151,6 +151,8 @@ details.acc > .acc-body { padding-top: 10px; }
 .metric { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px 20px; flex: 1; min-width: 160px; }
 .metric .v { font-size: 30px; font-weight: 700; }
 .metric .l { color: var(--muted); font-size: 13px; }
+.metric-sub { color: var(--muted); font-size: 12px; margin-top: 4px; }
+.metric-sub b { color: var(--text, inherit); font-weight: 600; }
 
 /* --- Дашборд: список клиентов/серверов + панель --- */
 .dash-grid { display: grid; grid-template-columns: 1fr 360px; gap: 16px; align-items: start; }

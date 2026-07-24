@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using System.Text.Json;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
@@ -674,7 +675,26 @@ app.MapGet("/dash/state", async (AppDbContext db) =>
     var clients = await db.Clients.Include(c => c.Servers).OrderBy(c => c.Name).ToListAsync();
     var servers = clients.SelectMany(c => c.Servers).ToList();
 
-    int ok = 0, problem = 0, offline = 0;
+    // Диски: заполнение ниже порога (та же логика, что и на графике «Ёмкость и архивация»)
+    // или проблема SMART (здоровье/перегрев) — уже посчитана в AlertDiskHealthActive.
+    bool DiskFillProblem(MonitoredServer s)
+    {
+        if (string.IsNullOrWhiteSpace(s.LastDisksJson)) return false;
+        List<DiskStatusDto>? disks;
+        try { disks = JsonSerializer.Deserialize<List<DiskStatusDto>>(s.LastDisksJson!); }
+        catch { return false; }
+        if (disks is null) return false;
+        var thresholds = AvailabilityMonitor.ParseThresholds(s.DiskAlertsJson);
+        foreach (var d in disks)
+        {
+            if (d.TotalBytes <= 0) continue;
+            var th = thresholds.TryGetValue(d.Name, out var t) ? t : AvailabilityMonitor.DefaultDiskFreePercent;
+            if (th > 0 && d.FreePercent < th) return true;
+        }
+        return false;
+    }
+
+    int ok = 0, problem = 0, offline = 0, diskProblem = 0;
     var srvMap = new Dictionary<string, object>();
     foreach (var s in servers)
     {
@@ -682,6 +702,7 @@ app.MapGet("/dash/state", async (AppDbContext db) =>
         if (status == "offline") offline++;
         else if (status == "ok") ok++;
         else if (status == "problem") problem++;
+        if (status != "offline" && (s.AlertDiskHealthActive || DiskFillProblem(s))) diskProblem++;
         srvMap[s.Id.ToString()] = new
         {
             status, cls, ico, word,
@@ -705,7 +726,7 @@ app.MapGet("/dash/state", async (AppDbContext db) =>
     return Results.Json(new
     {
         at = now.UtcDateTime.AddHours(6).ToString("HH:mm:ss"),
-        counts = new { total = servers.Count, ok, problem, offline },
+        counts = new { total = servers.Count, ok, problem, offline, archiveProblem = problem, diskProblem },
         servers = srvMap,
         clients = clientMap
     });

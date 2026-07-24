@@ -21,6 +21,14 @@ public class IndexModel : PageModel
     public int ProblemCount { get; set; }
     public int OfflineCount { get; set; }
 
+    /// <summary>Разбивка «С проблемами» по причине — для подсказки в плитке дашборда.</summary>
+    public int ArchiveProblemCount { get; set; }
+
+    /// <summary>Диски: SMART (здоровье/перегрев) или заполнение ниже порога.</summary>
+    public int DiskProblemCount { get; set; }
+
+    private readonly HashSet<int> _diskFillProblemIds = new();
+
     // График «место на дисках»: по одной полосе на диск, худшие сверху.
     public List<DiskBar> DiskBars { get; set; } = new();
 
@@ -60,8 +68,14 @@ public class IndexModel : PageModel
             else if (s.LastOutcome == JobOutcome.Ok && !s.BackupShrinkActive) OkCount++;
             else if (s.LastOutcome >= JobOutcome.Warning || s.BackupShrinkActive) ProblemCount++;
         }
+        ArchiveProblemCount = ProblemCount;
 
-        BuildDiskBars(allServers);
+        BuildDiskBars(allServers);   // заполняет DiskBars и _diskFillProblemIds (заполнение ниже порога)
+        // Диски: заполнение ниже порога ИЛИ проблема SMART (здоровье/перегрев) — не считая офлайн,
+        // как и остальные метрики в этой строке.
+        DiskProblemCount = allServers.Count(s => !s.IsOffline(OfflineThreshold)
+            && (s.AlertDiskHealthActive || _diskFillProblemIds.Contains(s.Id)));
+
         await BuildArchiveDaysAsync();
     }
 
@@ -85,7 +99,7 @@ public class IndexModel : PageModel
                 var sev = th > 0 && free < th ? "err"
                     : th > 0 && free < th * 1.5 ? "warn"
                     : "ok";
-                if (sev == "err") problemServers.Add(s.Id);
+                if (sev == "err") { problemServers.Add(s.Id); _diskFillProblemIds.Add(s.Id); }
                 bars.Add(new DiskBar(s.Id, s.Name, s.Client?.Name ?? "", d.Name, d.Label,
                     100 - free, free, th, sev));
             }
