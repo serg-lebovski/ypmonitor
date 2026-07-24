@@ -151,8 +151,6 @@ details.acc > .acc-body { padding-top: 10px; }
 .metric { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px 20px; flex: 1; min-width: 160px; }
 .metric .v { font-size: 30px; font-weight: 700; }
 .metric .l { color: var(--muted); font-size: 13px; }
-.metric-sub { color: var(--muted); font-size: 12px; margin-top: 4px; }
-.metric-sub b { color: var(--text, inherit); font-weight: 600; }
 
 /* --- Дашборд: список клиентов/серверов + панель --- */
 .dash-grid { display: grid; grid-template-columns: 1fr 360px; gap: 16px; align-items: start; }
@@ -287,17 +285,11 @@ label { color: var(--muted); font-size: 13px; margin-bottom: 4px; }
 .sev-err { color: var(--err); }
 
 /* Полосы «место на дисках» */
-.dbar { margin-bottom: 12px; cursor: pointer; }
-.dbar:hover .dbar-name { color: var(--text); }
-.dbar-top { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; margin-bottom: 4px; }
-.dbar-name { color: var(--muted); }
-.dbar-val { font-weight: 600; white-space: nowrap; }
-.dbar-track { position: relative; height: 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
-.dbar-fill { height: 100%; border-radius: 8px 0 0 8px; transition: width .3s; }
-.dbar-fill.sev-ok { background: var(--ok); }
-.dbar-fill.sev-warn { background: var(--warn); }
-.dbar-fill.sev-err { background: var(--err); }
-.dbar-th { position: absolute; top: -2px; bottom: -2px; width: 2px; background: var(--text); opacity: .5; }
+.disk-dots { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
+.ddot { display: inline-block; width: 13px; height: 13px; border-radius: 50%; cursor: help; }
+.ddot.sev-ok { background: var(--ok); }
+.ddot.sev-warn { background: var(--warn); }
+.ddot.sev-err { background: var(--err); }
 
 /* Столбчатый график архивации */
 .achart { display: flex; align-items: flex-end; gap: 6px; height: 170px; padding-top: 4px; }

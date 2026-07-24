@@ -13,11 +13,8 @@
 <div class="metrics" style="margin-top:14px">
     <div class="metric metric-click" data-filter="all" title="Показать все серверы"><div class="v" id="m-total">@Model.TotalServers</div><div class="l">Серверов всего</div></div>
     <div class="metric metric-click" data-filter="ok" title="Показать только те, что в норме"><div class="v" id="m-ok" style="color:var(--ok)">@Model.OkCount</div><div class="l">В норме</div></div>
-    <div class="metric metric-click" data-filter="problem" title="Показать только проблемные">
-        <div class="v" id="m-problem" style="color:var(--err)">@Model.ProblemCount</div>
-        <div class="l">С проблемами</div>
-        <div class="metric-sub">Архивация: <b id="m-problem-arch">@Model.ArchiveProblemCount</b> · Диски: <b id="m-problem-disk">@Model.DiskProblemCount</b></div>
-    </div>
+    <div class="metric metric-click" data-filter="problem" title="Показать серверы с проблемами архивации"><div class="v" id="m-problem-arch" style="color:var(--err)">@Model.ArchiveProblemCount</div><div class="l">Проблемы архивации</div></div>
+    <div class="metric metric-click" data-filter="diskproblem" title="Показать серверы с проблемами дисков"><div class="v" id="m-problem-disk" style="color:var(--err)">@Model.DiskProblemCount</div><div class="l">Проблемы с дисками</div></div>
     <div class="metric metric-click" data-filter="offline" title="Показать только офлайн"><div class="v" id="m-offline" style="color:var(--unknown)">@Model.OfflineCount</div><div class="l">Офлайн</div></div>
 </div>
 
@@ -75,7 +72,7 @@
 <div class="row-title">📊 Ёмкость и архивация</div>
 <div class="row g-3 mb-3">
     <div class="col-12 col-lg-6">
-        <div class="card h-100">
+        <div class="card h-100" id="diskSection">
             <div class="card-header d-flex justify-content-between align-items-center">
                 <span>💽 Свободное место на дисках</span>
                 @if (Model.DiskProblemServers > 0)
@@ -88,29 +85,35 @@
                 }
             </div>
             <div class="card-body">
-                <div class="muted mb-3" style="font-size:12px">Худшие по остатку места сверху. Красный — ниже порога, оранжевый — близко к порогу.</div>
-                @if (!Model.DiskBars.Any())
+                <div class="muted mb-2" style="font-size:12px">Кружок — один диск сервера. Красный — ниже порога, оранжевый — близко к порогу. Наведите на кружок для процента.</div>
+                @if (!Model.DiskServers.Any())
                 {
                     <div class="muted">Пока нет данных о дисках. Они появятся после отчётов агентов.</div>
                 }
                 else
                 {
-                    foreach (var b in Model.DiskBars)
-                    {
-                        <div class="dbar" onclick="location.href='/Servers/Details?id=@b.ServerId&info=true'" title="Открыть сервер">
-                            <div class="dbar-top">
-                                <span class="dbar-name">@b.Client / <strong>@b.Server</strong> · @b.Disk@(string.IsNullOrWhiteSpace(b.Label) ? "" : $" ({b.Label})")</span>
-                                <span class="dbar-val sev-@b.Sev">@b.FreePercent.ToString("0")% свободно</span>
-                            </div>
-                            <div class="dbar-track">
-                                <div class="dbar-fill sev-@b.Sev" style="width:@b.FillPercent.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture)%"></div>
-                                @if (b.Threshold > 0)
-                                {
-                                    <div class="dbar-th" style="left:@((100 - b.Threshold).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture))%" title="порог @b.Threshold% свободного"></div>
-                                }
-                            </div>
-                        </div>
-                    }
+                    <table class="tbl">
+                        <thead><tr><th>Сервер</th><th>Диски</th><th>Худший остаток</th></tr></thead>
+                        <tbody>
+                        @foreach (var row in Model.DiskServers)
+                        {
+                            <tr data-drow data-problem="@(row.Problem ? 1 : 0)" style="cursor:pointer"
+                                onclick="location.href='/Servers/Details?id=@row.ServerId&info=true'" title="Открыть сервер">
+                                <td><strong>@row.Server</strong><div class="muted" style="font-size:12px">@row.Client</div></td>
+                                <td class="disk-dots">
+                                    @foreach (var d in row.Disks)
+                                    {
+                                        var dTitle = (string.IsNullOrWhiteSpace(d.Label) ? d.Disk : $"{d.Disk} ({d.Label})")
+                                                     + $": {d.FreePercent.ToString("0")}% свободно" + (d.Threshold > 0 ? $" (порог {d.Threshold}%)" : "");
+                                        <span class="ddot sev-@d.Sev" title="@dTitle"></span>
+                                    }
+                                </td>
+                                <td class="sev-@(row.Disks.OrderBy(x => x.FreePercent).First().Sev)">@row.WorstFree.ToString("0")%</td>
+                            </tr>
+                        }
+                        </tbody>
+                    </table>
+                    <button type="button" class="btn btn-sm btn-outline-secondary mt-2" id="diskShowAll" style="display:none">Показать все диски</button>
                 }
             </div>
         </div>
@@ -296,7 +299,7 @@ else
                         if (!st) return;
                         var set = function (id, v) { var el = document.getElementById(id); if (el) el.textContent = v; };
                         set('m-total', st.counts.total); set('m-ok', st.counts.ok);
-                        set('m-problem', st.counts.problem); set('m-offline', st.counts.offline);
+                        set('m-offline', st.counts.offline);
                         set('m-problem-arch', st.counts.archiveProblem); set('m-problem-disk', st.counts.diskProblem);
 
                         document.querySelectorAll('[data-tile][data-sid]').forEach(function (t) {
@@ -385,10 +388,30 @@ else
             cl.addEventListener('change', apply);
             if (reset) reset.addEventListener('click', function () { status = 'all'; sr.value = ''; cl.value = ''; apply(); });
 
-            // Клик по цифрам метрик — переключает фильтр статуса.
+            // Диски — отдельный фильтр: не по статусу сервера, а по строкам таблицы дисков.
+            function filterDiskRows(onlyProblem) {
+                var sec = document.getElementById('diskSection');
+                if (!sec) return;
+                sec.querySelectorAll('tr[data-drow]').forEach(function (r) {
+                    r.style.display = (!onlyProblem || r.getAttribute('data-problem') === '1') ? '' : 'none';
+                });
+                var btn = document.getElementById('diskShowAll');
+                if (btn) btn.style.display = onlyProblem ? '' : 'none';
+            }
+            var diskShowAllBtn = document.getElementById('diskShowAll');
+            if (diskShowAllBtn) diskShowAllBtn.addEventListener('click', function () { filterDiskRows(false); });
+
+            // Клик по цифрам метрик — переключает фильтр статуса (или, для дисков, прыгает к таблице дисков).
             document.querySelectorAll('.metric-click[data-filter]').forEach(function (m) {
                 m.addEventListener('click', function () {
-                    status = m.getAttribute('data-filter');
+                    var f = m.getAttribute('data-filter');
+                    if (f === 'diskproblem') {
+                        filterDiskRows(true);
+                        var sec = document.getElementById('diskSection');
+                        if (sec) sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        return;
+                    }
+                    status = f;
                     apply();
                     var fp = document.querySelector('.filter-panel');
                     if (fp) fp.scrollIntoView({ behavior: 'smooth', block: 'start' });

@@ -29,8 +29,8 @@ public class IndexModel : PageModel
 
     private readonly HashSet<int> _diskFillProblemIds = new();
 
-    // График «место на дисках»: по одной полосе на диск, худшие сверху.
-    public List<DiskBar> DiskBars { get; set; } = new();
+    // Место на дисках: список серверов (как в таблице серверов), у каждого — кружок на диск.
+    public List<DiskServerRow> DiskServers { get; set; } = new();
 
     /// <summary>Сколько серверов с проблемой по месту (есть диск ниже порога) — для свёрнутого заголовка.</summary>
     public int DiskProblemServers { get; set; }
@@ -39,8 +39,9 @@ public class IndexModel : PageModel
     public List<DaySlice> ArchiveDays { get; set; } = new();
     public int ArchiveMaxPerDay { get; set; } = 1;
 
-    public record DiskBar(int ServerId, string Server, string Client, string Disk, string? Label,
-        double FillPercent, double FreePercent, int Threshold, string Sev);
+    public record DiskDot(string Disk, string? Label, double FreePercent, int Threshold, string Sev);
+
+    public record DiskServerRow(int ServerId, string Server, string Client, List<DiskDot> Disks, double WorstFree, bool Problem);
 
     public record DaySlice(string Label, int Ok, int Warning, int Error)
     {
@@ -70,7 +71,7 @@ public class IndexModel : PageModel
         }
         ArchiveProblemCount = ProblemCount;
 
-        BuildDiskBars(allServers);   // заполняет DiskBars и _diskFillProblemIds (заполнение ниже порога)
+        BuildDiskServers(allServers);   // заполняет DiskServers и _diskFillProblemIds (заполнение ниже порога)
         // Диски: заполнение ниже порога ИЛИ проблема SMART (здоровье/перегрев) — не считая офлайн,
         // как и остальные метрики в этой строке.
         DiskProblemCount = allServers.Count(s => !s.IsOffline(OfflineThreshold)
@@ -79,10 +80,9 @@ public class IndexModel : PageModel
         await BuildArchiveDaysAsync();
     }
 
-    private void BuildDiskBars(List<MonitoredServer> servers)
+    private void BuildDiskServers(List<MonitoredServer> servers)
     {
-        var bars = new List<DiskBar>();
-        var problemServers = new HashSet<int>();
+        var rows = new List<DiskServerRow>();
         foreach (var s in servers)
         {
             if (string.IsNullOrWhiteSpace(s.LastDisksJson)) continue;
@@ -90,6 +90,7 @@ public class IndexModel : PageModel
             try { disks = JsonSerializer.Deserialize<List<DiskStatusDto>>(s.LastDisksJson) ?? new(); }
             catch { continue; }
             var thresholds = AvailabilityMonitor.ParseThresholds(s.DiskAlertsJson);
+            var dots = new List<DiskDot>();
             foreach (var d in disks)
             {
                 if (d.TotalBytes <= 0) continue;
@@ -99,14 +100,16 @@ public class IndexModel : PageModel
                 var sev = th > 0 && free < th ? "err"
                     : th > 0 && free < th * 1.5 ? "warn"
                     : "ok";
-                if (sev == "err") { problemServers.Add(s.Id); _diskFillProblemIds.Add(s.Id); }
-                bars.Add(new DiskBar(s.Id, s.Name, s.Client?.Name ?? "", d.Name, d.Label,
-                    100 - free, free, th, sev));
+                dots.Add(new DiskDot(d.Name, d.Label, free, th, sev));
             }
+            if (dots.Count == 0) continue;
+            var problem = dots.Any(x => x.Sev == "err");
+            if (problem) _diskFillProblemIds.Add(s.Id);
+            rows.Add(new DiskServerRow(s.Id, s.Name, s.Client?.Name ?? "", dots, dots.Min(x => x.FreePercent), problem));
         }
-        DiskProblemServers = problemServers.Count;
-        // Худшие (меньше всего свободного места) — сверху; ограничим топ-16, чтобы график читался.
-        DiskBars = bars.OrderBy(b => b.FreePercent).Take(16).ToList();
+        DiskProblemServers = rows.Count(x => x.Problem);
+        // Худшие (меньше всего свободного места на самом заполненном диске) — сверху.
+        DiskServers = rows.OrderBy(x => x.WorstFree).ToList();
     }
 
     private async Task BuildArchiveDaysAsync()
