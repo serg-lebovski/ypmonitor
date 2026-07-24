@@ -368,6 +368,35 @@ public class ReportIngestService
         return JobOutcome.Ok;
     }
 
+    /// <summary>
+    /// Пересчитывает LastOutcome сервера и статусы папок в LastReportJson по действующим порогам
+    /// устаревания — без нового отчёта от агента. Нужен, чтобы смена порога в настройках сразу
+    /// отражалась на дашборде, а не ждала следующего полного отчёта (раз в 6 часов).
+    /// Не трогает БД сама — вызывающий код должен сохранить изменения.
+    /// </summary>
+    public static void RecomputeOutcome(MonitoredServer server, ServerSettings? settings)
+    {
+        if (string.IsNullOrWhiteSpace(server.LastReportJson)) return;
+        AgentReportDto? report;
+        try { report = JsonSerializer.Deserialize<AgentReportDto>(server.LastReportJson); }
+        catch { return; }
+        if (report is null) return;
+
+        var staleDays = server.BackupStaleDays > 0
+            ? server.BackupStaleDays
+            : (settings?.DefaultBackupStaleDays ?? 1);
+        var folderStale = ParseFolderStaleDays(server.FolderStaleDaysJson);
+
+        foreach (var f in report.Folders)
+        {
+            var eff = folderStale.TryGetValue(f.Name, out var pv) && pv > 0 ? pv : staleDays;
+            f.Outcome = EvaluateFolder(f, eff);
+        }
+
+        server.LastOutcome = report.Folders.Count == 0 ? JobOutcome.Unknown : report.Folders.Max(f => f.Outcome);
+        server.LastReportJson = JsonSerializer.Serialize(report);
+    }
+
     private static ReportAckDto Ack(MonitoredServer s, string msg) => new()
     {
         Accepted = true,

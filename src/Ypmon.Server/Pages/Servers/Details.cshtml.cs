@@ -128,6 +128,8 @@ public class DetailsModel : PageModel
         s.ExternalIpAddress = string.IsNullOrWhiteSpace(ExternalIpAddress) ? null : ExternalIpAddress.Trim();
         s.Description = Description?.Trim();
         s.BackupStaleDays = Math.Max(0, BackupStaleDays);
+        var settingsForRecompute = await _db.Settings.AsNoTracking().FirstOrDefaultAsync();
+        ReportIngestService.RecomputeOutcome(s, settingsForRecompute);
         await _db.SaveChangesAsync();
         await _audit.LogAsync(User, "Изменён сервер", s.Name);
         await Load();
@@ -194,6 +196,8 @@ public class DetailsModel : PageModel
         if (!monitorOffline) s.AlertOfflineActive = false;
         if (!monitorPing) s.AlertPingActive = false;
 
+        var settingsForRecompute = await _db.Settings.AsNoTracking().FirstOrDefaultAsync();
+        ReportIngestService.RecomputeOutcome(s, settingsForRecompute);
         await _db.SaveChangesAsync();
         await _audit.LogAsync(User, "Изменён мониторинг сервера", s.Name);
         await Load();

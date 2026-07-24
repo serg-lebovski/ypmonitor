@@ -240,6 +240,13 @@ public class SettingsModel : PageModel
         s.CpuTempAlertsEnabled = input.CpuTempAlertsEnabled;
         s.CpuTempThresholdC = Math.Clamp(input.CpuTempThresholdC, 0, 120);
         if (s.Id == 0) _db.Settings.Add(s);
+
+        // Порог устаревания по умолчанию влияет на все серверы без своего override — пересчитываем
+        // их статус сразу, а не ждём следующего полного отчёта (см. ReportIngestService.RecomputeOutcome).
+        var allServers = await _db.Servers.ToListAsync();
+        foreach (var srv in allServers)
+            ReportIngestService.RecomputeOutcome(srv, s);
+
         await _db.SaveChangesAsync();
         await _audit.LogAsync(User, "Изменены настройки", "оповещения / SMTP / хранение истории");
         await Load();
