@@ -13,6 +13,48 @@
     --unknown: #7b8190;
 }
 
+/* Приводим тёмную тему Bootstrap 5.3 к нашей палитре: тогда ВСЕ компоненты Bootstrap
+   (карточки, таблицы, формы, аккордеоны, выпадающие, модальные, бейджи) на всех страницах
+   выглядят единообразно и в одном стиле с остальным интерфейсом. */
+[data-bs-theme="dark"] {
+    --bs-body-bg: var(--bg);
+    --bs-body-color: var(--text);
+    --bs-emphasis-color: var(--text);
+    --bs-secondary-color: var(--muted);
+    --bs-tertiary-color: var(--muted);
+    --bs-border-color: var(--border);
+    --bs-border-color-translucent: var(--border);
+    --bs-secondary-bg: var(--card);
+    --bs-tertiary-bg: var(--card-2);
+    --bs-primary: var(--accent);
+    --bs-primary-rgb: 79, 140, 255;
+    --bs-link-color: var(--accent);
+    --bs-link-color-rgb: 79, 140, 255;
+    --bs-link-hover-color: #6fa0ff;
+    --bs-card-bg: var(--card);
+    --bs-card-border-color: var(--border);
+    --bs-card-cap-bg: var(--card-2);
+    --bs-success: var(--ok);
+    --bs-warning: var(--warn);
+    --bs-danger: var(--err);
+    --bs-code-color: #f0a5a5;
+}
+/* Формы и таблицы Bootstrap — на нашей поверхности. */
+[data-bs-theme="dark"] .form-control,
+[data-bs-theme="dark"] .form-select {
+    background-color: var(--bg);
+    border-color: var(--border);
+    color: var(--text);
+}
+[data-bs-theme="dark"] .form-control:focus,
+[data-bs-theme="dark"] .form-select:focus {
+    background-color: var(--bg);
+    border-color: var(--accent);
+    box-shadow: 0 0 0 .2rem rgba(79, 140, 255, .25);
+    color: var(--text);
+}
+[data-bs-theme="dark"] .table { --bs-table-bg: transparent; --bs-table-color: var(--text); }
+
 * { box-sizing: border-box; }
 
 body {
@@ -385,22 +427,24 @@ table.tbl tr.lg-warn td { background: rgba(255,159,67,.07); }
 
 /* Моргание красных ошибок и «лампочек». Иконка и подпись остаются — моргание идёт
    поверх, а не вместо, чтобы статус читался не только миганием (важно для доступности). */
-@keyframes yp-blink { 0%, 100% { opacity: 1; } 50% { opacity: .4; } }
-.blink { animation: yp-blink 1.1s ease-in-out infinite; }
-.dot.blink { box-shadow: 0 0 0 0 rgba(234,84,85,.6); animation: yp-blink 1.1s ease-in-out infinite, yp-pulse 1.6s ease-out infinite; }
+@keyframes yp-blink { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
+.blink { animation: yp-blink 1s steps(1, end) infinite; }
 @keyframes yp-pulse {
-    0% { box-shadow: 0 0 0 0 rgba(234,84,85,.55); }
-    70% { box-shadow: 0 0 0 6px rgba(234,84,85,0); }
-    100% { box-shadow: 0 0 0 0 rgba(234,84,85,0); }
+    0% { box-shadow: 0 0 0 0 rgba(234, 84, 85, .6); }
+    70% { box-shadow: 0 0 0 7px rgba(234, 84, 85, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(234, 84, 85, 0); }
 }
-.tile.t-err { animation: yp-tile-blink 1.4s ease-in-out infinite; }
+.dot.blink { animation: yp-blink 1s steps(1, end) infinite, yp-pulse 1.5s ease-out infinite; }
 @keyframes yp-tile-blink {
-    0%, 100% { border-top-color: var(--err); box-shadow: none; }
-    50% { border-top-color: var(--err); box-shadow: 0 0 0 1px var(--err); }
+    0%, 100% { box-shadow: inset 0 3px 0 var(--err); }
+    50% { box-shadow: inset 0 3px 0 var(--err), 0 0 0 2px var(--err); }
 }
-/* Уважаем системную настройку «меньше движения». */
+.tile.t-err { animation: yp-tile-blink 1.2s ease-in-out infinite; }
+/* Системная настройка «меньше движения»: гасим только «расходящееся кольцо» (реальное
+   движение), а мигание оставляем — это осмысленный сигнал тревоги, ради него функция и делалась. */
 @media (prefers-reduced-motion: reduce) {
-    .blink, .dot.blink, .tile.t-err { animation: none; }
+    .dot.blink { animation: yp-blink 1.3s steps(1, end) infinite; }
+    .tile.t-err { animation: yp-blink 1.3s steps(1, end) infinite; }
 }
 
 .cl-badges, .row-badges { display: inline-flex; gap: 6px; flex-wrap: wrap; vertical-align: middle; }
