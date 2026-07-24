@@ -73,7 +73,11 @@ else
 
         function hide() { drop.hidden = true; active = -1; }
 
-        function open(id) { location.href = '/Servers/Details?id=' + id + '&info=true'; }
+        function open(item) {
+            location.href = item.type === 'client'
+                ? '/Clients/Details?id=' + item.id
+                : '/Servers/Details?id=' + item.id + '&info=true';
+        }
 
         function render() {
             if (!items.length) {
@@ -94,7 +98,7 @@ else
                 el.querySelector('.gs-name').textContent = s.name;
                 el.querySelector('.gs-sub').textContent = [s.client, s.machine, s.ip].filter(Boolean).join(' · ');
                 el.querySelector('.gs-badge').textContent = s.label;
-                el.addEventListener('mousedown', function (e) { e.preventDefault(); open(s.id); });
+                el.addEventListener('mousedown', function (e) { e.preventDefault(); open(s); });
             });
             drop.hidden = false;
         }
@@ -117,7 +121,7 @@ else
             if (drop.hidden || !items.length) return;
             if (e.key === 'ArrowDown') { active = Math.min(active + 1, items.length - 1); render(); e.preventDefault(); }
             else if (e.key === 'ArrowUp') { active = Math.max(active - 1, 0); render(); e.preventDefault(); }
-            else if (e.key === 'Enter') { open(items[active >= 0 ? active : 0].id); e.preventDefault(); }
+            else if (e.key === 'Enter') { open(items[active >= 0 ? active : 0]); e.preventDefault(); }
             else if (e.key === 'Escape') { hide(); }
         });
 

@@ -593,7 +593,7 @@ app.MapGet("/api/agent/download", async (HttpContext ctx, AppDbContext db) =>
     return Results.File(agentInstaller, "application/octet-stream", "YpmonAgent-Setup.exe");
 });
 
-// Быстрый поиск сервера для строки поиска в шапке. Путь НЕ под /api — иначе он попал бы
+// Быстрый поиск сервера/компании для строки поиска в шапке. Путь НЕ под /api — иначе он попал бы
 // в агентский контур (порт отчётов, без фильтра по IP). Здесь нужен обычный вход в интерфейс.
 app.MapGet("/search/servers", async (string? q, AppDbContext db) =>
 {
@@ -605,40 +605,62 @@ app.MapGet("/search/servers", async (string? q, AppDbContext db) =>
 
     // Фильтруем в памяти, а не через LIKE: в SQL он регистрозависим для кириллицы
     // (и в sqlite, и в postgres), из-за чего «серв» не находил бы «Сервер».
-    // Серверов сотни — выборка дешёвая.
+    // Серверов/клиентов сотни — выборка дешёвая.
     bool Match(string? v) => v is not null && v.Contains(term, StringComparison.OrdinalIgnoreCase);
+
+    string StatusOf(MonitoredServer s) =>
+        s.IsOffline(threshold) ? "offline"
+        : s.BackupShrinkActive ? "problem"
+        : s.LastOutcome switch
+          {
+              JobOutcome.Ok => "ok",
+              JobOutcome.Warning => "problem",
+              JobOutcome.Error => "problem",
+              _ => "unknown"
+          };
+    string LabelOf(MonitoredServer s) =>
+        s.IsOffline(threshold) ? "Офлайн"
+        : s.BackupShrinkActive ? "Объём упал"
+        : UiHelpers.OutcomeText(s.LastOutcome);
+
+    // Компании ищем отдельно от серверов: раньше совпадение с именем клиента только фильтровало
+    // ЕГО серверы, а сама компания как результат никогда не показывалась — если у неё не было
+    // подходящего по имени сервера (или серверов вообще не было), поиск по названию компании
+    // ничего не находил.
+    var clients = (await db.Clients.Include(c => c.Servers).ToListAsync())
+        .Where(c => Match(c.Name))
+        .OrderBy(c => c.Name).Take(8)
+        .Select(c => new
+        {
+            type = "client",
+            id = c.Id,
+            name = c.Name,
+            client = "",
+            machine = c.Servers.Count == 1 ? "1 сервер" : $"{c.Servers.Count} серверов",
+            ip = "",
+            status = c.Servers.Count == 0 ? "unknown"
+                   : c.Servers.Any(s => s.IsOffline(threshold)) ? "offline"
+                   : c.Servers.Any(s => StatusOf(s) == "problem") ? "problem"
+                   : c.Servers.All(s => StatusOf(s) == "ok") ? "ok" : "unknown",
+            label = "Компания"
+        });
+
     var servers = (await db.Servers.Include(s => s.Client).ToListAsync())
         .Where(s => Match(s.Name) || Match(s.LastMachineName) || Match(s.IpAddress) || Match(s.Client?.Name))
-        .OrderBy(s => s.Name).Take(15).ToList();
-
-    var items = servers.Select(s =>
-    {
-        var offline = s.IsOffline(threshold);
-        // Статус тот же, что на дашборде: офлайн → проблема усадки → итог последнего отчёта.
-        var status = offline ? "offline"
-                   : s.BackupShrinkActive ? "problem"
-                   : s.LastOutcome switch
-                     {
-                         JobOutcome.Ok => "ok",
-                         JobOutcome.Warning => "problem",
-                         JobOutcome.Error => "problem",
-                         _ => "unknown"
-                     };
-        var label = offline ? "Офлайн"
-                  : s.BackupShrinkActive ? "Объём упал"
-                  : UiHelpers.OutcomeText(s.LastOutcome);
-        return new
+        .OrderBy(s => s.Name).Take(15)
+        .Select(s => new
         {
+            type = "server",
             id = s.Id,
             name = s.Name,
             client = s.Client?.Name ?? "",
             machine = s.LastMachineName ?? "",
             ip = s.IpAddress ?? "",
-            status,
-            label
-        };
-    });
-    return Results.Json(items);
+            status = StatusOf(s),
+            label = LabelOf(s)
+        });
+
+    return Results.Json(clients.Concat(servers));
 }).RequireAuthorization();
 
 // Живое состояние дашборда для точечного обновления блоков без перезагрузки страницы.
