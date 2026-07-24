@@ -189,7 +189,10 @@ public class Reporter : BackgroundService
             }
             // Команда из ответа сервера (закрытый список, исполняется в RemoteCommandHandler).
             if (hack is not null)
+            {
+                SyncFolderTypes(cfg, hack);
                 await _commands.HandleAsync(cfg, hack, () => ReportOnceAsync(cfg, heartbeat: false));
+            }
             return;
         }
 
@@ -221,6 +224,8 @@ public class Reporter : BackgroundService
             clientName: ack?.ClientName,
             serverName: ack?.ServerName);
 
+        if (ack is not null) SyncFolderTypes(cfg, ack);
+
         if (sendOk)
         {
             // На случай, если очередь копилась, а heartbeat её ещё не разобрал.
@@ -230,6 +235,31 @@ public class Reporter : BackgroundService
         {
             _spool.Enqueue(report);   // сервер недоступен — сохраняем и дошлём позже
         }
+    }
+
+    /// <summary>
+    /// Синхронизация типа задания «сервер → агент»: агент сверяет тип каждой папки с тем, что
+    /// пришло в ответе сервера, и если отличается — переписывает у себя и сохраняет config.
+    /// Это НЕ команда: меняется только текстовая метка типа, ничего не исполняется.
+    /// Сервер присылает лишь не-Full типы; отсутствие папки в словаре означает Full.
+    /// </summary>
+    private void SyncFolderTypes(AgentConfig cfg, ReportAckDto ack)
+    {
+        if (cfg.Folders.Count == 0) return;
+        var changed = false;
+        foreach (var f in cfg.Folders)
+        {
+            var serverType = ack.FolderBackupTypes.TryGetValue(f.Name, out var t)
+                && t is "Full" or "Incremental" or "Differential" ? t : "Full";
+            var local = string.IsNullOrWhiteSpace(f.BackupType) ? "Full" : f.BackupType;
+            if (local != serverType)
+            {
+                _log.LogInformation("Тип задания «{Folder}» изменён на сервере: {Old} → {New}", f.Name, local, serverType);
+                f.BackupType = serverType;
+                changed = true;
+            }
+        }
+        if (changed) _store.Save(cfg);
     }
 
     /// <summary>Отправить отчёт, вернуть true только при HTTP 2xx (для досыла очереди).</summary>

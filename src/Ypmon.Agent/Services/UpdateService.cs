@@ -3,7 +3,10 @@ using Microsoft.Extensions.Logging;
 
 namespace Ypmon.Agent.Services;
 
-/// <summary>Фоновая служба: раз в день проверяет обновление агента на сервере и устанавливает его.</summary>
+/// <summary>
+/// Фоновая служба: проверяет обновление агента на сервере и устанавливает его.
+/// Расписание настраивается (каждые N минут — по умолчанию час — или раз в сутки в заданное время).
+/// </summary>
 public class UpdateService : BackgroundService
 {
     private readonly ConfigStore _store;
@@ -18,24 +21,41 @@ public class UpdateService : BackgroundService
     {
         try { await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken); } catch { }
 
+        // Просыпаемся часто и сами решаем, наступил ли момент проверки по настроенному расписанию.
         while (!stoppingToken.IsCancellationRequested)
         {
             try { await TickAsync(); }
             catch (Exception ex) { _log.LogWarning(ex, "Ошибка проверки обновлений"); }
-            try { await Task.Delay(TimeSpan.FromHours(6), stoppingToken); } catch { }
+            try { await Task.Delay(TimeSpan.FromMinutes(1), stoppingToken); } catch { }
         }
+    }
+
+    /// <summary>Наступил ли момент очередной проверки обновлений по настроенному расписанию.</summary>
+    private static bool IsDue(AgentConfig cfg, DateTimeOffset now)
+    {
+        var last = cfg.LastUpdateCheck;
+        if (string.Equals(cfg.UpdateCheckMode, "DailyTime", StringComparison.OrdinalIgnoreCase))
+        {
+            // Раз в сутки в заданное время (по местному времени машины).
+            var parts = (cfg.UpdateCheckAtTime ?? "03:00").Split(':');
+            if (parts.Length != 2 || !int.TryParse(parts[0], out var h) || !int.TryParse(parts[1], out var m))
+                { h = 3; m = 0; }
+            var localNow = now.ToLocalTime();
+            var todayTarget = new DateTimeOffset(localNow.Year, localNow.Month, localNow.Day, h, m, 0, localNow.Offset);
+            // Пора, если время наступило и с этого целевого момента ещё не проверяли.
+            return localNow >= todayTarget && (last is null || last.Value.ToLocalTime() < todayTarget);
+        }
+
+        // Иначе — интервал в минутах (по умолчанию 60).
+        var minutes = Math.Clamp(cfg.UpdateCheckIntervalMinutes <= 0 ? 60 : cfg.UpdateCheckIntervalMinutes, 5, 7 * 24 * 60);
+        return last is null || (now - last.Value).TotalMinutes >= minutes;
     }
 
     private async Task TickAsync()
     {
         var cfg = _store.Load();
-        if (!cfg.AutoUpdate)
-        {
-            _log.LogInformation("Проверка обновлений пропущена: автообновление выключено в настройках агента.");
-            return;
-        }
-        if (cfg.LastUpdateCheck is not null && (DateTimeOffset.UtcNow - cfg.LastUpdateCheck.Value).TotalHours < 24)
-            return;   // троттлинг раз в сутки — молча, чтобы не засорять лог
+        if (!cfg.AutoUpdate) return;                 // автообновление выключено — молча
+        if (!IsDue(cfg, DateTimeOffset.UtcNow)) return;
 
         _log.LogInformation("Проверка обновлений на сервере {Server}. Текущая версия агента: {Cur}.",
             string.IsNullOrWhiteSpace(cfg.ServerUrl) ? "(адрес не задан)" : cfg.ServerUrl, Reporter.Version);

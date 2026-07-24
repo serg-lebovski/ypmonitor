@@ -47,6 +47,9 @@ public class MainForm : Form
     private TextBox _svcName = null!, _svcUser = null!, _svcPass = null!, _svcCmd = null!, _svcCmdPs = null!;
     private Label _svcStatus = null!;
     private CheckBox _autoUpdate = null!;
+    private CheckBox _updDailyMode = null!;
+    private NumericUpDown _updIntervalMin = null!;
+    private TextBox _updAtTime = null!;
     private Label _cpuTempLabel = null!;
     private NumericUpDown _cpuTempTrigger = null!;
 
@@ -185,10 +188,12 @@ public class MainForm : Form
         };
         _folderGrid.Columns.Add("name", "Название");
         _folderGrid.Columns.Add("path", "Папка");
+        _folderGrid.Columns.Add("type", "Тип");
         _folderGrid.Columns.Add("enabled", "Вкл");
-        _folderGrid.Columns["name"]!.FillWeight = 28;
-        _folderGrid.Columns["path"]!.FillWeight = 60;
-        _folderGrid.Columns["enabled"]!.FillWeight = 12;
+        _folderGrid.Columns["name"]!.FillWeight = 26;
+        _folderGrid.Columns["path"]!.FillWeight = 50;
+        _folderGrid.Columns["type"]!.FillWeight = 14;
+        _folderGrid.Columns["enabled"]!.FillWeight = 10;
         _folderGrid.SelectionChanged += (_, _) => { if (!_refreshing) SelectFolder(_folderGrid.CurrentRow?.Index ?? -1); };
 
         var toolbar = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 60, Padding = new Padding(0, 4, 0, 4) };
@@ -246,7 +251,7 @@ public class MainForm : Form
         _refreshing = true;
         _folderGrid.Rows.Clear();
         foreach (var f in _cfg.Folders)
-            _folderGrid.Rows.Add(f.Name, f.Path, f.Enabled ? "✓" : "—");
+            _folderGrid.Rows.Add(f.Name, f.Path, TypeRu(f.BackupType), f.Enabled ? "✓" : "—");
         _refreshing = false;
         if (selectIndex >= 0 && selectIndex < _folderGrid.Rows.Count)
         {
@@ -268,7 +273,8 @@ public class MainForm : Form
         _curFolder = new MonitoredFolder
         {
             Name = src.Name, Enabled = src.Enabled, Path = src.Path,
-            NetworkUsername = src.NetworkUsername, NetworkPassword = src.NetworkPassword
+            NetworkUsername = src.NetworkUsername, NetworkPassword = src.NetworkPassword,
+            BackupType = src.BackupType   // тип задаётся сервером — сохраняем при локальном редактировании
         };
         PopulateForm(_curFolder, "✏️ Редактирование задания: " + src.Name);
     }
@@ -511,7 +517,16 @@ public class MainForm : Form
         });
 
         AddSection(t, "Обновления агента");
-        _autoUpdate = AddCheck(t, "Автоматически обновлять агента с сервера (раз в день)");
+        _autoUpdate = AddCheck(t, "Автоматически обновлять агента с сервера");
+        _updIntervalMin = AddNum(t, "Проверять каждые, минут (по умолчанию 60)", 5, 10080);
+        _updDailyMode = AddCheck(t, "Вместо интервала — проверять раз в сутки в заданное время");
+        _updAtTime = AddText(t, "Время суточной проверки (ЧЧ:ММ, местное время машины)");
+        AddFull(t, new Label
+        {
+            Text = "По умолчанию агент проверяет обновление каждый час. Можно задать другой интервал\n"
+                 + "или переключить на проверку раз в сутки в конкретное время (напр. 03:00).",
+            AutoSize = true, ForeColor = Color.DimGray, Margin = new Padding(3, 2, 3, 6)
+        });
         var bUpd = new Button { Text = "🔄 Проверить обновления сейчас", AutoSize = true, Margin = new Padding(3, 4, 3, 4) };
         bUpd.Click += (_, _) => CheckUpdates();
         AddFull(t, bUpd);
@@ -779,6 +794,9 @@ public class MainForm : Form
 
         _svcName.Text = string.IsNullOrWhiteSpace(_cfg.ServiceName) ? "YpmonAgent" : _cfg.ServiceName;
         _autoUpdate.Checked = _cfg.AutoUpdate;
+        _updIntervalMin.Value = Clamp(_cfg.UpdateCheckIntervalMinutes <= 0 ? 60 : _cfg.UpdateCheckIntervalMinutes, 5, 10080);
+        _updDailyMode.Checked = string.Equals(_cfg.UpdateCheckMode, "DailyTime", StringComparison.OrdinalIgnoreCase);
+        _updAtTime.Text = string.IsNullOrWhiteSpace(_cfg.UpdateCheckAtTime) ? "03:00" : _cfg.UpdateCheckAtTime;
         _cpuTempTrigger.Value = Clamp(_cfg.CpuTempTriggerC, 0, 120);
         _loading = false;
 
@@ -822,6 +840,9 @@ public class MainForm : Form
 
         _cfg.ServiceName = string.IsNullOrWhiteSpace(_svcName.Text) ? "YpmonAgent" : _svcName.Text.Trim();
         _cfg.AutoUpdate = _autoUpdate.Checked;
+        _cfg.UpdateCheckMode = _updDailyMode.Checked ? "DailyTime" : "Interval";
+        _cfg.UpdateCheckIntervalMinutes = (int)_updIntervalMin.Value;
+        _cfg.UpdateCheckAtTime = string.IsNullOrWhiteSpace(_updAtTime.Text) ? "03:00" : _updAtTime.Text.Trim();
         _cfg.CpuTempTriggerC = (int)_cpuTempTrigger.Value;
 
         _store.Save(_cfg);
@@ -879,6 +900,14 @@ public class MainForm : Form
         t.Controls.Add(panel, 1, r);
         return box;
     }
+
+    /// <summary>Тип задания по-русски для списка папок (тип задаётся на сервере).</summary>
+    private static string TypeRu(string? t) => t switch
+    {
+        "Incremental" => "Инкремент.",
+        "Differential" => "Дифференц.",
+        _ => "Полный"
+    };
 
     private static CheckBox AddCheck(TableLayoutPanel t, string label)
     {

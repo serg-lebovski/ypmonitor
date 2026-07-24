@@ -373,7 +373,9 @@ public class ReportIngestService
         Accepted = true,
         Message = msg,
         ClientName = s.Client?.Name,
-        ServerName = s.Name
+        ServerName = s.Name,
+        // Тип задания по папкам — данные-метка для синхронизации в агент (не команда).
+        FolderBackupTypes = ParseFolderTypes(s.FolderBackupTypesJson)
     };
 }
 

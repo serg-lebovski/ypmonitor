@@ -30,8 +30,20 @@ public class AgentConfig
     /// <summary>Имя службы Windows.</summary>
     public string ServiceName { get; set; } = "YpmonAgent";
 
-    /// <summary>Автоматически проверять и ставить обновления с сервера (раз в день).</summary>
+    /// <summary>Автоматически проверять и ставить обновления с сервера.</summary>
     public bool AutoUpdate { get; set; } = true;
+
+    /// <summary>
+    /// Режим расписания проверки обновлений: "Interval" — каждые N минут; "DailyTime" — раз в сутки
+    /// в заданное время. По умолчанию — каждый час.
+    /// </summary>
+    public string UpdateCheckMode { get; set; } = "Interval";
+
+    /// <summary>Интервал проверки обновлений, минут (режим Interval). По умолчанию 60.</summary>
+    public int UpdateCheckIntervalMinutes { get; set; } = 60;
+
+    /// <summary>Время суток для проверки обновлений "HH:mm" (режим DailyTime).</summary>
+    public string UpdateCheckAtTime { get; set; } = "03:00";
 
     /// <summary>Служебное поле: когда последний раз проверяли обновление.</summary>
     public DateTimeOffset? LastUpdateCheck { get; set; }
@@ -58,6 +70,13 @@ public class MonitoredFolder
     /// <summary>Учётная запись Windows для сетевой папки (DOMAIN\User; пусто — текущая).</summary>
     public string NetworkUsername { get; set; } = "";
     public string NetworkPassword { get; set; } = "";
+
+    /// <summary>
+    /// Тип задания архивации: Full / Incremental / Differential. Задаётся НА СЕРВЕРЕ; агент лишь
+    /// сверяет со своим значением в ответе на отчёт и, если отличается, переписывает у себя
+    /// (не команда — просто метка). Для инкрементных/дифференциальных сервер не тревожит об усадке.
+    /// </summary>
+    public string BackupType { get; set; } = "Full";
 }
 
 /// <summary>Чтение журнала событий Windows (только чтение).</summary>
