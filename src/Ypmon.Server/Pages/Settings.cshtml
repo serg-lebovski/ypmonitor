@@ -12,6 +12,7 @@
     {
         tabs.Add(("telegram", "🤖", "Telegram и отчёты"));
         tabs.Add(("alerts", "🔔", "Оповещения"));
+        tabs.Add(("access", "🛡️", "Доступ и безопасность"));
         tabs.Add(("logs", "📋", "Журнал"));
     }
     tabs.Add(("server", "🖥️", "Сервер и база"));
@@ -300,6 +301,62 @@
 
                     <button class="btn btn-primary" type="submit">Сохранить</button>
                     <button class="btn btn-primary" type="submit" asp-page-handler="TestAlert" asp-route-tab="alerts" formnovalidate>Отправить тест</button>
+                </form>
+            </div>
+        </section>
+
+        <section class="@Panel("access")" data-tab="access">
+            <div class="card-y">
+                <h2 class="set-h">🛡️ Доступ и безопасность</h2>
+                <div class="set-sub">
+                    Ваш текущий IP: <span class="mono">@(Model.MyIp ?? "неизвестен")</span>.
+                    Белые списки ведутся здесь, на сервере. Приватные (локальные) адреса и loopback
+                    разрешены всегда — локальная сеть и агенты в ней не отрезаются.
+                </div>
+
+                <form method="post" asp-page-handler="SaveAccess" asp-route-tab="access">
+                    <h4 style="font-size:16px">🌐 Веб-интерфейс (порт @Model.HttpPort)</h4>
+                    <div class="mb-2"><label>Белый список IP/CIDR (через запятую; пусто = разрешено всем)</label>
+                        <textarea class="form-control mono" name="webAllowedIps" rows="2"
+                                  placeholder="напр. 192.168.1.0/24, 10.10.20.0/24">@Model.Settings.WebAllowedIps</textarea>
+                        <div class="muted" style="font-size:12px">
+                            Кто не в списке — получит 403 на веб-порту. API агентов этот список не трогает.
+                            <a href="#" onclick="document.getElementsByName('webAllowedIps')[0].value='@SettingsModel.LanPreset';return false;">Вставить пресет «только локальная сеть»</a>.
+                        </div></div>
+
+                    <hr style="border-color:var(--border)" />
+                    <h4 style="font-size:16px">📡 API агентов (порт @Ypmon.Server.Services.ServerPorts.ReportsPort)</h4>
+                    <div class="mb-2"><label>Режим фильтра доступа</label>
+                        <select class="form-select" name="apiIpFilterMode" style="max-width:320px">
+                            <option value="Off" selected="@(Model.Settings.ApiIpFilterMode != "Audit" && Model.Settings.ApiIpFilterMode != "Enforce")">Выключено — пускать всех (агенты не отваливаются)</option>
+                            <option value="Audit" selected="@(Model.Settings.ApiIpFilterMode == "Audit")">Аудит — не блокировать, только писать в журнал</option>
+                            <option value="Enforce" selected="@(Model.Settings.ApiIpFilterMode == "Enforce")">Блокировка — отклонять IP не из списка (403)</option>
+                        </select>
+                        <div class="muted" style="font-size:12px">
+                            Рекомендуемый путь: «Аудит» на пару дней → посмотреть журнал (раздел «Журнал», фильтр «Входы»)
+                            → добавить недостающие внешние IP → «Блокировка». Так ни один агент не отвалится внезапно.
+                        </div></div>
+
+                    <div class="mb-2"><label>Дополнительные IP/CIDR для API (помимо внешних IP серверов)</label>
+                        <textarea class="form-control mono" name="apiAllowedIpsExtra" rows="2"
+                                  placeholder="напр. 203.0.113.5, 198.51.100.0/24">@Model.Settings.ApiAllowedIpsExtra</textarea></div>
+
+                    <div class="mb-2">
+                        <strong style="font-size:13px">Внешние IP серверов (белый список собирается из них автоматически):</strong>
+                        @if (Model.ServerExternalIps.Any())
+                        {
+                            <div class="mono" style="font-size:12px;max-height:140px;overflow:auto;background:var(--card-2);padding:8px;border-radius:6px;margin-top:4px">
+                                @string.Join(", ", Model.ServerExternalIps)
+                            </div>
+                            <div class="muted" style="font-size:12px">Всего: @Model.ServerExternalIps.Count. Это «Внешний IP» из карточек серверов — заполняйте его, чтобы агент прошёл фильтр.</div>
+                        }
+                        else
+                        {
+                            <div class="muted" style="font-size:12px">Ни у одного сервера не задан внешний IP. Пока фильтр API можно держать только «Выключено» или «Аудит».</div>
+                        }
+                    </div>
+
+                    <button class="btn btn-primary" type="submit">💾 Сохранить доступ</button>
                 </form>
             </div>
         </section>

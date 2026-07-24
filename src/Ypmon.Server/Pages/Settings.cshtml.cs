@@ -55,6 +55,11 @@ public class SettingsModel : PageModel
     public string? Message { get; set; }
     public bool IsError { get; set; }
 
+    // Доступ и безопасность: внешние IP серверов (авто-список для API) и текущий IP посетителя.
+    public List<string> ServerExternalIps { get; set; } = new();
+    public string? MyIp { get; set; }
+    public const string LanPreset = "10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16";
+
     // Информация о сервере (из конфигурации, меняется в appsettings.json)
     public int HttpPort { get; set; }
     public string DbProvider { get; set; } = "sqlite";
@@ -80,8 +85,16 @@ public class SettingsModel : PageModel
     {
         Settings = await _db.Settings.FirstOrDefaultAsync() ?? new ServerSettings();
         Users = await _db.Users.OrderBy(u => u.Username).ToListAsync();
+        MyIp = HttpContext.Connection.RemoteIpAddress?.ToString();
         if (IsAdmin)
         {
+            // Внешние IP серверов — из них автоматически собирается белый список API.
+            ServerExternalIps = (await _db.Servers.AsNoTracking()
+                    .Where(x => x.ExternalIpAddress != null && x.ExternalIpAddress != "")
+                    .Select(x => x.ExternalIpAddress!).ToListAsync())
+                .Select(AvailabilityMonitor.ExtractHost)
+                .Where(h => System.Net.IPAddress.TryParse(h, out _))
+                .Distinct().OrderBy(x => x).ToList();
             // Сортируем по Id, а не по At: sqlite не умеет DateTimeOffset в ORDER BY,
             // а Id растёт вместе со временем — порядок тот же.
             AuditLog = await _db.Audit.OrderByDescending(a => a.Id).Take(200).ToListAsync();
@@ -245,6 +258,43 @@ public class SettingsModel : PageModel
         await _audit.LogAsync(User, "Изменён внешний адрес сервера", $"{s.ExternalAddress}:{s.ExternalPort}");
         await Load();
         Message = "Внешний адрес сервера сохранён.";
+        return Page();
+    }
+
+    /// <summary>Сохранение доступа и безопасности: белые списки веб/API и режим фильтра API.</summary>
+    public async Task<IActionResult> OnPostSaveAccessAsync(string? webAllowedIps, string? apiIpFilterMode, string? apiAllowedIpsExtra)
+    {
+        if (!IsAdmin) return Forbid();
+        var s = await _db.Settings.FirstOrDefaultAsync() ?? new ServerSettings();
+
+        var mode = apiIpFilterMode is "Audit" or "Enforce" ? apiIpFilterMode : "Off";
+
+        // Страховка от самоблокировки: включать «Блокировку» веб-доступа/API, отрезав свой текущий IP, нельзя.
+        var myIp = HttpContext.Connection.RemoteIpAddress;
+        var webList = IpAllowList.Parse(webAllowedIps);
+        if (webList.Count > 0 && !IpAllowList.IsAllowed(myIp, webList))
+        {
+            await Load();
+            IsError = true;
+            Message = $"Отклонено: ваш текущий IP ({myIp}) не входит в белый список веб-порта — вы бы потеряли доступ. " +
+                      "Добавьте свой IP или диапазон и сохраните снова.";
+            return Page();
+        }
+
+        s.WebAllowedIps = string.IsNullOrWhiteSpace(webAllowedIps) ? null : webAllowedIps.Trim();
+        s.ApiIpFilterMode = mode;
+        s.ApiAllowedIpsExtra = string.IsNullOrWhiteSpace(apiAllowedIpsExtra) ? null : apiAllowedIpsExtra.Trim();
+        if (s.Id == 0) _db.Settings.Add(s);
+        await _db.SaveChangesAsync();
+
+        // Сбрасываем кэш стража, чтобы изменения подхватились немедленно.
+        _scopes.CreateScope().ServiceProvider.GetService<ApiAccessGuard>()?.Invalidate();
+
+        await _audit.LogAsync(User, "Изменены настройки доступа", $"веб-список: {(s.WebAllowedIps is null ? "пусто" : "задан")}, API-режим: {mode}");
+        await Load();
+        Message = mode == "Enforce"
+            ? "Настройки доступа сохранены. Режим API — «Блокировка»: агенты не из белого списка будут отклоняться."
+            : "Настройки доступа сохранены.";
         return Page();
     }
 

@@ -68,6 +68,27 @@ builder.Services.AddSingleton<TelegramService>();
 builder.Services.AddScoped<TelegramReportService>();
 builder.Services.AddScoped<RemoteCommandService>();
 builder.Services.AddScoped<ClientReportPdfService>();
+builder.Services.AddSingleton<ApiAccessGuard>();
+
+// Ограничитель частоты для агентского API: щедрый лимит на IP (на одном внешнем IP может
+// сидеть несколько агентов — не режем их), но защищает от флуда. Не-API пути не ограничиваем.
+builder.Services.AddRateLimiter(o =>
+{
+    o.RejectionStatusCode = 429;
+    o.GlobalLimiter = System.Threading.RateLimiting.PartitionedRateLimiter.Create<HttpContext, string>(ctx =>
+    {
+        if (!ctx.Request.Path.StartsWithSegments("/api"))
+            return System.Threading.RateLimiting.RateLimitPartition.GetNoLimiter("noapi");
+        var ip = ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        return System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(ip, _ =>
+            new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 300,                         // 300 запросов/мин на IP — агентам хватает с запасом
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0
+            });
+    });
+});
 builder.Services.AddHostedService<DailyReportScheduler>();
 builder.Services.AddHostedService<MaintenanceService>();
 builder.Services.AddHostedService<AvailabilityMonitor>();   // пинг IP, офлайн-агенты, пороги дисков
@@ -178,6 +199,9 @@ using (var scope = app.Services.CreateScope())
                     db.Database.ExecuteSqlRaw("ALTER TABLE \"Servers\" ADD COLUMN IF NOT EXISTS \"AlertSnoozeUntil\" timestamptz;");
                     db.Database.ExecuteSqlRaw("ALTER TABLE \"Servers\" ADD COLUMN IF NOT EXISTS \"AlertSnoozeReason\" text;");
                     db.Database.ExecuteSqlRaw("ALTER TABLE \"Servers\" ADD COLUMN IF NOT EXISTS \"MaintenanceWindowsJson\" text;");
+                    db.Database.ExecuteSqlRaw("ALTER TABLE \"Settings\" ADD COLUMN IF NOT EXISTS \"WebAllowedIps\" text;");
+                    db.Database.ExecuteSqlRaw("ALTER TABLE \"Settings\" ADD COLUMN IF NOT EXISTS \"ApiIpFilterMode\" text NOT NULL DEFAULT 'Off';");
+                    db.Database.ExecuteSqlRaw("ALTER TABLE \"Settings\" ADD COLUMN IF NOT EXISTS \"ApiAllowedIpsExtra\" text;");
                     db.Database.ExecuteSqlRaw("ALTER TABLE \"Servers\" ADD COLUMN IF NOT EXISTS \"FolderBackupTypesJson\" text;");
                 }
                 else
@@ -245,6 +269,9 @@ using (var scope = app.Services.CreateScope())
                     try { db.Database.ExecuteSqlRaw("ALTER TABLE \"Servers\" ADD COLUMN \"AlertSnoozeUntil\" TEXT;"); } catch { }
                     try { db.Database.ExecuteSqlRaw("ALTER TABLE \"Servers\" ADD COLUMN \"AlertSnoozeReason\" TEXT;"); } catch { }
                     try { db.Database.ExecuteSqlRaw("ALTER TABLE \"Servers\" ADD COLUMN \"MaintenanceWindowsJson\" TEXT;"); } catch { }
+                    try { db.Database.ExecuteSqlRaw("ALTER TABLE \"Settings\" ADD COLUMN \"WebAllowedIps\" TEXT;"); } catch { }
+                    try { db.Database.ExecuteSqlRaw("ALTER TABLE \"Settings\" ADD COLUMN \"ApiIpFilterMode\" TEXT NOT NULL DEFAULT 'Off';"); } catch { }
+                    try { db.Database.ExecuteSqlRaw("ALTER TABLE \"Settings\" ADD COLUMN \"ApiAllowedIpsExtra\" TEXT;"); } catch { }
                     try { db.Database.ExecuteSqlRaw("ALTER TABLE \"Servers\" ADD COLUMN \"FolderBackupTypesJson\" TEXT;"); } catch { }
                 }
             }
@@ -420,13 +447,47 @@ app.Use(async (ctx, next) =>
         return;
     }
 
-    // Список разрешённых IP применяется только к веб-страницам на веб-порту (не к API агентов).
-    if (!isApi && localPort == ServerPorts.WebPort &&
-        !IpAllowList.IsAllowed(ctx.Connection.RemoteIpAddress, allowedIps))
+    if (!isApi && localPort == ServerPorts.WebPort)
     {
-        ctx.Response.StatusCode = 403;
-        await ctx.Response.WriteAsync("Доступ запрещён (ваш IP не в списке разрешённых).");
-        return;
+        // Белый список веб-порта: сначала из настроек (ведётся в интерфейсе), иначе из конфига.
+        var webList = allowedIps;
+        try
+        {
+            var db = ctx.RequestServices.GetRequiredService<AppDbContext>();
+            var fromDb = (await db.Settings.AsNoTracking().FirstOrDefaultAsync())?.WebAllowedIps;
+            var parsed = IpAllowList.Parse(fromDb);
+            if (parsed.Count > 0) webList = parsed;
+        }
+        catch { /* БД недоступна — используем список из конфига */ }
+
+        if (!IpAllowList.IsAllowed(ctx.Connection.RemoteIpAddress, webList))
+        {
+            ctx.Response.StatusCode = 403;
+            await ctx.Response.WriteAsync("Доступ запрещён (ваш IP не в списке разрешённых).");
+            return;
+        }
+    }
+
+    // Фильтр доступа к API агентов по белому списку (приватные ∪ внешние IP серверов ∪ доп.список).
+    // По умолчанию режим Off — пускаем всех, агенты не отваливаются.
+    if (isApi)
+    {
+        var guard = ctx.RequestServices.GetRequiredService<ApiAccessGuard>();
+        var decision = guard.Check(ctx.Connection.RemoteIpAddress);
+        if (decision != ApiAccess.Allow)
+        {
+            var ip = ServerLogService.ClientIp(ctx);
+            var logs = ctx.RequestServices.GetRequiredService<ServerLogService>();
+            if (decision == ApiAccess.Block)
+            {
+                logs.Warn(LogArea.Auth, "Доступ к API заблокирован: IP не в белом списке", null, ip, ctx.Request.Path);
+                ctx.Response.StatusCode = 403;
+                await ctx.Response.WriteAsync("Доступ запрещён (IP не в белом списке).");
+                return;
+            }
+            // Audit: не блокируем, только отмечаем — чтобы было видно, кого отрезало бы «Блокировкой».
+            logs.Warn(LogArea.Auth, "Аудит доступа к API: незнакомый IP (пропущен)", null, ip, ctx.Request.Path);
+        }
     }
 
     await next();
@@ -437,6 +498,7 @@ if (!app.Environment.IsDevelopment())
 
 app.UseStaticFiles();
 app.UseRouting();
+app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapRazorPages();
@@ -445,6 +507,18 @@ app.MapRazorPages();
 app.MapPost("/api/report", async (HttpContext ctx, ReportIngestService ingest, ServerLogService logs) =>
 {
     var ip = ServerLogService.ClientIp(ctx);
+
+    // Ограничиваем размер тела отчёта: реальные отчёты — килобайты, а без лимита можно было
+    // заставить сервер парсить до ~30 МБ мусора (амплификация DoS). 2 МБ — с большим запасом.
+    const long maxBody = 2 * 1024 * 1024;
+    var bodyLimit = ctx.Features.Get<Microsoft.AspNetCore.Http.Features.IHttpMaxRequestBodySizeFeature>();
+    if (bodyLimit is { IsReadOnly: false }) bodyLimit.MaxRequestBodySize = maxBody;
+    if (ctx.Request.ContentLength is > maxBody)
+    {
+        logs.Warn(LogArea.Reports, "Отчёт отклонён: тело больше лимита", null, ip);
+        return Results.Json(new ReportAckDto { Accepted = false, Message = "Слишком большой отчёт" }, statusCode: 413);
+    }
+
     var apiKey = ctx.Request.Headers["X-Api-Key"].FirstOrDefault();
     if (string.IsNullOrWhiteSpace(apiKey))
     {

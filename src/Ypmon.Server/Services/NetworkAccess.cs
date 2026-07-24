@@ -41,6 +41,30 @@ public static class IpAllowList
         return false;
     }
 
+    /// <summary>Локальный/приватный адрес (LAN): RFC1918, loopback, link-local, ULA IPv6.</summary>
+    public static bool IsPrivate(IPAddress? ip)
+    {
+        if (ip is null) return false;
+        if (IPAddress.IsLoopback(ip)) return true;
+        if (ip.IsIPv4MappedToIPv6) ip = ip.MapToIPv4();
+
+        var b = ip.GetAddressBytes();
+        if (ip.AddressFamily == AddressFamily.InterNetwork && b.Length == 4)
+        {
+            if (b[0] == 10) return true;                          // 10.0.0.0/8
+            if (b[0] == 172 && b[1] >= 16 && b[1] <= 31) return true; // 172.16.0.0/12
+            if (b[0] == 192 && b[1] == 168) return true;          // 192.168.0.0/16
+            if (b[0] == 169 && b[1] == 254) return true;          // 169.254.0.0/16 link-local
+            return false;
+        }
+        if (ip.AddressFamily == AddressFamily.InterNetworkV6 && b.Length == 16)
+        {
+            if ((b[0] & 0xFE) == 0xFC) return true;               // fc00::/7 unique local
+            if (b[0] == 0xFE && (b[1] & 0xC0) == 0x80) return true; // fe80::/10 link-local
+        }
+        return false;
+    }
+
     private static bool InCidr(IPAddress ip, string cidr)
     {
         var parts = cidr.Split('/');

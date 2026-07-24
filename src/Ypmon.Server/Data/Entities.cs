@@ -373,6 +373,21 @@ public class ServerSettings
     /// <summary>Через сколько секунд молчания агент считается офлайн.</summary>
     public int OfflineThresholdSeconds { get; set; } = 300;
 
+    // --- Доступ и безопасность ---
+
+    /// <summary>Белый список IP/CIDR для веб-порта (пусто = разрешено всем). Ведётся в интерфейсе.</summary>
+    public string? WebAllowedIps { get; set; }
+
+    /// <summary>
+    /// Режим фильтра доступа к API агентов: "Off" — пускать всех (по умолчанию, агенты не отваливаются);
+    /// "Audit" — не блокировать, но писать в журнал незнакомые IP; "Enforce" — блокировать (403).
+    /// Разрешённый набор = приватные диапазоны ∪ внешние IP серверов ∪ доп. список ниже.
+    /// </summary>
+    public string ApiIpFilterMode { get; set; } = "Off";
+
+    /// <summary>Дополнительные IP/CIDR, разрешённые для API помимо внешних IP серверов.</summary>
+    public string? ApiAllowedIpsExtra { get; set; }
+
     /// <summary>Сколько дней хранить историю отчётов.</summary>
     public int ReportRetentionDays { get; set; } = 30;
 
