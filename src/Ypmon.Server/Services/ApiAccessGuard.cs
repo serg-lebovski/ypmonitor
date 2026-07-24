@@ -48,8 +48,10 @@ public class ApiAccessGuard
         var s = norm.ToString();
 
         // Внешние IP серверов (точное совпадение) + доп. список (IP и CIDR).
+        // MatchesEntries, а не IsAllowed: пустой доп.список не должен разрешать всех подряд —
+        // тут это просто «ничего не добавляет», а не «ограничение не настроено».
         if (_serverIps.Contains(s)) return ApiAccess.Allow;
-        if (IpAllowList.IsAllowed(norm, _extra)) return ApiAccess.Allow;
+        if (IpAllowList.MatchesEntries(norm, _extra)) return ApiAccess.Allow;
 
         return Fail();
     }

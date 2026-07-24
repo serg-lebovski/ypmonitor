@@ -23,7 +23,17 @@ public static class IpAllowList
         if (allow.Count == 0) return true;            // список пуст = разрешено всем
         if (ip is null) return false;
         if (IPAddress.IsLoopback(ip)) return true;    // localhost всегда разрешён (healthcheck)
+        return MatchesEntries(ip, allow);
+    }
 
+    /// <summary>
+    /// Чистая проверка вхождения в список, БЕЗ трактовки «пустой список = разрешено всем» —
+    /// для мест, где пустой доп.список должен означать «ничего не добавляет», а не «снимает ограничение»
+    /// (например, ApiAccessGuard: там уже есть отдельная база разрешённых, и пустой доп.список
+    /// не должен открывать доступ всем подряд).
+    /// </summary>
+    public static bool MatchesEntries(IPAddress ip, List<string> allow)
+    {
         // нормализуем IPv4-mapped IPv6 (::ffff:x.x.x.x)
         if (ip.IsIPv4MappedToIPv6) ip = ip.MapToIPv4();
 
