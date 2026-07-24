@@ -284,12 +284,8 @@ label { color: var(--muted); font-size: 13px; margin-bottom: 4px; }
 .sev-warn { color: var(--warn); }
 .sev-err { color: var(--err); }
 
-/* Полосы «место на дисках» */
-.disk-dots { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
-.ddot { display: inline-block; width: 13px; height: 13px; border-radius: 50%; cursor: help; }
-.ddot.sev-ok { background: var(--ok); }
-.ddot.sev-warn { background: var(--warn); }
-.ddot.sev-err { background: var(--err); }
+/* Диски сервера в дашборде — кружки как на карточке сервера (.disk-donut) */
+.disk-dots { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 
 /* Столбчатый график архивации */
 .achart { display: flex; align-items: flex-end; gap: 6px; height: 170px; padding-top: 4px; }
@@ -297,16 +293,8 @@ label { color: var(--muted); font-size: 13px; margin-bottom: 4px; }
 /* gap 2px — разделитель между сегментами стека, чтобы соседние цвета не сливались */
 .astack { display: flex; flex-direction: column; justify-content: flex-end; width: 100%; max-width: 26px; gap: 2px; }
 .aseg { width: 100%; }
-.aseg.sev-ok { background: var(--ok); }
-.aseg.sev-warn { background: var(--warn); }
-.aseg.sev-err { background: var(--err); }
 .aseg:first-child { border-radius: 4px 4px 0 0; }
 .alabel { color: var(--muted); font-size: 10px; margin-top: 6px; transform: rotate(-45deg); white-space: nowrap; }
-.legend { display: flex; gap: 16px; margin-top: 18px; font-size: 12px; color: var(--muted); }
-.legend .lg { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: middle; }
-.legend .lg.sev-ok { background: var(--ok); }
-.legend .lg.sev-warn { background: var(--warn); }
-.legend .lg.sev-err { background: var(--err); }
 
 /* Ячейки краткой сводки сервера (страница «Серверы») */
 .cells { display: flex; flex-wrap: wrap; gap: 10px; }

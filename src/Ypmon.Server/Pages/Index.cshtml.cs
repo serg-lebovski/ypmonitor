@@ -35,18 +35,9 @@ public class IndexModel : PageModel
     /// <summary>Сколько серверов с проблемой по месту (есть диск ниже порога) — для свёрнутого заголовка.</summary>
     public int DiskProblemServers { get; set; }
 
-    // График «работа архивации»: итоги полных отчётов по дням (последние 14 дней).
-    public List<DaySlice> ArchiveDays { get; set; } = new();
-    public int ArchiveMaxPerDay { get; set; } = 1;
-
     public record DiskDot(string Disk, string? Label, double FreePercent, int Threshold, string Sev);
 
     public record DiskServerRow(int ServerId, string Server, string Client, List<DiskDot> Disks, double WorstFree, bool Problem);
-
-    public record DaySlice(string Label, int Ok, int Warning, int Error)
-    {
-        public int Total => Ok + Warning + Error;
-    }
 
     public async Task OnGetAsync()
     {
@@ -76,8 +67,6 @@ public class IndexModel : PageModel
         // как и остальные метрики в этой строке.
         DiskProblemCount = allServers.Count(s => !s.IsOffline(OfflineThreshold)
             && (s.AlertDiskHealthActive || _diskFillProblemIds.Contains(s.Id)));
-
-        await BuildArchiveDaysAsync();
     }
 
     private void BuildDiskServers(List<MonitoredServer> servers)
@@ -110,31 +99,6 @@ public class IndexModel : PageModel
         DiskProblemServers = rows.Count(x => x.Problem);
         // Худшие (меньше всего свободного места на самом заполненном диске) — сверху.
         DiskServers = rows.OrderBy(x => x.WorstFree).ToList();
-    }
-
-    private async Task BuildArchiveDaysAsync()
-    {
-        var since = DateTimeOffset.UtcNow.Date.AddDays(-13);   // 14 дней включая сегодня
-        // Фильтр по дате — в памяти: sqlite не транслирует сравнение DateTimeOffset в WHERE.
-        // Тянем только два столбца; таблицу ограничивает срок хранения истории.
-        var rows = (await _db.Reports
-                .Select(r => new { r.ReceivedAt, r.Outcome })
-                .ToListAsync())
-            .Where(r => r.ReceivedAt >= since)
-            .ToList();
-
-        int max = 1;
-        for (int i = 0; i < 14; i++)
-        {
-            var day = since.AddDays(i);
-            var dayRows = rows.Where(r => r.ReceivedAt.UtcDateTime.Date == day).ToList();
-            var ok = dayRows.Count(r => r.Outcome == JobOutcome.Ok);
-            var warn = dayRows.Count(r => r.Outcome == JobOutcome.Warning);
-            var err = dayRows.Count(r => r.Outcome == JobOutcome.Error);
-            max = Math.Max(max, ok + warn + err);
-            ArchiveDays.Add(new DaySlice(day.ToString("dd.MM"), ok, warn, err));
-        }
-        ArchiveMaxPerDay = max;
     }
 
 }
