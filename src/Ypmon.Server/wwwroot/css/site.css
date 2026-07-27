@@ -80,10 +80,17 @@ a:hover { text-decoration: underline; }
     position: sticky;
     top: 0;
     height: 100vh;
+    transition: width .15s ease;
+    overflow: hidden;
 }
 .brand { display: flex; align-items: center; gap: 10px; padding: 6px 8px 18px; }
 .brand .logo { font-size: 22px; }
 .brand-name { font-size: 20px; font-weight: 700; letter-spacing: .5px; }
+.sidebar-toggle {
+    margin-left: auto; background: none; border: none; color: var(--muted);
+    cursor: pointer; font-size: 13px; padding: 4px 6px; border-radius: 6px; flex: none;
+}
+.sidebar-toggle:hover { background: var(--card); color: var(--text); }
 
 .sidebar .nav-link {
     color: var(--muted);
@@ -91,6 +98,8 @@ a:hover { text-decoration: underline; }
     padding: 10px 12px;
     margin-bottom: 4px;
     font-weight: 500;
+    display: flex; align-items: center; gap: 10px;
+    white-space: nowrap;
 }
 .sidebar .nav-link:hover { background: var(--card); color: var(--text); text-decoration: none; }
 .sidebar .nav-link.active { background: var(--accent); color: #fff; }
@@ -98,14 +107,29 @@ a:hover { text-decoration: underline; }
 .sidebar-footer { margin-top: auto; }
 .user-chip { display: flex; align-items: center; gap: 10px; padding: 10px 8px; }
 .avatar {
-    width: 34px; height: 34px; border-radius: 50%;
+    width: 34px; height: 34px; border-radius: 50%; flex: none;
     background: var(--accent); color: #fff;
     display: flex; align-items: center; justify-content: center; font-weight: 700;
 }
-.uname { font-weight: 600; font-size: 14px; }
-.urole { color: var(--muted); font-size: 12px; }
-.logout { display: block; text-align: center; padding: 8px; color: var(--muted); border: 1px solid var(--border); border-radius: 8px; margin-top: 8px; }
+.uname { font-weight: 600; font-size: 14px; white-space: nowrap; }
+.urole { color: var(--muted); font-size: 12px; white-space: nowrap; }
+.logout {
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    padding: 8px; color: var(--muted); border: 1px solid var(--border); border-radius: 8px; margin-top: 8px;
+    white-space: nowrap;
+}
 .logout:hover { color: var(--err); border-color: var(--err); text-decoration: none; }
+
+/* --- Свёрнутое меню (до иконок) --- */
+html.sidebar-collapsed .sidebar { width: 64px; padding-left: 8px; padding-right: 8px; }
+html.sidebar-collapsed .brand-name,
+html.sidebar-collapsed .nav-label,
+html.sidebar-collapsed .user-text { display: none; }
+html.sidebar-collapsed .brand { justify-content: center; }
+html.sidebar-collapsed .sidebar-toggle { margin-left: 0; transform: rotate(180deg); }
+html.sidebar-collapsed .nav-link { justify-content: center; padding: 10px 0; }
+html.sidebar-collapsed .user-chip { justify-content: center; padding: 10px 0; }
+html.sidebar-collapsed .logout { padding: 8px 0; }
 
 .content { flex: 1; min-width: 0; }
 
@@ -155,6 +179,12 @@ details.acc > .acc-body { padding-top: 10px; }
 /* --- Дашборд: список клиентов/серверов + панель --- */
 .dash-grid { display: grid; grid-template-columns: 1fr 360px; gap: 16px; align-items: start; }
 @@media (max-width: 1100px) { .dash-grid { grid-template-columns: 1fr; } }
+
+/* Настройки на карточке клиента/сервера — раньше жили в узкой .panel (360px) сбоку от основного
+   блока, теперь идут ПОД ним адаптивной сеткой карточек-аккордеонов (широкий экран — несколько
+   колонок, узкий — одна). Сами <details class="card-y acc"> внутри не меняются. */
+.settings-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: 16px; margin-top: 16px; }
+.settings-grid > details.acc { margin-bottom: 0; }
 
 .client-block { margin-bottom: 10px; }
 .client-name { font-size: 16px; font-weight: 700; margin: 6px 0; }

@@ -14,30 +14,35 @@
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
 </head>
 <body>
+<script>
+(function () { if (localStorage.getItem('yp-sidebar-collapsed') === '1') document.documentElement.classList.add('sidebar-collapsed'); })();
+</script>
 @if (user is not null)
 {
     <div class="app-shell">
-        <aside class="sidebar">
+        <aside class="sidebar" id="sidebar">
             <div class="brand">
                 <span class="logo">🛡️</span>
                 <span class="brand-name">YPMon</span>
+                <button type="button" id="sidebar-toggle" class="sidebar-toggle" title="Свернуть меню">◀</button>
             </div>
             <nav class="nav flex-column">
-                <a class="nav-link @Active("/Index")" href="/">📊 Дашборд</a>
-                <a class="nav-link @Active("/Servers")" href="/Servers">🖥️ Серверы</a>
-                <a class="nav-link @Active("/Clients")" href="/Clients">🗂️ Клиенты</a>
-                <a class="nav-link @Active("/Errors")" href="/Errors">⚠️ Ошибки</a>
-                <a class="nav-link @Active("/Settings")" href="/Settings">⚙️ Настройки</a>
+                <a class="nav-link @Active("/Index")" href="/" title="Дашборд"><span class="nav-ico">📊</span><span class="nav-label">Дашборд</span></a>
+                <a class="nav-link @Active("/Servers")" href="/Servers" title="Серверы"><span class="nav-ico">🖥️</span><span class="nav-label">Серверы</span></a>
+                <a class="nav-link @Active("/Clients")" href="/Clients" title="Клиенты"><span class="nav-ico">🗂️</span><span class="nav-label">Клиенты</span></a>
+                <a class="nav-link @Active("/Reports")" href="/Reports" title="Отчёты"><span class="nav-ico">📄</span><span class="nav-label">Отчёты</span></a>
+                <a class="nav-link @Active("/Errors")" href="/Errors" title="Ошибки"><span class="nav-ico">⚠️</span><span class="nav-label">Ошибки</span></a>
+                <a class="nav-link @Active("/Settings")" href="/Settings" title="Настройки"><span class="nav-ico">⚙️</span><span class="nav-label">Настройки</span></a>
             </nav>
             <div class="sidebar-footer">
-                <div class="user-chip">
+                <div class="user-chip" title="@user">
                     <span class="avatar">@(user.Length > 0 ? user[0].ToString().ToUpper() : "?")</span>
-                    <span>
+                    <span class="user-text">
                         <div class="uname">@user</div>
                         <div class="urole">@Ypmon.Server.Services.UiHelpers.RoleName(role)</div>
                     </span>
                 </div>
-                <a class="logout" href="/Logout">Выйти</a>
+                <a class="logout" href="/Logout" title="Выйти"><span class="nav-ico">🚪</span><span class="nav-label">Выйти</span></a>
             </div>
         </aside>
         <main class="content">
@@ -63,6 +68,18 @@ else
 @if (user is not null)
 {
     <script>
+    // Сворачивание меню до иконок. Состояние — в localStorage (Razor Pages перезагружает
+    // страницу на каждой навигации, класс на <html> уже проставлен инлайн-скриптом в <head>,
+    // чтобы не было мигания развёрнутым меню при переходе между страницами).
+    (function () {
+        var btn = document.getElementById('sidebar-toggle');
+        if (!btn) return;
+        btn.addEventListener('click', function () {
+            var collapsed = document.documentElement.classList.toggle('sidebar-collapsed');
+            localStorage.setItem('yp-sidebar-collapsed', collapsed ? '1' : '0');
+        });
+    })();
+
     // Быстрый поиск сервера в шапке: подсказки с индикатором состояния, клик/Enter — переход на сервер.
     (function () {
         var input = document.getElementById('gsearch-input');

@@ -6,55 +6,70 @@
     var canEdit = User.CanEdit();
 }
 
-<h1 class="page-title">Клиенты</h1>
-
-<div class="dash-grid">
-    <div>
-        @if (!Model.Clients.Any())
-        {
-            <div class="card-y muted">Клиентов пока нет. Добавьте первого справа.</div>
-        }
-        @foreach (var c in Model.Clients)
-        {
-            <div class="card-y">
-                <div style="display:flex;justify-content:space-between;align-items:center">
-                    <div>
-                        <div class="client-name">🗂️ <a href="/Clients/Details?id=@c.Id">@c.Name</a></div>
-                        <div class="muted">@c.Description</div>
-                        <div class="muted" style="font-size:12px;margin-top:4px">Серверов: @c.Servers.Count</div>
-                    </div>
-                    <div style="display:flex;gap:8px">
-                        <a class="btn btn-sm btn-primary" href="/Clients/Details?id=@c.Id">Открыть</a>
-                        @if (canEdit)
-                        {
-                            <form method="post" asp-page-handler="Delete" asp-route-id="@c.Id"
-                                  onsubmit="return confirm('Удалить клиента и все его серверы?')">
-                                <button class="btn btn-sm btn-y-danger" type="submit">Удалить</button>
-                            </form>
-                        }
-                    </div>
-                </div>
-            </div>
-        }
-    </div>
-
+<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+    <h1 class="page-title" style="margin-bottom:0">Клиенты</h1>
     @if (canEdit)
     {
-        <div class="panel">
-            <div class="card-y">
-                <h3>Новый клиент</h3>
-                <form method="post" asp-page-handler="Add">
-                    <div class="mb-3">
-                        <label>Название</label>
-                        <input class="form-control" asp-for="NewClientName" required />
-                    </div>
-                    <div class="mb-3">
-                        <label>Описание</label>
-                        <textarea class="form-control" asp-for="NewClientDescription" rows="3"></textarea>
-                    </div>
-                    <button class="btn btn-primary w-100" type="submit">Добавить клиента</button>
-                </form>
+        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#newClientModal">+ Новый клиент</button>
+    }
+</div>
+<div style="height:14px"></div>
+
+<div>
+    @if (!Model.Clients.Any())
+    {
+        <div class="card-y muted">Клиентов пока нет. Добавьте первого кнопкой выше.</div>
+    }
+    @foreach (var c in Model.Clients)
+    {
+        <div class="card-y">
+            <div style="display:flex;justify-content:space-between;align-items:center">
+                <div>
+                    <div class="client-name">🗂️ <a href="/Clients/Details?id=@c.Id">@c.Name</a></div>
+                    <div class="muted">@c.Description</div>
+                    <div class="muted" style="font-size:12px;margin-top:4px">Серверов: @c.Servers.Count</div>
+                </div>
+                <div style="display:flex;gap:8px">
+                    <a class="btn btn-sm btn-primary" href="/Clients/Details?id=@c.Id">Открыть</a>
+                    @if (canEdit)
+                    {
+                        <form method="post" asp-page-handler="Delete" asp-route-id="@c.Id"
+                              onsubmit="return confirm('Удалить клиента и все его серверы?')">
+                            <button class="btn btn-sm btn-y-danger" type="submit">Удалить</button>
+                        </form>
+                    }
+                </div>
             </div>
         </div>
     }
 </div>
+
+@if (canEdit)
+{
+    <div class="modal fade" id="newClientModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <form method="post" asp-page-handler="Add">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Новый клиент</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label>Название</label>
+                            <input class="form-control" asp-for="NewClientName" required />
+                        </div>
+                        <div class="mb-3">
+                            <label>Описание</label>
+                            <textarea class="form-control" asp-for="NewClientDescription" rows="3"></textarea>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-y-danger" data-bs-dismiss="modal">Отмена</button>
+                        <button class="btn btn-primary" type="submit">Добавить клиента</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+}

@@ -89,8 +89,7 @@
     </div>
 }
 
-<div class="dash-grid">
-    <div>
+<div>
         <div class="card-y">
             <div class="mb-2">
                 @if (offline)
@@ -373,7 +372,7 @@
 
     @if (!Model.Info)
     {
-    <div class="panel">
+    <div class="settings-grid">
         <details class="card-y acc" open>
             <summary>🔌 Данные подключения агента</summary>
             <div class="acc-body">
@@ -586,7 +585,6 @@
         }
     </div>
     }
-</div>
 
 @section Scripts {
     <script>

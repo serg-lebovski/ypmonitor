@@ -1,0 +1,80 @@
+@page
+@model ReportsModel
+@using Ypmon.Server.Services
+@{
+    ViewData["Title"] = "Отчёты";
+    var canEdit = User.CanEdit();
+}
+
+<h1 class="page-title">📄 Отчёты</h1>
+
+@if (canEdit)
+{
+    <div class="card-y mb-3">
+        <h3>PDF-отчёт по клиенту</h3>
+        <div class="muted mb-2" style="font-size:12px">
+            По всем серверам клиента за период: состояние архивации, место на дисках,
+            наработка накопителей и перезагрузки. Наработка накопителей и история перезагрузок
+            приходят от агента 2.8 и выше — на серверах со старым агентом эти разделы будут пустыми.
+        </div>
+        @if (!Model.Clients.Any())
+        {
+            <div class="muted">Клиентов пока нет.</div>
+        }
+        else
+        {
+            <form method="post" asp-page-handler="Pdf" class="row g-2 align-items-end">
+                <div class="col-md-6">
+                    <label class="muted" style="font-size:12px">Клиент</label>
+                    <select class="form-select" name="clientId" required>
+                        @foreach (var c in Model.Clients)
+                        {
+                            <option value="@c.Id">@c.Name (серверов: @c.Servers.Count)</option>
+                        }
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="muted" style="font-size:12px">Период</label>
+                    <select class="form-select" name="period">
+                        <option value="30d">За последние 30 дней</option>
+                        <option value="this-month">За текущий месяц</option>
+                        <option value="prev-month">За прошлый месяц</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <button class="btn btn-primary w-100" type="submit">Получить PDF</button>
+                </div>
+            </form>
+        }
+    </div>
+}
+
+<div class="card-y">
+    <h3>Адреса клиентов</h3>
+    <div class="muted mb-2" style="font-size:12px">Физический и IP-адрес каждого сервера по клиентам.</div>
+    @if (!Model.Clients.Any(c => c.Servers.Count > 0))
+    {
+        <div class="muted">Серверов пока нет.</div>
+    }
+    else
+    {
+        <table class="tbl">
+            <thead><tr><th>Клиент</th><th>Сервер</th><th>Физический адрес</th><th>Локальный IP</th><th>Внешний IP</th></tr></thead>
+            <tbody>
+            @foreach (var c in Model.Clients)
+            {
+                @foreach (var s in c.Servers)
+                {
+                    <tr>
+                        <td><a href="/Clients/Details?id=@c.Id">@c.Name</a></td>
+                        <td><a href="/Servers/Details?id=@s.Id">@s.Name</a></td>
+                        <td>@(s.PhysicalAddress ?? "—")</td>
+                        <td class="mono">@(s.IpAddress ?? "—")</td>
+                        <td class="mono">@(s.ExternalIpAddress ?? "—")</td>
+                    </tr>
+                }
+            }
+            </tbody>
+        </table>
+    }
+</div>
