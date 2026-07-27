@@ -71,13 +71,6 @@ public class AvailabilityMonitor : BackgroundService
             dirty |= await CheckDiskHealthAsync(settings, srv, tg, topics);
         }
 
-        // Роутеры клиентов: пингуем всех, у кого задан адрес (даже если серверов нет).
-        var clients = await db.Clients
-            .Where(c => c.RouterAddress != null && c.RouterAddress != "")
-            .ToListAsync(ct);
-        foreach (var client in clients)
-            dirty |= await CheckRouterAsync(settings, client, tg, topics);
-
         if (dirty) await db.SaveChangesAsync(ct);
     }
 
@@ -141,38 +134,6 @@ public class AvailabilityMonitor : BackgroundService
             return true;
         }
         return false;
-    }
-
-    // --- Ping роутера клиента ----------------------------------------------
-
-    private async Task<bool> CheckRouterAsync(ServerSettings s, Client client, TelegramService tg, TelegramReportService topics)
-    {
-        var key = "c" + client.Id;
-        if (!Due(key, client.RouterPingIntervalSeconds)) return false;
-
-        var host = ExtractHost(client.RouterAddress!);
-        var ok = await PingHostAsync(host);
-        if (ok) _pingFails.Remove(key);
-        else _pingFails[key] = _pingFails.GetValueOrDefault(key) + 1;
-
-        var dirty = client.LastRouterPingOk != ok || client.LastRouterPingAt is null;
-        client.LastRouterPingOk = ok;
-        client.LastRouterPingAt = DateTimeOffset.UtcNow;
-
-        var name = WebUtility.HtmlEncode(client.Name);
-        if (ok && client.AlertRouterPingActive)
-        {
-            client.AlertRouterPingActive = false;
-            await NotifyAsync(s, client, tg, topics, $"🟢 <b>{name}</b> — роутер {host} снова отвечает на ping.");
-            return true;
-        }
-        if (!ok && !client.AlertRouterPingActive && _pingFails.GetValueOrDefault(key) >= 2)
-        {
-            client.AlertRouterPingActive = true;
-            await NotifyAsync(s, client, tg, topics, $"🌐🔴 <b>{name}</b> — роутер {host} не отвечает на ping.");
-            return true;
-        }
-        return dirty;
     }
 
     /// <summary>Достаёт хост из поля адреса (терпит http://…, host:port, лишние пути).</summary>
