@@ -14,9 +14,10 @@ public class DetailsModel : PageModel
     private readonly RemoteCommandService _commands;
     private readonly AuditService _audit;
     private readonly AvailabilityMonitor _avail;
-    public DetailsModel(AppDbContext db, RemoteCommandService commands, AuditService audit, AvailabilityMonitor avail)
+    private readonly IspLookupService _isp;
+    public DetailsModel(AppDbContext db, RemoteCommandService commands, AuditService audit, AvailabilityMonitor avail, IspLookupService isp)
     {
-        _db = db; _commands = commands; _audit = audit; _avail = avail;
+        _db = db; _commands = commands; _audit = audit; _avail = avail; _isp = isp;
     }
 
     [BindProperty(SupportsGet = true)] public int Id { get; set; }
@@ -58,6 +59,7 @@ public class DetailsModel : PageModel
     [BindProperty] public string? PhysicalAddress { get; set; }
     [BindProperty] public string? IpAddress { get; set; }
     [BindProperty] public string? ExternalIpAddress { get; set; }
+    [BindProperty] public string? IspProvider { get; set; }
     [BindProperty] public string? Description { get; set; }
     [BindProperty] public int BackupStaleDays { get; set; }
     public int DefaultBackupStaleDays { get; set; } = 1;
@@ -130,6 +132,7 @@ public class DetailsModel : PageModel
         s.PhysicalAddress = PhysicalAddress?.Trim();
         s.IpAddress = IpAddress?.Trim();
         s.ExternalIpAddress = string.IsNullOrWhiteSpace(ExternalIpAddress) ? null : ExternalIpAddress.Trim();
+        s.IspProvider = string.IsNullOrWhiteSpace(IspProvider) ? null : IspProvider.Trim();
         s.Description = Description?.Trim();
         s.BackupStaleDays = Math.Max(0, BackupStaleDays);
         var settingsForRecompute = await _db.Settings.AsNoTracking().FirstOrDefaultAsync();
@@ -217,6 +220,7 @@ public class DetailsModel : PageModel
         PhysicalAddress = Server.PhysicalAddress;
         IpAddress = Server.IpAddress;
         ExternalIpAddress = Server.ExternalIpAddress;
+        IspProvider = Server.IspProvider;
         Description = Server.Description;
         BackupStaleDays = Server.BackupStaleDays;
     }
@@ -338,6 +342,39 @@ public class DetailsModel : PageModel
     public async Task<IActionResult> OnPostCheckNowAsync()
     {
         Message = await _avail.CheckServerNowAsync(Id);
+        await Load();
+        FillEditFields();
+        return Page();
+    }
+
+    // Кнопка «Определить по IP» рядом с полем «Провайдер»: разовый запрос к ipwho.is по внешнему IP.
+    // Результат просто заполняет то же поле, что и ручной ввод, — можно поправить, если ошиблось.
+    public async Task<IActionResult> OnPostDetectIspAsync()
+    {
+        if (!User.CanEdit()) return Forbid();
+        var s = await _db.Servers.FindAsync(Id);
+        if (s is null) return NotFound();
+
+        if (string.IsNullOrWhiteSpace(s.ExternalIpAddress))
+        {
+            Message = "Не задан внешний IP — определять не по чему.";
+        }
+        else
+        {
+            var provider = await _isp.LookupAsync(s.ExternalIpAddress);
+            if (provider is null)
+            {
+                Message = "Не удалось определить провайдера. Впишите вручную в поле «Провайдер».";
+            }
+            else
+            {
+                s.IspProvider = provider;
+                await _db.SaveChangesAsync();
+                await _audit.LogAsync(User, "Определён провайдер по IP", $"{s.Name}: {provider}");
+                Message = $"Определено: {provider}. Если это не так — поправьте поле «Провайдер» вручную.";
+            }
+        }
+
         await Load();
         FillEditFields();
         return Page();

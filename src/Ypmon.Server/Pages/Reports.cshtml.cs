@@ -1,3 +1,4 @@
+using System.Text;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore;
@@ -49,5 +50,39 @@ public class ReportsModel : PageModel
         return File(result.Value.pdf, "application/pdf", result.Value.fileName);
 
         static DateTimeOffset Month(DateTimeOffset t) => new(t.Year, t.Month, 1, 0, 0, 0, t.Offset);
+    }
+
+    /// <summary>
+    /// CSV-выгрузка таблицы адресов клиентов. Разделитель — ";", а не ",": так CSV открывается
+    /// в Excel с русской локалью без плясок с настройками импорта. BOM в начале — чтобы Excel
+    /// понял, что файл в UTF-8, и не превратил кириллицу в кракозябры.
+    /// </summary>
+    public async Task<IActionResult> OnGetAddressesCsvAsync()
+    {
+        var clients = await _db.Clients.Include(c => c.Servers).OrderBy(c => c.Name).ToListAsync();
+
+        var sb = new StringBuilder();
+        sb.Append("Клиент;Сервер;Физический адрес;Локальный IP;Внешний IP;Провайдер\r\n");
+        foreach (var c in clients)
+            foreach (var s in c.Servers.OrderBy(x => x.Name))
+                sb.Append(string.Join(';', new[] { c.Name, s.Name, s.PhysicalAddress, s.IpAddress, s.ExternalIpAddress, s.IspProvider }
+                    .Select(CsvEscape))).Append("\r\n");
+
+        var bom = new byte[] { 0xEF, 0xBB, 0xBF };
+        var body = Encoding.UTF8.GetBytes(sb.ToString());
+        var bytes = new byte[bom.Length + body.Length];
+        bom.CopyTo(bytes, 0);
+        body.CopyTo(bytes, bom.Length);
+
+        var fileName = $"ypmon-addresses-{DateTimeOffset.UtcNow.AddHours(6):yyyy-MM-dd}.csv";
+        return File(bytes, "text/csv", fileName);
+
+        static string CsvEscape(string? v)
+        {
+            v ??= "";
+            return v.IndexOfAny(new[] { ';', '"', '\n', '\r' }) >= 0
+                ? "\"" + v.Replace("\"", "\"\"") + "\""
+                : v;
+        }
     }
 }

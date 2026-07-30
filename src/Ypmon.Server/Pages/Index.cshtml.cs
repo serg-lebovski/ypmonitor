@@ -11,7 +11,13 @@ namespace Ypmon.Server.Pages;
 public class IndexModel : PageModel
 {
     private readonly AppDbContext _db;
-    public IndexModel(AppDbContext db) => _db = db;
+    private readonly IWebHostEnvironment _env;
+    private readonly RemoteCommandService _commands;
+    private readonly AuditService _audit;
+    public IndexModel(AppDbContext db, IWebHostEnvironment env, RemoteCommandService commands, AuditService audit)
+    {
+        _db = db; _env = env; _commands = commands; _audit = audit;
+    }
 
     public List<Client> Clients { get; set; } = new();
     public int OfflineThreshold { get; set; } = 300;
@@ -38,6 +44,12 @@ public class IndexModel : PageModel
     public record DiskDot(string Disk, string? Label, double FreePercent, int Threshold, string Sev);
 
     public record DiskServerRow(int ServerId, string Server, string Client, List<DiskDot> Disks, double WorstFree, bool Problem);
+
+    /// <summary>Версия из agent-updates/version.txt — та, что раздаётся серверам как актуальная.</summary>
+    public string? LatestAgentVersion { get; set; }
+
+    public record OutdatedAgentRow(int ServerId, string Server, string Client, string Version);
+    public List<OutdatedAgentRow> OutdatedAgents { get; set; } = new();
 
     public async Task OnGetAsync()
     {
@@ -67,6 +79,41 @@ public class IndexModel : PageModel
         // как и остальные метрики в этой строке.
         DiskProblemCount = allServers.Count(s => !s.IsOffline(OfflineThreshold)
             && (s.AlertDiskHealthActive || _diskFillProblemIds.Contains(s.Id)));
+
+        LatestAgentVersion = await ReadLatestAgentVersionAsync();
+        if (!string.IsNullOrWhiteSpace(LatestAgentVersion))
+            OutdatedAgents = allServers
+                .Where(s => !string.IsNullOrWhiteSpace(s.LastAgentVersion) && s.LastAgentVersion != LatestAgentVersion)
+                .OrderBy(s => s.Name)
+                .Select(s => new OutdatedAgentRow(s.Id, s.Name, s.Client?.Name ?? "", s.LastAgentVersion!))
+                .ToList();
+    }
+
+    private async Task<string?> ReadLatestAgentVersionAsync()
+    {
+        var verFile = Path.Combine(_env.ContentRootPath, "agent-updates", "version.txt");
+        if (!System.IO.File.Exists(verFile)) return null;
+        return (await System.IO.File.ReadAllTextAsync(verFile)).Trim();
+    }
+
+    /// <summary>Кнопка «Обновить все»: команда UpdateAgent сразу всем серверам с устаревшей версией.</summary>
+    public async Task<IActionResult> OnPostUpdateAllAgentsAsync()
+    {
+        if (!User.CanEdit()) return Forbid();
+
+        var latest = await ReadLatestAgentVersionAsync();
+        if (string.IsNullOrWhiteSpace(latest)) return RedirectToPage();
+
+        var outdated = await _db.Servers
+            .Where(s => s.LastAgentVersion != null && s.LastAgentVersion != "" && s.LastAgentVersion != latest)
+            .ToListAsync();
+        foreach (var s in outdated)
+            await _commands.IssueAsync(s.Id, AgentCommand.UpdateAgent, User.Identity?.Name ?? "?");
+
+        if (outdated.Count > 0)
+            await _audit.LogAsync(User, "Массовое обновление агентов", $"серверов: {outdated.Count}, до версии {latest}");
+
+        return RedirectToPage();
     }
 
     private void BuildDiskServers(List<MonitoredServer> servers)

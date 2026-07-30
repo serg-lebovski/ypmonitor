@@ -16,6 +16,10 @@
     <div class="metric metric-click" data-filter="problem" title="Показать серверы с проблемами архивации"><div class="v" id="m-problem-arch" style="color:var(--err)">@Model.ArchiveProblemCount</div><div class="l">Проблемы архивации</div></div>
     <div class="metric metric-click" data-filter="diskproblem" title="Показать серверы с проблемами дисков"><div class="v" id="m-problem-disk" style="color:var(--err)">@Model.DiskProblemCount</div><div class="l">Проблемы с дисками</div></div>
     <div class="metric metric-click" data-filter="offline" title="Показать только офлайн"><div class="v" id="m-offline" style="color:var(--unknown)">@Model.OfflineCount</div><div class="l">Офлайн</div></div>
+    @if (Model.OutdatedAgents.Count > 0)
+    {
+        <div class="metric metric-click" data-filter="outdated" title="Показать серверы с устаревшим агентом"><div class="v" style="color:var(--warn)">@Model.OutdatedAgents.Count</div><div class="l">Устаревшие агенты</div></div>
+    }
 </div>
 
 @* --- Фильтры (работают для плиток и для списка по клиентам) --- *@
@@ -124,6 +128,42 @@
         </div>
     </div>
 </div>
+
+@if (Model.OutdatedAgents.Count > 0)
+{
+    <div class="row-title">🧩 Устаревшие агенты</div>
+    <div class="row g-3 mb-3">
+        <div class="col-12">
+            <div class="card h-100" id="outdatedSection">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span>Актуальная версия: <span class="mono">@Model.LatestAgentVersion</span></span>
+                    @if (User.CanEdit())
+                    {
+                        <form method="post" asp-page-handler="UpdateAllAgents"
+                              onsubmit="return confirm('Отправить команду обновления агента всем серверам ниже (@Model.OutdatedAgents.Count шт.)? Каждый обновится при следующей связи.')">
+                            <button type="submit" class="btn btn-sm btn-primary">⬆️ Обновить все (@Model.OutdatedAgents.Count)</button>
+                        </form>
+                    }
+                </div>
+                <div class="card-body">
+                    <table class="tbl">
+                        <thead><tr><th>Сервер</th><th>Клиент</th><th>Версия агента</th></tr></thead>
+                        <tbody>
+                        @foreach (var row in Model.OutdatedAgents)
+                        {
+                            <tr style="cursor:pointer" onclick="location.href='/Servers/Details?id=@row.ServerId&info=true'" title="Открыть сервер">
+                                <td>@row.Server</td>
+                                <td>@row.Client</td>
+                                <td class="mono">@row.Version</td>
+                            </tr>
+                        }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+}
 
 @* --- Список по клиентам --- *@
 @if (Model.Clients.Any())
@@ -378,6 +418,11 @@ else
                         filterDiskRows(true);
                         var sec = document.getElementById('diskSection');
                         if (sec) sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        return;
+                    }
+                    if (f === 'outdated') {
+                        var outSec = document.getElementById('outdatedSection');
+                        if (outSec) outSec.scrollIntoView({ behavior: 'smooth', block: 'start' });
                         return;
                     }
                     status = f;

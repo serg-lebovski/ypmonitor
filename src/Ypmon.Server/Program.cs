@@ -69,6 +69,7 @@ builder.Services.AddSingleton<TelegramService>();
 builder.Services.AddScoped<TelegramReportService>();
 builder.Services.AddScoped<RemoteCommandService>();
 builder.Services.AddScoped<ClientReportPdfService>();
+builder.Services.AddHttpClient<IspLookupService>();
 builder.Services.AddSingleton<ApiAccessGuard>();
 
 // Ограничитель частоты для агентского API: щедрый лимит на IP (на одном внешнем IP может
@@ -208,6 +209,7 @@ using (var scope = app.Services.CreateScope())
                     db.Database.ExecuteSqlRaw("ALTER TABLE \"Settings\" ADD COLUMN IF NOT EXISTS \"ApiIpFilterMode\" text NOT NULL DEFAULT 'Off';");
                     db.Database.ExecuteSqlRaw("ALTER TABLE \"Settings\" ADD COLUMN IF NOT EXISTS \"ApiAllowedIpsExtra\" text;");
                     db.Database.ExecuteSqlRaw("ALTER TABLE \"Servers\" ADD COLUMN IF NOT EXISTS \"FolderBackupTypesJson\" text;");
+                    db.Database.ExecuteSqlRaw("ALTER TABLE \"Servers\" ADD COLUMN IF NOT EXISTS \"IspProvider\" text;");
                 }
                 else
                 {
@@ -278,6 +280,7 @@ using (var scope = app.Services.CreateScope())
                     try { db.Database.ExecuteSqlRaw("ALTER TABLE \"Settings\" ADD COLUMN \"ApiIpFilterMode\" TEXT NOT NULL DEFAULT 'Off';"); } catch { }
                     try { db.Database.ExecuteSqlRaw("ALTER TABLE \"Settings\" ADD COLUMN \"ApiAllowedIpsExtra\" TEXT;"); } catch { }
                     try { db.Database.ExecuteSqlRaw("ALTER TABLE \"Servers\" ADD COLUMN \"FolderBackupTypesJson\" TEXT;"); } catch { }
+                    try { db.Database.ExecuteSqlRaw("ALTER TABLE \"Servers\" ADD COLUMN \"IspProvider\" TEXT;"); } catch { }
                 }
             }
             catch (Exception ex) { logger.LogWarning("Обновление схемы: {Msg}", ex.Message); }

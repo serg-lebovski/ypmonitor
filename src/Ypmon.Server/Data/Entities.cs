@@ -81,6 +81,10 @@ public class MonitoredServer
     /// <summary>Внешний IP сервера / роутера. Именно его пингует мониторинг доступности интернета.</summary>
     public string? ExternalIpAddress { get; set; }
 
+    /// <summary>Интернет-провайдер по внешнему IP — определяется автоматически (кнопка на карточке
+    /// сервера) или задаётся вручную, если авто-определение ошиблось.</summary>
+    public string? IspProvider { get; set; }
+
     public string? Description { get; set; }
 
     /// <summary>Ключ, которым агент аутентифицируется при отправке отчётов.</summary>

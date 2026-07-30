@@ -115,6 +115,7 @@
             <div class="kv"><span class="k">Физ. адрес</span><span class="v">@(s.PhysicalAddress ?? "—")</span></div>
             <div class="kv"><span class="k">Локальный IP</span><span class="v">@(s.IpAddress ?? "—")</span></div>
             <div class="kv"><span class="k">Внешний IP (роутер)</span><span class="v">@(s.ExternalIpAddress ?? "—")</span></div>
+            <div class="kv"><span class="k">Провайдер</span><span class="v">@(s.IspProvider ?? "—")</span></div>
             <div class="kv"><span class="k">Машина агента</span><span class="v">@(s.LastMachineName ?? "—")</span></div>
             <div class="kv"><span class="k">Версия агента</span><span class="v">@(s.LastAgentVersion ?? "—")</span></div>
             @{ var pending = Ypmon.Server.Services.RemoteCommandService.PendingOf(s); }
@@ -576,6 +577,15 @@
                     <div class="mb-2"><label>Физический адрес</label><input class="form-control" asp-for="PhysicalAddress" placeholder="напр. ЦОД, стойка 5" /></div>
                     <div class="mb-2"><label>Локальный IP</label><input class="form-control" asp-for="IpAddress" /></div>
                     <div class="mb-2"><label>Внешний IP (роутер) — для пинга</label><input class="form-control" asp-for="ExternalIpAddress" /></div>
+                    <div class="mb-2">
+                        <label>Провайдер</label>
+                        <div style="display:flex;gap:8px">
+                            <input class="form-control" asp-for="IspProvider" placeholder="напр. Ростелеком" />
+                            <button type="submit" class="btn btn-sm btn-primary" style="white-space:nowrap"
+                                    asp-page-handler="DetectIsp" asp-route-id="@s.Id" title="Определить по внешнему IP">🔍 Определить</button>
+                        </div>
+                        <div class="muted" style="font-size:12px">Определяется по внешнему IP автоматически; если ошиблось — впишите вручную и сохраните.</div>
+                    </div>
                     <div class="mb-2"><label>Тревога, если нет новых файлов N дней (0 = по умолчанию @Model.DefaultBackupStaleDays)</label>
                         <input class="form-control" type="number" min="0" asp-for="BackupStaleDays" /></div>
                     <div class="mb-3"><label>Описание</label><textarea class="form-control" asp-for="Description" rows="2"></textarea></div>
