@@ -92,7 +92,11 @@ builder.Services.AddRateLimiter(o =>
 });
 builder.Services.AddHostedService<DailyReportScheduler>();
 builder.Services.AddHostedService<MaintenanceService>();
-builder.Services.AddHostedService<AvailabilityMonitor>();   // пинг IP, офлайн-агенты, пороги дисков
+// Синглтон регистрируем отдельно от AddHostedService, чтобы страница сервера могла достать
+// тот же экземпляр из DI для кнопки «Проверить сейчас» (AddHostedService сам по себе не
+// делает конкретный тип резолвимым — только IHostedService).
+builder.Services.AddSingleton<AvailabilityMonitor>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<AvailabilityMonitor>());   // пинг IP, офлайн-агенты, пороги дисков
 
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
     .AddCookie(o =>

@@ -12,7 +12,6 @@ namespace Ypmon.Server.Services;
 ///  • связь с агентом — порог офлайна адаптивный (2×heartbeat-интервал агента + запас),
 ///    поэтому «пропала связь» ловится сразу, с поправкой на настроенную агентом частоту;
 ///  • ping IP сервера — с индивидуальным интервалом проверки (карточка сервера);
-///  • ping роутера клиента — у клиента может не быть серверов, но роутер пингуется;
 ///  • свободное место на дисках — порог задаётся на каждый диск.
 /// Уведомления уходят в Telegram-тему клиента только по переходам состояния
 /// (упало/восстановилось) — без повторов.
@@ -117,6 +116,18 @@ public class AvailabilityMonitor : BackgroundService
 
         var host = ExtractHost(srv.ExternalIpAddress!);
         var ok = await PingHostAsync(host);
+        return await ApplyPingResultAsync(s, srv, tg, topics, host, ok);
+    }
+
+    /// <summary>
+    /// Общая часть: по готовому результату пинга обновляет счётчик неудач подряд, тревогу
+    /// AlertPingActive (с гистерезисом 2 неудач подряд) и шлёт уведомление о переходе состояния.
+    /// Вынесено отдельно, чтобы кнопка «Проверить сейчас» могла переиспользовать логику без
+    /// повторного пинга (сам пинг уже сделан к моменту вызова).
+    /// </summary>
+    private async Task<bool> ApplyPingResultAsync(ServerSettings s, MonitoredServer srv, TelegramService tg, TelegramReportService topics, string host, bool ok)
+    {
+        var key = "s" + srv.Id;
         if (ok) _pingFails.Remove(key);
         else _pingFails[key] = _pingFails.GetValueOrDefault(key) + 1;
 
@@ -134,6 +145,61 @@ public class AvailabilityMonitor : BackgroundService
             return true;
         }
         return false;
+    }
+
+    /// <summary>
+    /// Разовая проверка по кнопке «Проверить сейчас» на карточке сервера: пинг внешнего IP прямо
+    /// сейчас (не дожидаясь ни фонового цикла, ни настроенного интервала пинга) + пересчёт тревог
+    /// по дискам/SMART по уже полученным от агента данным. Возвращает короткое описание результата.
+    /// Состояние тревог/уведомления по пингу трогает, только если мониторинг пинга включён на
+    /// карточке — иначе просто показывает живой результат, не влияя на сохранённое состояние.
+    /// </summary>
+    public async Task<string> CheckServerNowAsync(int serverId)
+    {
+        using var scope = _sp.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var tg = scope.ServiceProvider.GetRequiredService<TelegramService>();
+        var topics = scope.ServiceProvider.GetRequiredService<TelegramReportService>();
+        var settings = await db.Settings.FirstOrDefaultAsync();
+        var srv = await db.Servers.Include(x => x.Client).FirstOrDefaultAsync(x => x.Id == serverId);
+        if (settings is null || srv is null) return "Сервер не найден.";
+
+        var parts = new List<string>();
+
+        if (string.IsNullOrWhiteSpace(srv.ExternalIpAddress))
+        {
+            parts.Add("внешний IP не задан — пинг пропущен");
+        }
+        else
+        {
+            var host = ExtractHost(srv.ExternalIpAddress!);
+            var ok = await PingHostAsync(host);
+            parts.Add(ok ? $"IP {host}: отвечает" : $"IP {host}: НЕ отвечает");
+            if (srv.MonitorPing)
+                await ApplyPingResultAsync(settings, srv, tg, topics, host, ok);
+        }
+
+        await CheckDisksAsync(settings, srv, tg, topics);
+        await CheckDiskHealthAsync(settings, srv, tg, topics);
+
+        if (!string.IsNullOrWhiteSpace(srv.LastDisksJson))
+        {
+            try
+            {
+                var disks = JsonSerializer.Deserialize<List<DiskStatusDto>>(srv.LastDisksJson!) ?? new();
+                var active = ParseActive(srv.AlertDisksActiveJson);
+                if (disks.Count > 0)
+                    parts.Add(active.Count > 0 ? $"диски ниже порога: {string.Join(", ", active)}" : "диски в норме");
+            }
+            catch { }
+        }
+        else
+        {
+            parts.Add("данных о дисках ещё нет");
+        }
+
+        await db.SaveChangesAsync();
+        return "Проверено: " + string.Join(" · ", parts);
     }
 
     /// <summary>Достаёт хост из поля адреса (терпит http://…, host:port, лишние пути).</summary>

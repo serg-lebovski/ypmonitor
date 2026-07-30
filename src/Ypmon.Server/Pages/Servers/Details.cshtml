@@ -25,6 +25,11 @@
         }
         else
         {
+            @* Проверка со стороны сервера: живой пинг внешнего IP + пересчёт тревог по дискам
+               по уже полученным данным — сразу, без ожидания фонового цикла и без участия агента. *@
+            <form method="post" asp-page-handler="CheckNow" asp-route-id="@s.Id">
+                <button class="btn btn-sm btn-primary" type="submit" title="Пинг внешнего IP и пересчёт тревог по дискам прямо сейчас">🔍 Проверить сейчас</button>
+            </form>
             @* Команды агенту: сервер передаёт только номер команды из закрытого списка. *@
             <form method="post" asp-page-handler="RequestReport" asp-route-id="@s.Id">
                 <button class="btn btn-sm btn-primary" type="submit" title="Агент пришлёт свежий отчёт при следующей связи">🔄 Запросить отчёт</button>

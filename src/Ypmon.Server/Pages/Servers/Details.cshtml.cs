@@ -13,7 +13,11 @@ public class DetailsModel : PageModel
     private readonly AppDbContext _db;
     private readonly RemoteCommandService _commands;
     private readonly AuditService _audit;
-    public DetailsModel(AppDbContext db, RemoteCommandService commands, AuditService audit) { _db = db; _commands = commands; _audit = audit; }
+    private readonly AvailabilityMonitor _avail;
+    public DetailsModel(AppDbContext db, RemoteCommandService commands, AuditService audit, AvailabilityMonitor avail)
+    {
+        _db = db; _commands = commands; _audit = audit; _avail = avail;
+    }
 
     [BindProperty(SupportsGet = true)] public int Id { get; set; }
 
@@ -328,6 +332,16 @@ public class DetailsModel : PageModel
         => await IssueAsync(AgentCommand.RequestReport,
             "Запрос отправлен. Агент пришлёт отчёт при следующей связи (обычно в течение 1–2 минут).",
             requireEdit: false);
+
+    // Кнопка «Проверить сейчас»: живой пинг внешнего IP + пересчёт тревог по дискам, без ожидания
+    // фонового цикла мониторинга. Не требует агента — данные о дисках уже есть от последнего отчёта.
+    public async Task<IActionResult> OnPostCheckNowAsync()
+    {
+        Message = await _avail.CheckServerNowAsync(Id);
+        await Load();
+        FillEditFields();
+        return Page();
+    }
 
     // Кнопка «Обновить агента» (принудительное обновление).
     public async Task<IActionResult> OnPostRequestUpdateAsync()
