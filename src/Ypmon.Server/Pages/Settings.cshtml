@@ -187,7 +187,7 @@
 
                     <div class="form-check mb-2">
                         <input class="form-check-input" type="checkbox" name="wgEnabled" value="true" id="wge" @(s.WireGuardEnabled ? "checked" : "") />
-                        <label class="form-check-label" for="wge">Использовать WireGuard для доступа бота к Telegram</label>
+                        <label class="form-check-label" for="wge">Использовать AmneziaWG/WireGuard для доступа бота к Telegram</label>
                     </div>
                     <div class="mb-2"><label>Конфиг (вставьте текст — это заменит текущий; смена VPN-сервера Amnezia = просто вставьте новый)</label>
                         <textarea class="form-control mono" name="wgConfigText" rows="8" spellcheck="false"
@@ -202,13 +202,13 @@
                 </form>
                 <div class="mt-2" style="display:flex;gap:8px;flex-wrap:wrap">
                     <form method="post" asp-page-handler="CheckWireGuard" asp-route-tab="telegram">
-                        <button class="btn btn-sm btn-primary" type="submit">Проверить WireGuard (показать внешний IP)</button>
+                        <button class="btn btn-sm btn-primary" type="submit">Проверить туннель (показать внешний IP)</button>
                     </form>
                     @if (!string.IsNullOrWhiteSpace(s.WireGuardConfig))
                     {
                         <form method="post" asp-page-handler="DeleteWireGuard" asp-route-tab="telegram"
-                              onsubmit="return confirm('Удалить конфигурацию WireGuard и остановить туннель?')">
-                            <button class="btn btn-sm btn-y-danger" type="submit">Удалить туннель WireGuard</button>
+                              onsubmit="return confirm('Удалить конфигурацию и остановить туннель?')">
+                            <button class="btn btn-sm btn-y-danger" type="submit">Удалить туннель</button>
                         </form>
                     }
                 </div>
