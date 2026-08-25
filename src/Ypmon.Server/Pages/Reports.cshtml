@@ -49,7 +49,91 @@
     </div>
 }
 
-<div class="card-y">
+<div class="card-y mb-3">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+        <h3 style="margin-bottom:0">📊 Статистика проблем</h3>
+        <form method="get" class="d-flex align-items-center" style="gap:8px">
+            <select class="form-select form-select-sm" name="statsPeriod" onchange="this.form.submit()" style="width:auto">
+                <option value="this-month" selected="@(Model.StatsPeriod == "this-month" ? "selected" : null)">За текущий месяц</option>
+                <option value="prev-month" selected="@(Model.StatsPeriod == "prev-month" ? "selected" : null)">За прошлый месяц</option>
+                <option value="30d" selected="@(Model.StatsPeriod == "30d" ? "selected" : null)">За последние 30 дней</option>
+            </select>
+        </form>
+    </div>
+    <div class="muted mb-2" style="font-size:12px">
+        Период: @Model.StatsFrom.ToString("dd.MM.yyyy") — @Model.StatsTo.ToString("dd.MM.yyyy") (время Омска). Учитываются проблемы
+        архивации и нехватки места на диске из полных отчётов агента (раз в 6 ч; глубина истории — см. настройку хранения отчётов).
+        Тревоги SMART/перегрева/офлайна сюда не входят — по ним нет накопленной истории повторов.
+    </div>
+
+    <div class="row g-3 mb-3">
+        <div class="col-sm-4"><div class="metric"><div class="v">@Model.TotalClients</div><div class="l">Клиентов</div></div></div>
+        <div class="col-sm-4"><div class="metric"><div class="v">@Model.TotalServers</div><div class="l">Серверов всего</div></div></div>
+        <div class="col-sm-4"><div class="metric"><div class="v">@Model.ServerProblems.Count</div><div class="l">Серверов с проблемами за период</div></div></div>
+    </div>
+
+    <div class="row g-3">
+        <div class="col-lg-7">
+            <h4 style="font-size:14px">Серверы клиентов и проблемы за период</h4>
+            @if (!Model.Clients.Any(c => c.Servers.Count > 0))
+            {
+                <div class="muted">Серверов пока нет.</div>
+            }
+            else
+            {
+                <table class="tbl">
+                    <thead><tr><th>Клиент</th><th>Серверов</th><th>Проблемных отчётов</th><th>Какие проблемы</th></tr></thead>
+                    <tbody>
+                    @foreach (var c in Model.Clients.Where(c => c.Servers.Count > 0))
+                    {
+                        var clientProblems = Model.ServerProblems.Where(p => p.Client == c.Name).ToList();
+                        <tr>
+                            <td><a href="/Clients/Details?id=@c.Id">@c.Name</a></td>
+                            <td>@c.Servers.Count</td>
+                            <td>@clientProblems.Sum(p => p.ErrorReports + p.WarningReports)</td>
+                            <td style="font-size:12px">
+                                @if (!clientProblems.Any())
+                                {
+                                    <span class="muted">без проблем</span>
+                                }
+                                else
+                                {
+                                    @foreach (var p in clientProblems)
+                                    {
+                                        <div><strong>@p.Server</strong>: @(p.ErrorReports + p.WarningReports) отч.
+                                            (@string.Join(", ", p.Categories.Select(x => $"{x.Category}: {x.Count}")))</div>
+                                    }
+                                }
+                            </td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            }
+        </div>
+        <div class="col-lg-5">
+            <h4 style="font-size:14px">Чаще всего повторяются (все серверы)</h4>
+            @if (!Model.TopProblems.Any())
+            {
+                <div class="muted">За период проблем не зафиксировано.</div>
+            }
+            else
+            {
+                <table class="tbl">
+                    <thead><tr><th>Проблема</th><th>Сколько раз</th></tr></thead>
+                    <tbody>
+                    @foreach (var p in Model.TopProblems)
+                    {
+                        <tr><td>@p.Category</td><td>@p.Count</td></tr>
+                    }
+                    </tbody>
+                </table>
+            }
+        </div>
+    </div>
+</div>
+
+<div class="card-y mb-3">
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
         <h3 style="margin-bottom:0">Адреса клиентов</h3>
         @if (Model.Clients.Any(c => c.Servers.Count > 0))
