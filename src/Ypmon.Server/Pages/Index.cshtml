@@ -50,8 +50,11 @@
     </div>
 
     @* --- Плитки серверов: по одной на сервер, цвет + иконка + подпись статуса --- *@
-    <div class="row-title">🖥️ Серверы — последний результат</div>
-    <div class="tiles">
+    <div class="row-title" id="tilesSectionHeader" style="cursor:pointer">
+        <span>🖥️ Серверы — последний результат</span>
+        <span id="tilesSectionCaret" style="font-size:12px;margin-left:auto">▼</span>
+    </div>
+    <div class="tiles" id="tilesSectionBody">
         @foreach (var client in Model.Clients)
         {
             foreach (var s in client.Servers)
@@ -252,24 +255,26 @@ else
 
 @section Scripts {
     <script>
-        // Сворачивание блока «Свободное место на дисках». Состояние — в localStorage.
-        (function () {
-            var header = document.getElementById('diskSectionHeader');
-            var body = document.getElementById('diskSectionBody');
-            var caret = document.getElementById('diskSectionCaret');
+        // Сворачивание блоков дашборда (плитки серверов, диски). Состояние — в localStorage.
+        function ypCollapsible(headerId, bodyId, caretId, storageKey) {
+            var header = document.getElementById(headerId);
+            var body = document.getElementById(bodyId);
+            var caret = document.getElementById(caretId);
             if (!header || !body) return;
 
             function setCollapsed(collapsed) {
                 body.style.display = collapsed ? 'none' : '';
                 if (caret) caret.textContent = collapsed ? '▶' : '▼';
-                localStorage.setItem('yp-disk-collapsed', collapsed ? '1' : '0');
+                localStorage.setItem(storageKey, collapsed ? '1' : '0');
             }
 
-            setCollapsed(localStorage.getItem('yp-disk-collapsed') === '1');
+            setCollapsed(localStorage.getItem(storageKey) === '1');
             header.addEventListener('click', function () {
                 setCollapsed(body.style.display !== 'none');
             });
-        })();
+        }
+        ypCollapsible('diskSectionHeader', 'diskSectionBody', 'diskSectionCaret', 'yp-disk-collapsed');
+        ypCollapsible('tilesSectionHeader', 'tilesSectionBody', 'tilesSectionCaret', 'yp-tiles-collapsed');
 
         // Живое обновление блоков без перезагрузки страницы: опрос /dash/state каждые 10 с
         // и точечный патч цифр, плиток, строк и бейджей. Прокрутка, фильтры и раскрытые
