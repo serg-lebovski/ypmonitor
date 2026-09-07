@@ -18,12 +18,21 @@ prepare(){
 }
 
 route_up(){
-  local ep gw dev
-  ep=$(grep -oiE 'Endpoint[[:space:]]*=[[:space:]]*[0-9.]+' "$CONF" | grep -oE '[0-9.]+' | head -1)
+  local ep_host ep gw dev
+  # Endpoint в конфиге может быть как IP, так и доменом (Amnezia часто отдаёт домен) — раньше
+  # тут понимался только голый IP, и для домена маршрут-исключение просто не добавлялся: хендшейк
+  # к серверу утекал в ещё не поднятый туннель, и соединение никогда не устанавливалось.
+  ep_host=$(grep -iE '^[[:space:]]*Endpoint[[:space:]]*=' "$CONF" | head -1 | sed -E 's/^[^=]*=[[:space:]]*//; s/[[:space:]]*$//; s/:[0-9]+$//')
+  case "$ep_host" in
+    *[!0-9.]*) ep=$(getent hosts "$ep_host" 2>/dev/null | awk '{print $1; exit}') ;;   # домен — резолвим
+    *) ep="$ep_host" ;;                                                               # уже IP
+  esac
   gw=$(ip route show default | awk '/default/{print $3; exit}')
   dev=$(ip route show default | awk '/default/{print $5; exit}')
   if [ -n "$ep" ] && [ -n "$gw" ] && [ -n "$dev" ]; then
-    ip route replace "$ep/32" via "$gw" dev "$dev" && log "endpoint $ep напрямую через $gw dev $dev"
+    ip route replace "$ep/32" via "$gw" dev "$dev" && log "endpoint $ep_host ($ep) напрямую через $gw dev $dev"
+  else
+    log "не удалось определить маршрут для endpoint '$ep_host' (ep=$ep gw=$gw dev=$dev)"
   fi
   if ip route replace default dev awg0; then log "дефолтный маршрут через awg0 (туннель)"; else log "не удалось поставить default через awg0"; fi
 }
