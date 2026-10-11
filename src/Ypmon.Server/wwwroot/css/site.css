@@ -344,8 +344,9 @@ label { color: var(--muted); font-size: 13px; margin-bottom: 4px; }
     padding: 10px 16px;
     background: var(--bg);
     border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
 }
-.gsearch { position: relative; max-width: 620px; }
+.gsearch { position: relative; max-width: 620px; flex: 1 1 auto; min-width: 0; }
 .gsearch input {
     width: 100%; padding: 9px 12px;
     background: var(--card); color: var(--text);
@@ -476,7 +477,7 @@ html.sidebar-collapsed .sidebar-profile { padding: 10px 0; display: flex; justif
 
 /* ===== Пилюля статуса системы (шапка) — зелёная/тревожная, с живым поллингом ===== */
 .status-pill {
-    display: inline-flex; align-items: center; gap: 7px;
+    display: inline-flex; align-items: center; gap: 7px; flex: none;
     font-size: 12px; font-weight: 600; padding: 5px 12px; border-radius: 999px;
     background: rgba(40, 199, 111, .12); color: var(--ok); border: 1px solid rgba(40, 199, 111, .3);
     white-space: nowrap;

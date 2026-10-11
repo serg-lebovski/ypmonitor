@@ -26,6 +26,15 @@
                 <span class="brand-name">YPMon</span>
                 <button type="button" id="sidebar-toggle" class="sidebar-toggle" title="Свернуть меню">◀</button>
             </div>
+            <div class="sidebar-profile">
+                <div class="user-chip" title="@user">
+                    <span class="avatar">@(user.Length > 0 ? user[0].ToString().ToUpper() : "?")</span>
+                    <span class="user-text">
+                        <div class="uname">@user</div>
+                        <div class="urole">@Ypmon.Server.Services.UiHelpers.RoleName(role)</div>
+                    </span>
+                </div>
+            </div>
             <nav class="nav flex-column">
                 <a class="nav-link @Active("/Index")" href="/" title="Дашборд"><span class="nav-ico">📊</span><span class="nav-label">Дашборд</span></a>
                 <a class="nav-link @Active("/Servers")" href="/Servers" title="Серверы"><span class="nav-ico">🖥️</span><span class="nav-label">Серверы</span></a>
@@ -35,24 +44,18 @@
                 <a class="nav-link @Active("/Settings")" href="/Settings" title="Настройки"><span class="nav-ico">⚙️</span><span class="nav-label">Настройки</span></a>
             </nav>
             <div class="sidebar-footer">
-                <div class="user-chip" title="@user">
-                    <span class="avatar">@(user.Length > 0 ? user[0].ToString().ToUpper() : "?")</span>
-                    <span class="user-text">
-                        <div class="uname">@user</div>
-                        <div class="urole">@Ypmon.Server.Services.UiHelpers.RoleName(role)</div>
-                    </span>
-                </div>
                 <a class="logout" href="/Logout" title="Выйти"><span class="nav-ico">🚪</span><span class="nav-label">Выйти</span></a>
             </div>
         </aside>
         <main class="content">
-            @* Постоянная строка поиска сервера: доступна на любой странице. *@
+            @* Постоянная строка поиска сервера + живая пилюля общего статуса: доступны на любой странице. *@
             <div class="topbar">
                 <div class="gsearch">
                     <input id="gsearch-input" type="text" autocomplete="off" spellcheck="false"
                            placeholder="🔍 Найти сервер — имя, клиент, машина или IP…" />
                     <div id="gsearch-drop" class="gsearch-drop" hidden></div>
                 </div>
+                <span id="sys-status" class="status-pill" hidden><span class="sp-dot"></span><span id="sys-status-text"></span></span>
             </div>
             <div class="container-fluid py-3">
                 @RenderBody()
@@ -146,6 +149,30 @@ else
         document.addEventListener('click', function (e) {
             if (!drop.contains(e.target) && e.target !== input) hide();
         });
+    })();
+
+    // Пилюля общего статуса в шапке: переиспользуем /dash/state (тот же эндпоинт,
+    // которым живьём обновляется дашборд) — опрос раз в 30 с на ЛЮБОЙ странице.
+    (function () {
+        var pill = document.getElementById('sys-status');
+        var text = document.getElementById('sys-status-text');
+        if (!pill || !text) return;
+
+        function tick() {
+            if (document.hidden) return;
+            fetch('/dash/state', { credentials: 'same-origin' })
+                .then(function (r) { return r.ok ? r.json() : null; })
+                .then(function (st) {
+                    if (!st) return;
+                    var problems = (st.counts.problem || 0) + (st.counts.offline || 0) + (st.counts.diskProblem || 0);
+                    pill.classList.toggle('sp-problem', problems > 0);
+                    text.textContent = problems > 0 ? 'Есть проблемы: ' + problems : 'Все системы работают';
+                    pill.hidden = false;
+                })
+                .catch(function () { });
+        }
+        tick();
+        setInterval(tick, 30000);
     })();
     </script>
 }
