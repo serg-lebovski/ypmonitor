@@ -6,7 +6,10 @@
     --border: #2b3852;
     --text: #e6ebf3;
     --muted: #8a98b0;
-    --accent: #4f8cff;
+    /* Основной акцент — зелёный (было синее #4f8cff). Отдельная переменная для hover,
+       т.к. Bootstrap 5.3 не выводит оттенок hover сам из CSS-переменной --bs-primary. */
+    --accent: #22c55e;
+    --accent-hover: #1ea852;
     --ok: #28c76f;
     --warn: #ff9f43;
     --err: #ea5455;
@@ -216,6 +219,9 @@ table.tbl th { color: var(--muted); font-weight: 600; font-size: 13px; }
 .form-control:focus, .form-select:focus { background: var(--card-2); color: var(--text); border-color: var(--accent); box-shadow: none; }
 label { color: var(--muted); font-size: 13px; margin-bottom: 4px; }
 .btn-primary { background: var(--accent); border-color: var(--accent); }
+.btn-primary:hover, .btn-primary:focus, .btn-primary:active {
+    background: var(--accent-hover) !important; border-color: var(--accent-hover) !important;
+}
 .btn-y-danger { background: transparent; border: 1px solid var(--err); color: var(--err); }
 
 .code { font-family: Consolas, monospace; background: var(--bg); padding: 2px 8px; border-radius: 6px; border: 1px solid var(--border); }
@@ -460,3 +466,37 @@ table.tbl tr.lg-warn td { background: rgba(255,159,67,.07); }
 }
 
 .cl-badges, .row-badges { display: inline-flex; gap: 6px; flex-wrap: wrap; vertical-align: middle; }
+
+/* ===== Профиль пользователя наверху сайдбара (карточкой, не просто строкой) ===== */
+.sidebar-profile {
+    background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+    padding: 10px; margin-bottom: 14px;
+}
+html.sidebar-collapsed .sidebar-profile { padding: 10px 0; display: flex; justify-content: center; }
+
+/* ===== Пилюля статуса системы (шапка) — зелёная/тревожная, с живым поллингом ===== */
+.status-pill {
+    display: inline-flex; align-items: center; gap: 7px;
+    font-size: 12px; font-weight: 600; padding: 5px 12px; border-radius: 999px;
+    background: rgba(40, 199, 111, .12); color: var(--ok); border: 1px solid rgba(40, 199, 111, .3);
+    white-space: nowrap;
+}
+.status-pill .sp-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex: none; }
+.status-pill.sp-problem {
+    background: rgba(234, 84, 85, .12); color: var(--err); border-color: rgba(234, 84, 85, .3);
+}
+
+/* ===== Компактные кнопки-иконки в ряд (быстрые действия на карточке) =====
+   Для 1-2 явных действий (сохранить/удалить) оставляем обычные подписанные кнопки —
+   иконки-без-подписи годятся только для рядов из нескольких второстепенных действий,
+   где подпись на каждой раздула бы карточку (см. README/скриншот-референс интерфейса). */
+.icon-toolbar { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.icon-btn {
+    width: 32px; height: 32px; flex: none; padding: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+    border-radius: 8px; border: 1px solid var(--border); background: var(--card-2);
+    color: var(--muted); font-size: 14px; line-height: 1; cursor: pointer; text-decoration: none;
+}
+.icon-btn:hover { color: var(--text); border-color: var(--accent); background: var(--card); text-decoration: none; }
+.icon-btn.ib-danger:hover { color: var(--err); border-color: var(--err); }
+.icon-btn:disabled, .icon-btn.disabled { opacity: .35; cursor: default; pointer-events: none; }
