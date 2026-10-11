@@ -26,25 +26,28 @@
         else
         {
             @* Проверка со стороны сервера: живой пинг внешнего IP + пересчёт тревог по дискам
-               по уже полученным данным — сразу, без ожидания фонового цикла и без участия агента. *@
-            <form method="post" asp-page-handler="CheckNow" asp-route-id="@s.Id">
-                <button class="btn btn-sm btn-primary" type="submit" title="Пинг внешнего IP и пересчёт тревог по дискам прямо сейчас">🔍 Проверить сейчас</button>
-            </form>
-            @* Команды агенту: сервер передаёт только номер команды из закрытого списка. *@
-            <form method="post" asp-page-handler="RequestReport" asp-route-id="@s.Id">
-                <button class="btn btn-sm btn-primary" type="submit" title="Агент пришлёт свежий отчёт при следующей связи">🔄 Запросить отчёт</button>
-            </form>
-            @if (canEdit)
-            {
-                <form method="post" asp-page-handler="RequestUpdate" asp-route-id="@s.Id"
-                      onsubmit="return confirm('Отправить агенту команду на принудительное обновление? Агент скачает установщик с этого сервера и перезапустит службу.')">
-                    <button class="btn btn-sm btn-primary" type="submit" title="Агент проверит и установит обновление при следующей связи">⬆️ Обновить агента</button>
+               по уже полученным данным — сразу, без ожидания фонового цикла и без участия агента.
+               Компактный ряд иконок-кнопок: у каждой title — она же и подсказка, и единственная подпись. *@
+            <div class="icon-toolbar">
+                <form method="post" asp-page-handler="CheckNow" asp-route-id="@s.Id">
+                    <button class="icon-btn" type="submit" title="Проверить сейчас — пинг внешнего IP и пересчёт тревог по дискам">🔍</button>
                 </form>
-                <form method="post" asp-page-handler="RequestReboot" asp-route-id="@s.Id"
-                      onsubmit="return confirm('ПЕРЕЗАГРУЗИТЬ СЕРВЕР «@s.Name»?\n\nМашина уйдёт в перезагрузку через минуту после того, как агент получит команду. Все работающие на ней задачи будут прерваны.\n\nПродолжить?')">
-                    <button class="btn btn-sm btn-danger" type="submit" title="Агент перезагрузит машину при следующей связи">⚡ Перезагрузить сервер</button>
+                @* Команды агенту: сервер передаёт только номер команды из закрытого списка. *@
+                <form method="post" asp-page-handler="RequestReport" asp-route-id="@s.Id">
+                    <button class="icon-btn" type="submit" title="Запросить отчёт — агент пришлёт свежий при следующей связи">🔄</button>
                 </form>
-            }
+                @if (canEdit)
+                {
+                    <form method="post" asp-page-handler="RequestUpdate" asp-route-id="@s.Id"
+                          onsubmit="return confirm('Отправить агенту команду на принудительное обновление? Агент скачает установщик с этого сервера и перезапустит службу.')">
+                        <button class="icon-btn" type="submit" title="Обновить агента — проверит и установит обновление при следующей связи">⬆️</button>
+                    </form>
+                    <form method="post" asp-page-handler="RequestReboot" asp-route-id="@s.Id"
+                          onsubmit="return confirm('ПЕРЕЗАГРУЗИТЬ СЕРВЕР «@s.Name»?\n\nМашина уйдёт в перезагрузку через минуту после того, как агент получит команду. Все работающие на ней задачи будут прерваны.\n\nПродолжить?')">
+                        <button class="icon-btn ib-danger" type="submit" title="Перезагрузить сервер — агент перезагрузит машину при следующей связи">⚡</button>
+                    </form>
+                }
+            </div>
             <a class="btn btn-sm btn-primary" href="/Servers">☰ все серверы</a>
             <a class="btn btn-sm btn-primary" href="/Clients/Details?id=@s.ClientId">← к клиенту @s.Client?.Name</a>
         }
