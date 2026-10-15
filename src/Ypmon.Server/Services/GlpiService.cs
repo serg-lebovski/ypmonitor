@@ -105,7 +105,11 @@ public class GlpiService
 
     public async Task<(bool ok, string message)> TestConnectionAsync(ServerSettings s)
     {
-        if (!Configured(s)) return (false, "Заполните URL, оба токена и ID проекта.");
+        if (!s.GlpiEnabled)
+            return (false, "Галочка «Заводить инциденты в GLPI» не отмечена — отметьте и сохраните ещё раз.");
+        if (string.IsNullOrWhiteSpace(s.GlpiUrl) || string.IsNullOrWhiteSpace(s.GlpiAppToken)
+            || string.IsNullOrWhiteSpace(s.GlpiUserToken) || s.GlpiProjectId <= 0)
+            return (false, "Заполните URL, оба токена и ID проекта.");
         using var http = CreateClient();
         string? token = null;
         try
