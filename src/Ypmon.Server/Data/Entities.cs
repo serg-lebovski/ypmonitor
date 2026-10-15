@@ -192,6 +192,12 @@ public class MonitoredServer
     /// <summary>Диски, по которым тревога уже отправлена (JSON-массив имён).</summary>
     public string? AlertDisksActiveJson { get; set; }
 
+    /// <summary>
+    /// Диски, которые были в предыдущем отчёте, но пропали из нового (JSON-массив имён) —
+    /// отключили, отвалился RAID/USB и т.п. Пока диск числится тут, повторно тревогу не шлём.
+    /// </summary>
+    public string? AlertDiskMissingJson { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 
     // --- Кэш последнего состояния (для быстрого дашборда) ---

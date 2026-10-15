@@ -103,6 +103,58 @@ public class ReportIngestService
     }
 
     /// <summary>
+    /// Диск, который был в предыдущем отчёте, пропал из нового — отключили, слетел RAID/USB и т.п.
+    /// Сравниваем с ещё не перезаписанным server.LastDisksJson, поэтому вызывать строго ДО того,
+    /// как он перезатрётся новым снимком. Уведомляем по переходам, не на каждый отчёт; пустой список
+    /// дисков в отчёте (сбой опроса у агента) игнорируем — это не «все диски пропали», а «нет данных».
+    /// </summary>
+    private async Task CheckMissingDisksAsync(ServerSettings? settings, MonitoredServer server, List<DiskStatusDto> newDisks)
+    {
+        if (settings is null || newDisks.Count == 0 || string.IsNullOrWhiteSpace(server.LastDisksJson)) return;
+
+        List<DiskStatusDto>? prevDisks;
+        try { prevDisks = JsonSerializer.Deserialize<List<DiskStatusDto>>(server.LastDisksJson!); }
+        catch { return; }
+        if (prevDisks is null || prevDisks.Count == 0) return;
+
+        var curNames = new HashSet<string>(newDisks.Select(d => d.Name), StringComparer.OrdinalIgnoreCase);
+        HashSet<string> missing;
+        try
+        {
+            missing = string.IsNullOrWhiteSpace(server.AlertDiskMissingJson)
+                ? new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+                : new HashSet<string>(JsonSerializer.Deserialize<List<string>>(server.AlertDiskMissingJson!) ?? new(), StringComparer.OrdinalIgnoreCase);
+        }
+        catch { missing = new HashSet<string>(StringComparer.OrdinalIgnoreCase); }
+
+        var changed = false;
+        var name = System.Net.WebUtility.HtmlEncode(server.Name);
+
+        // Пропавшие: были в прошлом снимке, сейчас не видны, ещё не отмечены как пропавшие.
+        foreach (var d in prevDisks)
+        {
+            if (curNames.Contains(d.Name) || missing.Contains(d.Name)) continue;
+            missing.Add(d.Name);
+            changed = true;
+            await NotifyAsync(settings, server, AlertKind.DiskMissing, true,
+                $"💽❌ <b>{name}</b> — диск {System.Net.WebUtility.HtmlEncode(d.Name)} пропал: был в предыдущем отчёте, "
+                + "сейчас не виден системе. Отключили? Слетел RAID/USB?");
+        }
+
+        // Вернувшиеся: числились пропавшими, снова видны в текущем снимке.
+        foreach (var letter in missing.ToList())
+        {
+            if (!curNames.Contains(letter)) continue;
+            missing.Remove(letter);
+            changed = true;
+            await NotifyAsync(settings, server, AlertKind.DiskMissing, false,
+                $"💽✅ <b>{name}</b> — диск {System.Net.WebUtility.HtmlEncode(letter)} снова виден системе.");
+        }
+
+        if (changed) server.AlertDiskMissingJson = missing.Count == 0 ? null : JsonSerializer.Serialize(missing.ToList());
+    }
+
+    /// <summary>
     /// Сообщение в тему клиента в Telegram — с учётом тихого режима сервера (snooze/окна) — и
     /// параллельно задача в GLPI (<paramref name="active"/>: true — завести/оставить, false — закрыть).
     /// </summary>
@@ -149,10 +201,11 @@ public class ReportIngestService
             server.LastSeenAt = DateTimeOffset.UtcNow;
             server.LastReportedAt = report.ReportedAt;
             if (report.LastBootAt is { } hbBoot) server.LastBootAt = hbBoot;
-            if (report.Disks.Count > 0)
-                server.LastDisksJson = JsonSerializer.Serialize(report.Disks);
             // Температура приходит и в heartbeat — перегрев ловим раз в минуту, а не раз в 6 часов.
             var hbSettings = await _db.Settings.FirstOrDefaultAsync();
+            await CheckMissingDisksAsync(hbSettings, server, report.Disks);   // до перезаписи LastDisksJson
+            if (report.Disks.Count > 0)
+                server.LastDisksJson = JsonSerializer.Serialize(report.Disks);
             await CheckCpuTemperatureAsync(server, hbSettings, report);
             var ack = Ack(server, "OK (heartbeat)");
             _commands.MarkExecuted(server, report.LastCommandId);   // агент подтвердил выполнение
@@ -208,6 +261,7 @@ public class ReportIngestService
         server.LastMachineName = report.MachineName;
         server.LastAgentVersion = report.AgentVersion;
         server.LastReportJson = JsonSerializer.Serialize(report);
+        await CheckMissingDisksAsync(settings, server, report.Disks);   // до перезаписи LastDisksJson
         if (report.Disks.Count > 0)
             server.LastDisksJson = JsonSerializer.Serialize(report.Disks);
         if (report.PhysicalDisks.Count > 0)

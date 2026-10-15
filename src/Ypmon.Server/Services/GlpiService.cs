@@ -33,6 +33,7 @@ public class GlpiService
         [AlertKind.Offline] = "Агент не доступен",
         [AlertKind.Ping] = "Не отвечает ping",
         [AlertKind.DiskLow] = "Мало места на диске",
+        [AlertKind.DiskMissing] = "Диск пропал",
         [AlertKind.DiskHealth] = "Диск (SMART/перегрев)",
         [AlertKind.CpuOverheat] = "Перегрев процессора",
         [AlertKind.Backup] = "Ошибка архивации",
