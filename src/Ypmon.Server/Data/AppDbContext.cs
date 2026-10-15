@@ -15,6 +15,7 @@ public class AppDbContext : DbContext
     public DbSet<AuditEntry> Audit => Set<AuditEntry>();
     public DbSet<ServerLog> Logs => Set<ServerLog>();
     public DbSet<RebootEvent> Reboots => Set<RebootEvent>();
+    public DbSet<GlpiIncident> GlpiIncidents => Set<GlpiIncident>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -50,5 +51,12 @@ public class AppDbContext : DbContext
             .HasForeignKey(r => r.ServerId)
             .OnDelete(DeleteBehavior.Cascade);
         b.Entity<RebootEvent>().HasIndex(r => new { r.ServerId, r.At });
+
+        b.Entity<GlpiIncident>()
+            .HasOne(g => g.Server)
+            .WithMany()
+            .HasForeignKey(g => g.ServerId)
+            .OnDelete(DeleteBehavior.Cascade);
+        b.Entity<GlpiIncident>().HasIndex(g => new { g.ServerId, g.Kind });
     }
 }

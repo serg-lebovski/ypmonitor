@@ -15,9 +15,10 @@ public class DetailsModel : PageModel
     private readonly AuditService _audit;
     private readonly AvailabilityMonitor _avail;
     private readonly IspLookupService _isp;
-    public DetailsModel(AppDbContext db, RemoteCommandService commands, AuditService audit, AvailabilityMonitor avail, IspLookupService isp)
+    private readonly GlpiService _glpi;
+    public DetailsModel(AppDbContext db, RemoteCommandService commands, AuditService audit, AvailabilityMonitor avail, IspLookupService isp, GlpiService glpi)
     {
-        _db = db; _commands = commands; _audit = audit; _avail = avail; _isp = isp;
+        _db = db; _commands = commands; _audit = audit; _avail = avail; _isp = isp; _glpi = glpi;
     }
 
     [BindProperty(SupportsGet = true)] public int Id { get; set; }
@@ -238,6 +239,11 @@ public class DetailsModel : PageModel
             s.BackupShrinkFolder = null;
             await _db.SaveChangesAsync();
             await _audit.LogAsync(User, "Подтверждено уменьшение файла бэкапа", s.Name);
+
+            var settings = await _db.Settings.FirstOrDefaultAsync();
+            if (settings is not null)
+                await _glpi.CloseAsync(settings, s, AlertKind.BackupShrink,
+                    $"{s.Name} — подтверждено администратором ({User.Identity?.Name}): новый объём корректен.");
         }
         await Load();
         FillEditFields();

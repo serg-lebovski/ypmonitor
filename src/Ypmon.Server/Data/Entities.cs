@@ -369,6 +369,29 @@ public class RebootEvent
     public string? Reason { get; set; }
 }
 
+/// <summary>
+/// Открытый (или закрытый — для истории) инцидент в GLPI по паре «сервер + тип проблемы».
+/// По этой таблице GlpiService понимает, обновлять ли уже существующую задачу или заводить новую —
+/// без повторных поисков в GLPI и без дублей при повторных тревогах по одной и той же проблеме.
+/// </summary>
+public class GlpiIncident
+{
+    public int Id { get; set; }
+    public int ServerId { get; set; }
+    public MonitoredServer? Server { get; set; }
+
+    /// <summary>Тип проблемы — <see cref="Services.AlertKind"/> в виде строки.</summary>
+    public string Kind { get; set; } = "";
+
+    /// <summary>ID задачи (ProjectTask) в GLPI — та самая подзадача-инцидент.</summary>
+    public int GlpiTaskId { get; set; }
+
+    public DateTimeOffset OpenedAt { get; set; } = DateTimeOffset.UtcNow;
+
+    /// <summary>null — инцидент ещё открыт. Заполняется при восстановлении/закрытии.</summary>
+    public DateTimeOffset? ClosedAt { get; set; }
+}
+
 /// <summary>Глобальные настройки сервера (одна запись, key/value-подход не нужен).</summary>
 public class ServerSettings
 {
@@ -478,4 +501,24 @@ public class ServerSettings
 
     /// <summary>Внешний порт приёма отчётов (если отличается от порта приёма по умолчанию 8081).</summary>
     public int ExternalPort { get; set; } = 8081;
+
+    // --- Инциденты в GLPI (Project/ProjectTask — не Ticket, чтобы не засорять общий пул заявок) ---
+
+    public bool GlpiEnabled { get; set; }
+
+    /// <summary>Адрес REST API GLPI, например https://glpi.example.com/apirest.php (без слэша на конце).</summary>
+    public string? GlpiUrl { get; set; }
+
+    public string? GlpiAppToken { get; set; }
+    public string? GlpiUserToken { get; set; }
+
+    /// <summary>ID проекта «Мониторинг серверов» в GLPI — внутри него создаются задачи по типам проблем.</summary>
+    public int GlpiProjectId { get; set; }
+
+    /// <summary>
+    /// Кэш ID родительских задач-категорий в проекте (JSON {"Offline": 30, "DiskLow": 31, ...}),
+    /// чтобы не искать их в GLPI на каждый инцидент. Создаются один раз, лениво, при первой проблеме
+    /// этого типа (или все сразу — кнопкой «Синхронизировать сейчас»).
+    /// </summary>
+    public string? GlpiCategoryTasksJson { get; set; }
 }

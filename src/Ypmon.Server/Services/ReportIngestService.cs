@@ -14,12 +14,13 @@ public class ReportIngestService
     private readonly TelegramService _tg;
     private readonly TelegramReportService _topics;
     private readonly ServerLogService _logs;
+    private readonly GlpiService _glpi;
     private readonly ILogger<ReportIngestService> _log;
 
     public ReportIngestService(AppDbContext db, AlertService alerts, RemoteCommandService commands,
-        TelegramService tg, TelegramReportService topics, ServerLogService logs, ILogger<ReportIngestService> log)
+        TelegramService tg, TelegramReportService topics, ServerLogService logs, GlpiService glpi, ILogger<ReportIngestService> log)
     {
-        _db = db; _alerts = alerts; _commands = commands; _tg = tg; _topics = topics; _logs = logs; _log = log;
+        _db = db; _alerts = alerts; _commands = commands; _tg = tg; _topics = topics; _logs = logs; _glpi = glpi; _log = log;
     }
 
     /// <summary>
@@ -86,7 +87,7 @@ public class ReportIngestService
             _logs.Warn(LogArea.Reports, $"Перегрев процессора: {server.Name} — {temp:0.#} °C (порог {limit} °C)",
                 report.MachineName);
             if (settings.CpuTempAlertsEnabled)
-                await NotifyAsync(settings, server, AlertKind.CpuOverheat,
+                await NotifyAsync(settings, server, AlertKind.CpuOverheat, true,
                     $"🔥🔴 <b>{name}</b> — перегрев процессора: {temp:0.#} °C (порог {limit} °C).\n"
                     + "Проверьте охлаждение и нагрузку на сервере.");
         }
@@ -96,13 +97,16 @@ public class ReportIngestService
             _logs.Info(LogArea.Reports, $"Температура процессора в норме: {server.Name} — {temp:0.#} °C",
                 report.MachineName);
             if (settings.CpuTempAlertsEnabled)
-                await NotifyAsync(settings, server, AlertKind.CpuOverheat,
+                await NotifyAsync(settings, server, AlertKind.CpuOverheat, false,
                     $"🔥🟢 <b>{name}</b> — температура процессора вернулась в норму: {temp:0.#} °C.");
         }
     }
 
-    /// <summary>Сообщение в тему клиента в Telegram — с учётом тихого режима сервера (snooze/окна).</summary>
-    private async Task NotifyAsync(ServerSettings s, MonitoredServer server, AlertKind kind, string text)
+    /// <summary>
+    /// Сообщение в тему клиента в Telegram — с учётом тихого режима сервера (snooze/окна) — и
+    /// параллельно задача в GLPI (<paramref name="active"/>: true — завести/оставить, false — закрыть).
+    /// </summary>
+    private async Task NotifyAsync(ServerSettings s, MonitoredServer server, AlertKind kind, bool active, string text)
     {
         if (AlertSuppression.IsSuppressed(server, kind, DateTimeOffset.UtcNow, out var reason))
         {
@@ -111,15 +115,20 @@ public class ReportIngestService
             return;
         }
         var client = server.Client;
-        if (!s.TelegramEnabled || string.IsNullOrWhiteSpace(s.TelegramBotToken) || string.IsNullOrWhiteSpace(s.TelegramChatId))
-            return;
-        try
+        if (s.TelegramEnabled && !string.IsNullOrWhiteSpace(s.TelegramBotToken) && !string.IsNullOrWhiteSpace(s.TelegramChatId))
         {
-            long? topic = client is null ? null : await _topics.EnsureTopicAsync(s, client);
-            var (ok, err) = await _tg.SendMessageAsync(s, s.TelegramChatId!, text, topic, disablePreview: true);
-            if (!ok) _log.LogWarning("Не удалось отправить уведомление о перегреве: {Err}", err);
+            try
+            {
+                long? topic = client is null ? null : await _topics.EnsureTopicAsync(s, client);
+                var (ok, err) = await _tg.SendMessageAsync(s, s.TelegramChatId!, text, topic, disablePreview: true);
+                if (!ok) _log.LogWarning("Не удалось отправить уведомление о перегреве: {Err}", err);
+            }
+            catch (Exception ex) { _log.LogWarning(ex, "Ошибка отправки уведомления о перегреве"); }
         }
-        catch (Exception ex) { _log.LogWarning(ex, "Ошибка отправки уведомления о перегреве"); }
+
+        var plain = System.Text.RegularExpressions.Regex.Replace(text, "<.*?>", "");
+        if (active) await _glpi.OpenAsync(s, server, kind, plain);
+        else await _glpi.CloseAsync(s, server, kind, plain);
     }
 
     public async Task<ReportAckDto> IngestAsync(string apiKey, AgentReportDto report)
@@ -288,20 +297,34 @@ public class ReportIngestService
         {
             var problems = report.Folders.Where(f => f.Outcome >= JobOutcome.Warning)
                 .Select(f => $"• {f.Name}: {f.Message}").ToList();
+            var body = $"{server.Client?.Name} — отчёт по архивации за {DateTimeOffset.UtcNow.AddHours(6):yyyy-MM-dd}\n\n"
+                + $"❌ {server.Name} — ошибка архивации\n" + string.Join("\n", problems);
             await _alerts.SendAsync(settings,
                 $"YPMon: проблема с бэкапами — {server.Client?.Name} / {server.Name}",
                 $"Машина: {report.MachineName}\n" + string.Join("\n", problems));
+            await _glpi.OpenAsync(settings, server, AlertKind.Backup, body);
+        }
+        // Восстановление — только закрываем задачу в GLPI (отдельного уведомления не было и раньше
+        // не будет: о текущем состоянии бэкапов и так сообщает ежедневный отчёт по архивации).
+        else if (settings is not null && overall < JobOutcome.Warning && prevOutcome >= JobOutcome.Warning)
+        {
+            await _glpi.CloseAsync(settings, server, AlertKind.Backup,
+                $"{server.Name} — архивация снова в порядке.");
         }
 
         // Оповещение о резком уменьшении нового файла бэкапа.
         if (settings is not null && shrinkAlarm && shrink is { } s)
         {
             var pct = s.fromSize > 0 ? (1 - (double)s.toSize / s.fromSize) * 100 : 0;
+            var body = $"{server.Client?.Name} / {server.Name}\n\n"
+                + $"⚠️ Папка «{s.folder}»: новый файл {s.toName} ({UiHelpers.Bytes(s.toSize)}) меньше предыдущего " +
+                $"{s.fromName} ({UiHelpers.Bytes(s.fromSize)}) на {pct:0}%.";
             await _alerts.SendAsync(settings,
                 $"YPMon: новый файл бэкапа резко меньше предыдущего — {server.Client?.Name} / {server.Name}",
                 $"Папка «{s.folder}»: новый файл {s.toName} ({UiHelpers.Bytes(s.toSize)}) меньше предыдущего " +
                 $"{s.fromName} ({UiHelpers.Bytes(s.fromSize)}) на {pct:0}%. Проверьте, всё ли верно. " +
                 $"Если это ожидаемо — подтвердите на странице сервера.");
+            await _glpi.OpenAsync(settings, server, AlertKind.BackupShrink, body);
         }
 
         return Ack(server, "OK");

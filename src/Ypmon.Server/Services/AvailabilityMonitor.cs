@@ -52,6 +52,7 @@ public class AvailabilityMonitor : BackgroundService
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var tg = scope.ServiceProvider.GetRequiredService<TelegramService>();
         var topics = scope.ServiceProvider.GetRequiredService<TelegramReportService>();
+        var glpi = scope.ServiceProvider.GetRequiredService<GlpiService>();
         var settings = await db.Settings.FirstOrDefaultAsync(ct);
         if (settings is null) return;
 
@@ -64,10 +65,10 @@ public class AvailabilityMonitor : BackgroundService
         var dirty = false;
         foreach (var srv in servers)
         {
-            dirty |= await CheckOfflineAsync(settings, srv, tg, topics);
-            dirty |= await CheckPingAsync(settings, srv, tg, topics);
-            dirty |= await CheckDisksAsync(settings, srv, tg, topics);
-            dirty |= await CheckDiskHealthAsync(settings, srv, tg, topics);
+            dirty |= await CheckOfflineAsync(settings, srv, tg, topics, glpi);
+            dirty |= await CheckPingAsync(settings, srv, tg, topics, glpi);
+            dirty |= await CheckDisksAsync(settings, srv, tg, topics, glpi);
+            dirty |= await CheckDiskHealthAsync(settings, srv, tg, topics, glpi);
         }
 
         if (dirty) await db.SaveChangesAsync(ct);
@@ -84,7 +85,7 @@ public class AvailabilityMonitor : BackgroundService
 
     // --- Связь с агентом -------------------------------------------------
 
-    private async Task<bool> CheckOfflineAsync(ServerSettings s, MonitoredServer srv, TelegramService tg, TelegramReportService topics)
+    private async Task<bool> CheckOfflineAsync(ServerSettings s, MonitoredServer srv, TelegramService tg, TelegramReportService topics, GlpiService glpi)
     {
         // Не тревожим по серверам, к которым агент ещё ни разу не подключался.
         if (!srv.MonitorOfflineAlert || srv.LastSeenAt is null) return false;
@@ -97,13 +98,13 @@ public class AvailabilityMonitor : BackgroundService
         var text = offline
             ? $"🔴 <b>{name}</b> — пропала связь с сервером: агент не выходит на связь (последний отчёт: {UiHelpers.Ago(srv.LastSeenAt)})."
             : $"🟢 <b>{name}</b> — связь с сервером восстановлена.";
-        await NotifyServerAsync(s, srv, AlertKind.Offline, tg, topics, text);
+        await NotifyServerAsync(s, srv, AlertKind.Offline, offline, tg, topics, glpi, text);
         return true;
     }
 
     // --- Ping IP сервера (интернет на адресе) ------------------------------
 
-    private async Task<bool> CheckPingAsync(ServerSettings s, MonitoredServer srv, TelegramService tg, TelegramReportService topics)
+    private async Task<bool> CheckPingAsync(ServerSettings s, MonitoredServer srv, TelegramService tg, TelegramReportService topics, GlpiService glpi)
     {
         var key = "s" + srv.Id;
         // Мониторинг доступности интернета привязан к ВНЕШНЕМУ IP сервера (роутеру).
@@ -116,7 +117,7 @@ public class AvailabilityMonitor : BackgroundService
 
         var host = ExtractHost(srv.ExternalIpAddress!);
         var ok = await PingHostAsync(host);
-        return await ApplyPingResultAsync(s, srv, tg, topics, host, ok);
+        return await ApplyPingResultAsync(s, srv, tg, topics, glpi, host, ok);
     }
 
     /// <summary>
@@ -125,7 +126,7 @@ public class AvailabilityMonitor : BackgroundService
     /// Вынесено отдельно, чтобы кнопка «Проверить сейчас» могла переиспользовать логику без
     /// повторного пинга (сам пинг уже сделан к моменту вызова).
     /// </summary>
-    private async Task<bool> ApplyPingResultAsync(ServerSettings s, MonitoredServer srv, TelegramService tg, TelegramReportService topics, string host, bool ok)
+    private async Task<bool> ApplyPingResultAsync(ServerSettings s, MonitoredServer srv, TelegramService tg, TelegramReportService topics, GlpiService glpi, string host, bool ok)
     {
         var key = "s" + srv.Id;
         if (ok) _pingFails.Remove(key);
@@ -135,13 +136,13 @@ public class AvailabilityMonitor : BackgroundService
         if (ok && srv.AlertPingActive)
         {
             srv.AlertPingActive = false;
-            await NotifyServerAsync(s, srv, AlertKind.Ping, tg, topics, $"🟢 <b>{name}</b> — адрес {host} снова отвечает на ping, интернет на адресе восстановлен.");
+            await NotifyServerAsync(s, srv, AlertKind.Ping, false, tg, topics, glpi, $"🟢 <b>{name}</b> — адрес {host} снова отвечает на ping, интернет на адресе восстановлен.");
             return true;
         }
         if (!ok && !srv.AlertPingActive && _pingFails.GetValueOrDefault(key) >= 2)
         {
             srv.AlertPingActive = true;
-            await NotifyServerAsync(s, srv, AlertKind.Ping, tg, topics, $"🌐🔴 <b>{name}</b> — адрес {host} не отвечает на ping: похоже, на адресе пропал интернет.");
+            await NotifyServerAsync(s, srv, AlertKind.Ping, true, tg, topics, glpi, $"🌐🔴 <b>{name}</b> — адрес {host} не отвечает на ping: похоже, на адресе пропал интернет.");
             return true;
         }
         return false;
@@ -160,6 +161,7 @@ public class AvailabilityMonitor : BackgroundService
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var tg = scope.ServiceProvider.GetRequiredService<TelegramService>();
         var topics = scope.ServiceProvider.GetRequiredService<TelegramReportService>();
+        var glpi = scope.ServiceProvider.GetRequiredService<GlpiService>();
         var settings = await db.Settings.FirstOrDefaultAsync();
         var srv = await db.Servers.Include(x => x.Client).FirstOrDefaultAsync(x => x.Id == serverId);
         if (settings is null || srv is null) return "Сервер не найден.";
@@ -176,11 +178,11 @@ public class AvailabilityMonitor : BackgroundService
             var ok = await PingHostAsync(host);
             parts.Add(ok ? $"IP {host}: отвечает" : $"IP {host}: НЕ отвечает");
             if (srv.MonitorPing)
-                await ApplyPingResultAsync(settings, srv, tg, topics, host, ok);
+                await ApplyPingResultAsync(settings, srv, tg, topics, glpi, host, ok);
         }
 
-        await CheckDisksAsync(settings, srv, tg, topics);
-        await CheckDiskHealthAsync(settings, srv, tg, topics);
+        await CheckDisksAsync(settings, srv, tg, topics, glpi);
+        await CheckDiskHealthAsync(settings, srv, tg, topics, glpi);
 
         if (!string.IsNullOrWhiteSpace(srv.LastDisksJson))
         {
@@ -233,7 +235,7 @@ public class AvailabilityMonitor : BackgroundService
 
     // --- Диски -------------------------------------------------------------
 
-    private async Task<bool> CheckDisksAsync(ServerSettings s, MonitoredServer srv, TelegramService tg, TelegramReportService topics)
+    private async Task<bool> CheckDisksAsync(ServerSettings s, MonitoredServer srv, TelegramService tg, TelegramReportService topics, GlpiService glpi)
     {
         if (string.IsNullOrWhiteSpace(srv.LastDisksJson)) return false;
         var thresholds = ParseThresholds(srv.DiskAlertsJson);
@@ -262,7 +264,7 @@ public class AvailabilityMonitor : BackgroundService
             {
                 active.Add(d.Name);
                 changed = true;
-                await NotifyServerAsync(s, srv, AlertKind.DiskLow, tg, topics,
+                await NotifyServerAsync(s, srv, AlertKind.DiskLow, true, tg, topics, glpi,
                     $"💽🔴 <b>{name}</b> — диск {d.Name} почти заполнен: свободно {freePct:0.#}% ({UiHelpers.Bytes(d.FreeBytes)} из {UiHelpers.Bytes(d.TotalBytes)}), порог {minFree}%.");
             }
             // Гистерезис +2%: не дёргаем «восстановилось/упало» на границе порога.
@@ -270,7 +272,7 @@ public class AvailabilityMonitor : BackgroundService
             {
                 active.Remove(d.Name);
                 changed = true;
-                await NotifyServerAsync(s, srv, AlertKind.DiskLow, tg, topics,
+                await NotifyServerAsync(s, srv, AlertKind.DiskLow, false, tg, topics, glpi,
                     $"💽🟢 <b>{name}</b> — на диске {d.Name} снова достаточно места: свободно {freePct:0.#}% ({UiHelpers.Bytes(d.FreeBytes)}).");
             }
         }
@@ -294,7 +296,7 @@ public class AvailabilityMonitor : BackgroundService
         _ => 0
     };
 
-    private async Task<bool> CheckDiskHealthAsync(ServerSettings s, MonitoredServer srv, TelegramService tg, TelegramReportService topics)
+    private async Task<bool> CheckDiskHealthAsync(ServerSettings s, MonitoredServer srv, TelegramService tg, TelegramReportService topics, GlpiService glpi)
     {
         if (string.IsNullOrWhiteSpace(srv.LastPhysicalDisksJson)) return false;
         List<PhysicalDiskDto>? disks;
@@ -369,16 +371,16 @@ public class AvailabilityMonitor : BackgroundService
         {
             var name = WebUtility.HtmlEncode(srv.Name);
             if (worsened.Count > 0)
-                await NotifyServerAsync(s, srv, AlertKind.DiskHealth, tg, topics,
+                await NotifyServerAsync(s, srv, AlertKind.DiskHealth, true, tg, topics, glpi,
                     $"🩺🔴 <b>{name}</b> — ухудшились показатели SMART:\n{string.Join("\n", worsened.Select(x => "• " + x))}\nСтоит проверить накопитель и бэкапы.");
             if (tempWorse.Count > 0)
-                await NotifyServerAsync(s, srv, AlertKind.DiskHealth, tg, topics,
+                await NotifyServerAsync(s, srv, AlertKind.DiskHealth, true, tg, topics, glpi,
                     $"🌡️🔴 <b>{name}</b> — перегрев накопителя:\n{string.Join("\n", tempWorse.Select(x => "• " + x))}");
             if (improved.Count > 0)
-                await NotifyServerAsync(s, srv, AlertKind.DiskHealth, tg, topics,
+                await NotifyServerAsync(s, srv, AlertKind.DiskHealth, false, tg, topics, glpi,
                     $"🩺🟢 <b>{name}</b> — здоровье накопителя улучшилось:\n{string.Join("\n", improved.Select(x => "• " + x))}");
             if (tempOk.Count > 0)
-                await NotifyServerAsync(s, srv, AlertKind.DiskHealth, tg, topics,
+                await NotifyServerAsync(s, srv, AlertKind.DiskHealth, false, tg, topics, glpi,
                     $"🌡️🟢 <b>{name}</b> — температура накопителя в норме:\n{string.Join("\n", tempOk.Select(x => "• " + x))}");
         }
 
@@ -426,12 +428,14 @@ public class AvailabilityMonitor : BackgroundService
 
     /// <summary>
     /// Отправка тревоги по конкретному серверу — с учётом тихого режима. Если сервер заглушён
-    /// (snooze) или идёт окно обслуживания, уведомление НЕ отправляется, но факт пишется в журнал,
-    /// чтобы заглушённое не пропало бесследно. Состояние тревоги на сервере при этом отслеживается
-    /// как обычно (флаги уже выставлены вызывающим).
+    /// (snooze) или идёт окно обслуживания, уведомление НЕ отправляется (ни в Telegram, ни в GLPI),
+    /// но факт пишется в журнал, чтобы заглушённое не пропало бесследно. Состояние тревоги на
+    /// сервере при этом отслеживается как обычно (флаги уже выставлены вызывающим).
+    /// <paramref name="active"/> — true: проблема началась/продолжается (заводим/оставляем задачу
+    /// в GLPI), false: проблема ушла (закрываем задачу, если она была открыта).
     /// </summary>
-    private async Task NotifyServerAsync(ServerSettings s, MonitoredServer srv, AlertKind kind,
-        TelegramService tg, TelegramReportService topics, string text)
+    private async Task NotifyServerAsync(ServerSettings s, MonitoredServer srv, AlertKind kind, bool active,
+        TelegramService tg, TelegramReportService topics, GlpiService glpi, string text)
     {
         if (AlertSuppression.IsSuppressed(srv, kind, DateTimeOffset.UtcNow, out var reason))
         {
@@ -440,6 +444,11 @@ public class AvailabilityMonitor : BackgroundService
             return;
         }
         await NotifyAsync(s, srv.Client, tg, topics, text);
+
+        // GLPI — независимо от того, настроен ли Telegram: это отдельный канал.
+        var plain = System.Text.RegularExpressions.Regex.Replace(text, "<.*?>", "");
+        if (active) await glpi.OpenAsync(s, srv, kind, plain);
+        else await glpi.CloseAsync(s, srv, kind, plain);
     }
 
     private async Task NotifyAsync(ServerSettings s, Client? client, TelegramService tg, TelegramReportService topics, string text)

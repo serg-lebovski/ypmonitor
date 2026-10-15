@@ -21,12 +21,13 @@ public class SettingsModel : PageModel
     private readonly AuditService _audit;
     private readonly BackupService _backup;
     private readonly IServiceScopeFactory _scopes;
+    private readonly GlpiService _glpi;
     public SettingsModel(AppDbContext db, IConfiguration cfg, AlertService alerts, IWebHostEnvironment env,
         ServerUpdateService upd, TelegramService tg, TelegramReportService report, WireGuardProxyService wg, AuditService audit,
-        BackupService backup, IServiceScopeFactory scopes)
+        BackupService backup, IServiceScopeFactory scopes, GlpiService glpi)
     {
         _db = db; _cfg = cfg; _alerts = alerts; _env = env; _upd = upd; _tg = tg; _report = report; _wg = wg; _audit = audit;
-        _backup = backup; _scopes = scopes;
+        _backup = backup; _scopes = scopes; _glpi = glpi;
     }
 
     public bool WireGuardRunning { get; set; }
@@ -378,6 +379,47 @@ public class SettingsModel : PageModel
             Message = $"Внешний IP через WireGuard: {ip}";
         }
         catch (Exception ex) { IsError = true; Message = "Не удалось получить внешний IP через WireGuard: " + ex.Message; }
+        return Page();
+    }
+
+    public async Task<IActionResult> OnPostSaveGlpiAsync(bool glpiEnabled, string? glpiUrl, int glpiProjectId,
+        string? glpiAppToken, string? glpiUserToken)
+    {
+        if (!IsAdmin) return Forbid();
+        var s = await _db.Settings.FirstOrDefaultAsync() ?? new ServerSettings();
+        s.GlpiEnabled = glpiEnabled;
+        s.GlpiUrl = string.IsNullOrWhiteSpace(glpiUrl) ? null : glpiUrl.Trim().TrimEnd('/');
+        s.GlpiProjectId = Math.Max(0, glpiProjectId);
+        s.GlpiAppToken = string.IsNullOrWhiteSpace(glpiAppToken) ? null : glpiAppToken.Trim();
+        s.GlpiUserToken = string.IsNullOrWhiteSpace(glpiUserToken) ? null : glpiUserToken.Trim();
+        if (s.Id == 0) _db.Settings.Add(s);
+        await _db.SaveChangesAsync();
+        await _audit.LogAsync(User, "Изменены настройки интеграции с GLPI", glpiEnabled ? "включена" : "выключена");
+        await Load();
+        Message = "Настройки GLPI сохранены.";
+        return Page();
+    }
+
+    public async Task<IActionResult> OnPostTestGlpiAsync()
+    {
+        if (!IsAdmin) return Forbid();
+        var s = await _db.Settings.FirstOrDefaultAsync();
+        if (s is null) return Page();
+        var (ok, msg) = await _glpi.TestConnectionAsync(s);
+        IsError = !ok;
+        Message = msg;
+        await Load();
+        return Page();
+    }
+
+    public async Task<IActionResult> OnPostSyncGlpiAsync()
+    {
+        if (!IsAdmin) return Forbid();
+        var s = await _db.Settings.FirstOrDefaultAsync();
+        if (s is null) return Page();
+        Message = await _glpi.SyncCurrentProblemsAsync(s);
+        await _audit.LogAsync(User, "Синхронизация текущих проблем с GLPI", Message);
+        await Load();
         return Page();
     }
 

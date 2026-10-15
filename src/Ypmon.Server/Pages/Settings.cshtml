@@ -12,6 +12,7 @@
     {
         tabs.Add(("telegram", "🤖", "Telegram и отчёты"));
         tabs.Add(("alerts", "🔔", "Оповещения"));
+        tabs.Add(("glpi", "🧾", "Инциденты GLPI"));
         tabs.Add(("access", "🛡️", "Доступ и безопасность"));
         tabs.Add(("logs", "📋", "Журнал"));
     }
@@ -211,6 +212,53 @@
                             <button class="btn btn-sm btn-y-danger" type="submit">Удалить туннель</button>
                         </form>
                     }
+                </div>
+            </div>
+        </section>
+
+        <section class="@Panel("glpi")" data-tab="glpi">
+            <div class="card-y">
+                <h2 class="set-h">🧾 Инциденты в GLPI</h2>
+                <div class="set-sub">
+                    При тревогах (офлайн, ping, диски, SMART, перегрев, архивация) сервер заводит задачу
+                    в GLPI — не заявку (Ticket), а <strong>ProjectTask внутри проекта</strong>, чтобы не
+                    засорять общий пул заявок техподдержки. Внутри проекта задачи группируются по типу
+                    проблемы («Агент не доступен», «Мало места на диске» и т.д.), а не по клиенту —
+                    так однотипные инциденты у разных клиентов видно рядом.
+                </div>
+                <form method="post" asp-page-handler="SaveGlpi" asp-route-tab="glpi">
+                    <div class="form-check mb-2">
+                        <input class="form-check-input" type="checkbox" name="glpiEnabled" value="true" id="glpe" @(s.GlpiEnabled ? "checked" : "") />
+                        <label class="form-check-label" for="glpe">Заводить инциденты в GLPI</label>
+                    </div>
+                    <div class="row g-2">
+                        <div class="col-md-8">
+                            <label>Адрес REST API</label>
+                            <input class="form-control mono" name="glpiUrl" value="@s.GlpiUrl" placeholder="https://glpi.example.com/apirest.php" />
+                        </div>
+                        <div class="col-md-4">
+                            <label>ID проекта «Мониторинг серверов»</label>
+                            <input class="form-control" type="number" name="glpiProjectId" value="@s.GlpiProjectId" min="0" />
+                        </div>
+                        <div class="col-md-6">
+                            <label>App-Token</label>
+                            <input class="form-control mono" type="password" name="glpiAppToken" value="@s.GlpiAppToken" autocomplete="off" />
+                        </div>
+                        <div class="col-md-6">
+                            <label>User-Token</label>
+                            <input class="form-control mono" type="password" name="glpiUserToken" value="@s.GlpiUserToken" autocomplete="off" />
+                        </div>
+                    </div>
+                    <button class="btn btn-primary mt-2" type="submit">Сохранить</button>
+                </form>
+                <div class="mt-2" style="display:flex;gap:8px;flex-wrap:wrap">
+                    <form method="post" asp-page-handler="TestGlpi" asp-route-tab="glpi">
+                        <button class="btn btn-sm btn-primary" type="submit">Проверить соединение</button>
+                    </form>
+                    <form method="post" asp-page-handler="SyncGlpi" asp-route-tab="glpi"
+                          onsubmit="return confirm('Пройтись по всем серверам и завести задачи в GLPI по уже активным сейчас проблемам (которые возникли ДО включения интеграции)? Уже заведённые задачи не дублирует.')">
+                        <button class="btn btn-sm btn-primary" type="submit">Синхронизировать сейчас</button>
+                    </form>
                 </div>
             </div>
         </section>
